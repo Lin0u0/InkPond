@@ -4,6 +4,32 @@
   },
   "groups" : [
     {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Image 9.png",
+          "name" : "Image 9",
+          "position" : {
+            "scale" : 0.2,
+            "translation-in-points" : [
+              0,
+              95.625
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
       "blur-material-specializations" : [
         {
           "appearance" : "tinted",
@@ -11,34 +37,6 @@
         }
       ],
       "layers" : [
-        {
-          "fill" : {
-            "linear-gradient" : [
-              "display-p3:0.18039,0.77647,0.70196,1.00000",
-              "extended-srgb:0.00000,0.53333,1.00000,1.00000"
-            ],
-            "orientation" : {
-              "start" : {
-                "x" : 0.9413367584684094,
-                "y" : 0
-              },
-              "stop" : {
-                "x" : 0,
-                "y" : 1
-              }
-            }
-          },
-          "glass" : false,
-          "image-name" : "typst.svg",
-          "name" : "typst",
-          "position" : {
-            "scale" : 3.5,
-            "translation-in-points" : [
-              0,
-              104.49721732284843
-            ]
-          }
-        },
         {
           "glass" : true,
           "image-name" : "Image 8.png",
@@ -57,6 +55,19 @@
         "opacity" : 0.5
       },
       "translucency-specializations" : [
+        {
+          "value" : {
+            "enabled" : true,
+            "value" : 0.5
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.5
+          }
+        },
         {
           "appearance" : "tinted",
           "value" : {
@@ -208,7 +219,7 @@
             {
               "appearance" : "dark",
               "value" : {
-                "automatic-gradient" : "display-p3:0.10980,0.10980,0.65490,1.00000",
+                "automatic-gradient" : "display-p3:0.00000,0.20015,0.66326,1.00000",
                 "orientation" : {
                   "start" : {
                     "x" : 0.17678032144569444,
