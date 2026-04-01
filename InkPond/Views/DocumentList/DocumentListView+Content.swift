@@ -44,7 +44,7 @@ extension DocumentListView {
         }
     }
 
-    func documentRow(_ document: InkPondDocument) -> some View {
+    func documentRow(_ document: InkPondProject) -> some View {
         NavigationLink(value: document) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {

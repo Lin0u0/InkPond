@@ -33,7 +33,7 @@ extension ProjectFileManager {
         }
     }
 
-    static func readTypFile(named name: String, for document: InkPondDocument) throws -> String {
+    static func readTypFile(named name: String, for document: InkPondProject) throws -> String {
         let url = try validatedProjectPath(relativePath: name, for: document)
         if useCoordination {
             return try CloudFileCoordinator.readString(from: url)
@@ -41,7 +41,7 @@ extension ProjectFileManager {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
-    static func writeTypFile(named name: String, content: String, for document: InkPondDocument) throws {
+    static func writeTypFile(named name: String, content: String, for document: InkPondProject) throws {
         let url = try validatedProjectPath(relativePath: name, for: document)
         if useCoordination {
             try CloudFileCoordinator.writeString(content, to: url)
@@ -50,7 +50,7 @@ extension ProjectFileManager {
         }
     }
 
-    static func createTypFile(named name: String, for document: InkPondDocument) throws {
+    static func createTypFile(named name: String, for document: InkPondProject) throws {
         try validateFileName(name)
         let url = try validatedProjectPath(relativePath: name, for: document)
         guard !FileManager.default.fileExists(atPath: url.path) else {
@@ -64,7 +64,7 @@ extension ProjectFileManager {
         os_log(.info, "ProjectFileManager: created %{public}@ in %{public}@", name, document.projectID)
     }
 
-    static func deleteTypFile(named name: String, for document: InkPondDocument) throws {
+    static func deleteTypFile(named name: String, for document: InkPondProject) throws {
         guard name != document.entryFileName else {
             throw InkPondFileError.cannotDeleteEntryFile
         }
@@ -77,7 +77,7 @@ extension ProjectFileManager {
         os_log(.info, "ProjectFileManager: deleted %{public}@ from %{public}@", name, document.projectID)
     }
 
-    static func deleteProjectFile(relativePath: String, for document: InkPondDocument) throws {
+    static func deleteProjectFile(relativePath: String, for document: InkPondProject) throws {
         let url = try validatedProjectPath(relativePath: relativePath, for: document)
         if useCoordination {
             try CloudFileCoordinator.removeItem(at: url)
@@ -86,9 +86,22 @@ extension ProjectFileManager {
         }
         os_log(.info, "ProjectFileManager: deleted %{public}@", relativePath)
     }
+    
+    static func deleteProjectTreeNode(node: ProjectTreeNode, for project: InkPondProject) throws {
+        let url = try validatedProjectPath(relativePath: node.relativePath, for: project)
+        if useCoordination {
+            try CloudFileCoordinator.removeItem(at: url)
+        } else {
+            try FileManager.default.removeItem(at: url)
+        }
+        if node.kind == .font {
+            project.fontFileNames.removeAll { $0 == (node.relativePath as NSString).lastPathComponent }
+        }
+        os_log(.info, "ProjectFileManager: deleted %{public}@", node.relativePath)
+    }
 
     @discardableResult
-    static func importFile(from sourceURL: URL, to subdir: String, for document: InkPondDocument) throws -> String {
+    static func importFile(from sourceURL: URL, to subdir: String, for document: InkPondProject) throws -> String {
         let accessing = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
 

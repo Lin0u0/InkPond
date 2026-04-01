@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct InitialEntryFilePickerSheet: View {
-    @Bindable var document: InkPondDocument
+    @Bindable var document: InkPondProject
     let completeImport: (_ selectedEntry: String?, _ selectedImageDirectory: String?, _ selectedFontDirectory: String?) -> Void
 
     @State private var selectedEntryFile: String?

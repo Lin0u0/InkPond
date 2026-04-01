@@ -7,7 +7,7 @@ import Foundation
 import os.log
 
 extension ProjectFileManager {
-    static func listProjectFiles(for document: InkPondDocument) -> ProjectFiles {
+    static func listProjectFiles(for document: InkPondProject) -> ProjectFiles {
         let fm = FileManager.default
         let projectDir = projectDirectory(for: document)
 
@@ -39,7 +39,7 @@ extension ProjectFileManager {
         return ProjectFiles(typFiles: typFiles, imageFiles: imageFiles, fontFiles: fontFiles)
     }
 
-    static func listAllTypFiles(for document: InkPondDocument) -> [String] {
+    static func listAllTypFiles(for document: InkPondProject) -> [String] {
         listAllTypFiles(in: projectDirectory(for: document))
     }
 
@@ -80,7 +80,7 @@ extension ProjectFileManager {
         return files.sorted()
     }
 
-    static func projectTree(for document: InkPondDocument) -> [ProjectTreeNode] {
+    static func projectTree(for document: InkPondProject) -> [ProjectTreeNode] {
         let imageDirectoryName = safeImageDirectoryName(from: document.imageDirectoryName)
         return buildProjectTree(in: projectDirectory(for: document), relativePrefix: "", imageDirectoryName: imageDirectoryName)
     }
@@ -103,7 +103,7 @@ extension ProjectFileManager {
         return options[0]
     }
 
-    static func importFontFiles(from relativeDirectory: String, for document: InkPondDocument) -> [String] {
+    static func importFontFiles(from relativeDirectory: String, for document: InkPondProject) -> [String] {
         let urls = listFiles(in: relativeDirectory, for: document, matching: fontFileExtensions)
         guard !urls.isEmpty else {
             document.fontFileNames = []
@@ -143,7 +143,7 @@ extension ProjectFileManager {
     }
 
     @discardableResult
-    static func saveImage(data: Data, fileName: String, for document: InkPondDocument) throws -> String {
+    static func saveImage(data: Data, fileName: String, for document: InkPondProject) throws -> String {
         ensureImageDirectory(for: document)
         let imageDir = safeImageDirectoryName(from: document.imageDirectoryName)
         let dest = imagesDirectory(for: document).appendingPathComponent(fileName)

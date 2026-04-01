@@ -51,15 +51,15 @@ struct DocumentListView: View {
     @Environment(\.modelContext) var modelContext
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.scenePhase) var scenePhase
-    @Query(sort: \InkPondDocument.modifiedAt, order: .reverse) var documents: [InkPondDocument]
+    @Query(sort: \InkPondProject.modifiedAt, order: .reverse) var documents: [InkPondProject]
 
-    @Binding var selectedDocument: InkPondDocument?
+    @Binding var selectedDocument: InkPondProject?
     @Binding var searchText: String
 
-    @State var renamingDocument: InkPondDocument?
+    @State var renamingDocument: InkPondProject?
     @State var newTitle: String = ""
     @State var exporter = ExportController()
-    @State var documentToDelete: InkPondDocument?
+    @State var documentToDelete: InkPondProject?
     @State var showingSettings = false
     @State var projectActionError: String? = nil
     @State var zipImportError: String? = nil
@@ -74,18 +74,18 @@ struct DocumentListView: View {
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
-    var deduplicatedDocuments: [InkPondDocument] {
+    var deduplicatedDocuments: [InkPondProject] {
         Dictionary(grouping: documents, by: \.projectID)
             .values
             .map(preferredDocumentForDuplicateGroup)
     }
 
-    var filteredDocuments: [InkPondDocument] {
+    var filteredDocuments: [InkPondProject] {
         guard !searchText.isEmpty else { return deduplicatedDocuments }
         return deduplicatedDocuments.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
     }
 
-    var sortedDocuments: [InkPondDocument] {
+    var sortedDocuments: [InkPondProject] {
         filteredDocuments.sorted(by: areDocumentsOrdered)
     }
 

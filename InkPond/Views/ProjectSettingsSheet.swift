@@ -7,7 +7,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ProjectSettingsSheet: View {
-    @Bindable var document: InkPondDocument
+    @Bindable var document: InkPondProject
     var openFile: ((String) -> Void)?
     @Environment(AppFontLibrary.self) private var appFontLibrary
     @Environment(\.dismiss) private var dismiss

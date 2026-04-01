@@ -40,22 +40,41 @@ struct ProjectFiles {
 }
 
 struct ProjectTreeNode: Identifiable, Hashable {
-    enum Kind: Hashable {
-        case directory
-        case typ
-        case reference
-        case image
-        case font
-        case other
-    }
+    
 
     let relativePath: String
     let displayName: String
-    let kind: Kind
+    let kind: FileKind
     let children: [ProjectTreeNode]
 
     var id: String { relativePath }
-    var isDirectory: Bool { kind == .directory }
+    
+    var accessibilityLabel: String{
+        let labelKind = switch kind {
+        case .directory:
+            L10n.tr("a11y.project_files.kind.folder")
+        case .typ:
+            L10n.tr("a11y.project_files.kind.typ")
+        case .image:
+            L10n.tr("a11y.project_files.kind.image")
+        case .vector:
+                L10n.tr("a11y.project_files.kind.image")
+        case .font:
+            L10n.tr("a11y.project_files.kind.font")
+        case .other:
+            L10n.tr("a11y.project_files.kind.file")
+        case .table:
+            L10n.tr("a11y.project_files.kind.table")
+        case .pdf:
+            L10n.tr("a11y.project_files.kind.file")
+        case .bibliography:
+            L10n.tr("a11y.project_files.kind.file")
+        case .configuration:
+            L10n.tr("a11y.project_files.kind.file")
+        }
+
+        return L10n.a11yProjectFilesFileLabel(kind: labelKind, name: displayName)
+    }
 }
 
 struct EntryFileResolution {
@@ -70,10 +89,8 @@ enum ProjectFileManager {
         "bmp", "eps", "gif", "heic", "heif", "jpg", "jpeg",
         "pdf", "png", "svg", "tif", "tiff", "webp"
     ]
+    static let supportedTableFileExtensions: Set<String> = ["csv","tsv"]
     static let fontFileExtensions: Set<String> = ["otf", "ttf", "woff", "woff2"]
-    static let referenceFileExtensions: Set<String> = [
-        "bib", "yml", "yaml", "csv", "json", "xml", "toml", "txt"
-    ]
 
     /// Shared StorageManager reference — set at app launch from InkPondApp.
     /// Protected by a lock for thread-safe access from any actor context.
@@ -141,7 +158,7 @@ enum ProjectFileManager {
     }
 
     @discardableResult
-    static func renameProjectDirectory(for document: InkPondDocument, to newTitle: String) throws -> String {
+    static func renameProjectDirectory(for document: InkPondProject, to newTitle: String) throws -> String {
         let desiredFolderName = sanitizeFolderName(newTitle)
         if desiredFolderName == document.projectID {
             return document.projectID
@@ -160,7 +177,7 @@ enum ProjectFileManager {
         return newFolderName
     }
 
-    static func imagesDirectory(for document: InkPondDocument) -> URL {
+    static func imagesDirectory(for document: InkPondProject) -> URL {
         let imageDirName = safeImageDirectoryName(from: document.imageDirectoryName)
         if imageDirName.isEmpty {
             return projectDirectory(for: document)
@@ -169,12 +186,12 @@ enum ProjectFileManager {
             .appendingPathComponent(imageDirName, isDirectory: true)
     }
 
-    static func fontsDirectory(for document: InkPondDocument) -> URL {
+    static func fontsDirectory(for document: InkPondProject) -> URL {
         projectDirectory(for: document)
             .appendingPathComponent("fonts", isDirectory: true)
     }
 
-    static func createProjectRoot(for document: InkPondDocument) throws {
+    static func createProjectRoot(for document: InkPondProject) throws {
         let url = projectDirectory(for: document)
         if useCoordination {
             try CloudFileCoordinator.createDirectory(at: url)
@@ -183,7 +200,7 @@ enum ProjectFileManager {
         }
     }
 
-    static func createImageDirectory(for document: InkPondDocument) throws {
+    static func createImageDirectory(for document: InkPondProject) throws {
         try createProjectRoot(for: document)
         let imageDirectory = imagesDirectory(for: document)
         if imageDirectory.standardizedFileURL != projectDirectory(for: document).standardizedFileURL {
@@ -195,7 +212,7 @@ enum ProjectFileManager {
         }
     }
 
-    static func createFontsDirectory(for document: InkPondDocument) throws {
+    static func createFontsDirectory(for document: InkPondProject) throws {
         try createProjectRoot(for: document)
         let url = fontsDirectory(for: document)
         if useCoordination {
@@ -205,35 +222,35 @@ enum ProjectFileManager {
         }
     }
 
-    static func createDefaultAssetDirectories(for document: InkPondDocument) throws {
+    static func createDefaultAssetDirectories(for document: InkPondProject) throws {
         try createImageDirectory(for: document)
         try createFontsDirectory(for: document)
     }
 
-    static func createInitialProject(for document: InkPondDocument) throws {
+    static func createInitialProject(for document: InkPondProject) throws {
         try createProjectRoot(for: document)
         try createDefaultAssetDirectories(for: document)
         try writeTypFile(named: document.entryFileName, content: "", for: document)
     }
 
-    static func ensureProjectRoot(for document: InkPondDocument) {
+    static func ensureProjectRoot(for document: InkPondProject) {
         try? createProjectRoot(for: document)
     }
 
-    static func ensureImageDirectory(for document: InkPondDocument) {
+    static func ensureImageDirectory(for document: InkPondProject) {
         try? createImageDirectory(for: document)
     }
 
-    static func ensureFontsDirectory(for document: InkPondDocument) {
+    static func ensureFontsDirectory(for document: InkPondProject) {
         try? createFontsDirectory(for: document)
     }
 
-    static func ensureDefaultAssetDirectories(for document: InkPondDocument) {
+    static func ensureDefaultAssetDirectories(for document: InkPondProject) {
         ensureImageDirectory(for: document)
         ensureFontsDirectory(for: document)
     }
 
-    static func ensureProjectStructure(for document: InkPondDocument) {
+    static func ensureProjectStructure(for document: InkPondProject) {
         ensureProjectRoot(for: document)
         ensureDefaultAssetDirectories(for: document)
     }
@@ -255,15 +272,15 @@ enum ProjectFileManager {
         os_log(.info, "ProjectFileManager: deleted project dir for %{public}@", document.projectID)
     }
 
-    static func entryFileURL(for document: InkPondDocument) -> URL {
+    static func entryFileURL(for document: InkPondProject) -> URL {
         projectDirectory(for: document).appendingPathComponent(document.entryFileName)
     }
 
-    static func typFileURL(named name: String, for document: InkPondDocument) -> URL {
+    static func typFileURL(named name: String, for document: InkPondProject) -> URL {
         projectDirectory(for: document).appendingPathComponent(name)
     }
 
-    static func projectFileURL(relativePath: String, for document: InkPondDocument) throws -> URL {
+    static func projectFileURL(relativePath: String, for document: InkPondProject) throws -> URL {
         try validatedProjectPath(relativePath: relativePath, for: document)
     }
 
@@ -279,7 +296,7 @@ enum ProjectFileManager {
     }
 
     static func validatedProjectPath(relativePath: String,
-                                     for document: InkPondDocument,
+                                     for document: InkPondProject,
                                      allowEmpty: Bool = false) throws -> URL {
         let trimmed = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -367,7 +384,7 @@ enum ProjectFileManager {
             }
     }
 
-    static func listFiles(in relativeDirectory: String, for document: InkPondDocument, matching extensions: Set<String>) -> [URL] {
+    static func listFiles(in relativeDirectory: String, for document: InkPondProject, matching extensions: Set<String>) -> [URL] {
         let directoryURL = (try? validatedProjectPath(relativePath: relativeDirectory, for: document, allowEmpty: true))
             ?? projectDirectory(for: document)
         guard let urls = try? FileManager.default.contentsOfDirectory(
@@ -427,17 +444,16 @@ enum ProjectFileManager {
         }
 
         return nodes.sorted { lhs, rhs in
-            if lhs.isDirectory != rhs.isDirectory {
-                return lhs.isDirectory && !rhs.isDirectory
+            if (lhs.kind == .directory) != (rhs.kind == .directory) {
+                return (lhs.kind == .directory) && !(rhs.kind == .directory)
             }
             return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
         }
     }
 
-    static func fileKind(for relativePath: String, imageDirectoryName: String) -> ProjectTreeNode.Kind {
+    static func fileKind(for relativePath: String, imageDirectoryName: String) -> FileKind {
         let ext = (relativePath as NSString).pathExtension.lowercased()
         if ext == "typ" { return .typ }
-        if referenceFileExtensions.contains(ext) { return .reference }
         if relativePath.hasPrefix("fonts/") { return .font }
         if !imageDirectoryName.isEmpty, relativePath.hasPrefix(imageDirectoryName + "/") { return .image }
         if supportedImageFileExtensions.contains(ext) {

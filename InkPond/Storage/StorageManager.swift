@@ -138,7 +138,7 @@ final class StorageManager {
         await setAuxiliarySync(enabled, for: .snippets)
     }
 
-    func setMode(_ newMode: StorageMode, documents: [InkPondDocument]) async {
+    func setMode(_ newMode: StorageMode, documents: [InkPondProject]) async {
         guard newMode != mode else { return }
         guard !isMigrating else { return }
 
@@ -262,7 +262,7 @@ final class StorageManager {
     }
 
     /// Retry migrating projects that failed during the last migration attempt.
-    func retryFailedMigration(documents: [InkPondDocument]) async {
+    func retryFailedMigration(documents: [InkPondProject]) async {
         guard !failedProjectIDs.isEmpty else { return }
         guard !isMigrating else { return }
 

@@ -26,8 +26,7 @@ struct DocumentEditorView: View {
         case remoteURL(URL, suggestedFileName: String?)
     }
 
-    @Bindable var document: InkPondDocument
-    var isSidebarVisible: Bool = false
+    @Bindable var document: InkPondProject
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(\.horizontalSizeClass) var sizeClass
@@ -106,11 +105,9 @@ struct DocumentEditorView: View {
     }
 
     init(
-        document: InkPondDocument,
-        isSidebarVisible: Bool = false
+        document: InkPondProject,
     ) {
         self.document = document
-        self.isSidebarVisible = isSidebarVisible
         _compileFontPaths = State(initialValue: FontManager.allFontPaths(for: document))
     }
 

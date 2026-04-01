@@ -17,7 +17,7 @@ final class ExportController {
 
     /// Export using an already-compiled PDFDocument from the live preview.
     /// Falls back to a fresh compile if no cached document is provided.
-    func exportPDF(for document: InkPondDocument, cachedPDF: PDFDocument? = nil) {
+    func exportPDF(for document: InkPondProject, cachedPDF: PDFDocument? = nil) {
         guard !isExporting else { return }
 
         // If we have a cached PDF from the preview pane, write it directly — no recompile needed.
@@ -42,12 +42,12 @@ final class ExportController {
         }
     }
 
-    func exportTypSource(for document: InkPondDocument, fileName: String) {
+    func exportTypSource(for document: InkPondProject, fileName: String) {
         do { exportURL = try ExportManager.temporaryTypURL(for: document, fileName: fileName) }
         catch { exportError = error.localizedDescription }
     }
 
-    func exportZip(for document: InkPondDocument) {
+    func exportZip(for document: InkPondProject) {
         guard !isExporting else { return }
         isExporting = true
         Task { @MainActor [weak self] in

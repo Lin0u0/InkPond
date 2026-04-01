@@ -1314,8 +1314,8 @@ struct InkPondTests {
         #expect(versionChanged != projectChanged)
     }
 
-    private func makeDocument(projectID: String) -> InkPondDocument {
-        let doc = InkPondDocument(title: "Test", content: "")
+    private func makeDocument(projectID: String) -> InkPondProject {
+        let doc = InkPondProject(title: "Test", content: "")
         doc.projectID = projectID
         doc.entryFileName = "main.typ"
         doc.imageDirectoryName = "images"
@@ -1323,7 +1323,7 @@ struct InkPondTests {
     }
 
     private func makeCompiledPreviewCacheInput(
-        for document: InkPondDocument,
+        for document: InkPondProject,
         source: String,
         fontPaths: [String] = [],
         typstVersion: String? = "1.0"

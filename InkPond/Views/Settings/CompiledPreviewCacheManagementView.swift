@@ -7,7 +7,7 @@ import SwiftData
 import SwiftUI
 
 struct CompiledPreviewCacheManagementView: View {
-    @Query(sort: \InkPondDocument.modifiedAt, order: .reverse) private var documents: [InkPondDocument]
+    @Query(sort: \InkPondProject.modifiedAt, order: .reverse) private var documents: [InkPondProject]
     @State private var snapshot = CompiledPreviewCacheSnapshot(entries: [])
     @State private var isLoading = true
     @State private var cacheError: String?

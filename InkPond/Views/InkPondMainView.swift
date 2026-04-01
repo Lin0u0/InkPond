@@ -1,16 +1,7 @@
-//
-//  ContentView.swift
-//  InkPond
-//
-//  Created by Lin Qidi on 2026/3/2.
-//
-
 import SwiftUI
 import SwiftData
 import UIKit
 
-/// Sets the title of the UIWindowScene that contains this view.
-/// This controls the name shown in the iPadOS app switcher and window labels.
 private struct SceneTitleSetter: UIViewRepresentable {
     let title: String
 
@@ -27,7 +18,7 @@ private struct SceneTitleSetter: UIViewRepresentable {
     }
 }
 
-struct ContentView: View {
+struct InkPondMainView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(StorageManager.self) private var storageManager
@@ -46,7 +37,6 @@ struct ContentView: View {
             OnboardingView {
                 withAnimation { hasCompletedOnboarding = true }
             }
-            .preferredColorScheme(colorScheme)
         }
     }
 
@@ -144,6 +134,6 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    InkPondMainView()
         .modelContainer(for: InkPondProject.self, inMemory: true)
 }

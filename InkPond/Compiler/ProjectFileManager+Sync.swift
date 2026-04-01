@@ -43,7 +43,7 @@ extension ProjectFileManager {
         })
     }
 
-    static func migrateLegacyStructure(documents: [InkPondDocument]) {
+    static func migrateLegacyStructure(documents: [InkPondProject]) {
         let fm = FileManager.default
         guard let rootURL = syncDocumentsURL else { return }
         let legacyRoot = rootURL.appendingPathComponent("Projects", isDirectory: true)
@@ -82,7 +82,7 @@ extension ProjectFileManager {
         }
     }
 
-    static func migrateContentIfNeeded(for document: InkPondDocument) {
+    static func migrateContentIfNeeded(for document: InkPondProject) {
         guard !document.requiresInitialEntrySelection else { return }
 
         let entryURL = entryFileURL(for: document)

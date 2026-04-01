@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 extension DocumentListView {
-    func areDocumentsOrdered(_ lhs: InkPondDocument, _ rhs: InkPondDocument) -> Bool {
+    func areDocumentsOrdered(_ lhs: InkPondProject, _ rhs: InkPondProject) -> Bool {
         let primaryComparison = compare(lhs, rhs, by: sortField)
         if primaryComparison != .orderedSame {
             return sortDirection.orders(primaryComparison)
@@ -26,7 +26,7 @@ extension DocumentListView {
         return lhs.createdAt > rhs.createdAt
     }
 
-    func compare(_ lhs: InkPondDocument, _ rhs: InkPondDocument, by field: SortField) -> ComparisonResult {
+    func compare(_ lhs: InkPondProject, _ rhs: InkPondProject, by field: SortField) -> ComparisonResult {
         switch field {
         case .title:
             lhs.title.localizedCaseInsensitiveCompare(rhs.title)
@@ -76,7 +76,7 @@ extension DocumentListView {
         for folderName in newFolders {
             let folderURL = ProjectFileManager.projectDirectory(folderName: folderName)
             let allFiles = ProjectFileManager.listAllFiles(in: folderURL)
-            let doc = InkPondDocument(title: folderName, content: "")
+            let doc = InkPondProject(title: folderName, content: "")
             doc.projectID = folderName
             configureImportedDocument(doc, relativePaths: allFiles)
             modelContext.insert(doc)
@@ -99,7 +99,7 @@ extension DocumentListView {
         }
     }
 
-    func preferredDocumentForDuplicateGroup(_ duplicates: [InkPondDocument]) -> InkPondDocument {
+    func preferredDocumentForDuplicateGroup(_ duplicates: [InkPondProject]) -> InkPondProject {
         duplicates.max { lhs, rhs in
             let lhsScore = duplicateRetentionScore(for: lhs)
             let rhsScore = duplicateRetentionScore(for: rhs)
@@ -113,7 +113,7 @@ extension DocumentListView {
         } ?? duplicates[0]
     }
 
-    func duplicateRetentionScore(for document: InkPondDocument) -> Int {
+    func duplicateRetentionScore(for document: InkPondProject) -> Int {
         var score = 0
         if document.entryFileName != "main.typ" { score += 5 }
         if !document.entryFileName.isEmpty { score += 2 }
@@ -128,7 +128,7 @@ extension DocumentListView {
         return score
     }
 
-    func mergeDuplicateDocument(_ duplicate: InkPondDocument, into survivor: InkPondDocument) {
+    func mergeDuplicateDocument(_ duplicate: InkPondProject, into survivor: InkPondProject) {
         if survivor.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            !duplicate.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             survivor.title = duplicate.title
@@ -180,7 +180,7 @@ extension DocumentListView {
         return false
     }
 
-    func configureImportedDocument(_ document: InkPondDocument, relativePaths: [String]) {
+    func configureImportedDocument(_ document: InkPondProject, relativePaths: [String]) {
         let typFiles = relativePaths.filter { $0.hasSuffix(".typ") }.sorted()
         let resolution = ProjectFileManager.resolveImportedEntryFile(from: typFiles)
         if let entryFile = resolution.entryFileName {
@@ -225,7 +225,7 @@ extension DocumentListView {
 
     func addDocument() {
         let title = nextAvailableTitle()
-        let doc = InkPondDocument(title: title, content: "")
+        let doc = InkPondProject(title: title, content: "")
         doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
         do {
             try ProjectFileManager.createInitialProject(for: doc)
@@ -242,7 +242,7 @@ extension DocumentListView {
 
     func importZip(from url: URL) {
         let title = url.deletingPathExtension().lastPathComponent
-        let doc = InkPondDocument(title: title, content: "")
+        let doc = InkPondProject(title: title, content: "")
         doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
         let destDir = ProjectFileManager.projectDirectory(for: doc)
 

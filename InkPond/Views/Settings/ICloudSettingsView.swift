@@ -82,7 +82,7 @@ struct ICloudSettingsView: View {
 
             if storageManager.canRetryMigration {
                 Button {
-                    let descriptor = FetchDescriptor<InkPondDocument>()
+                    let descriptor = FetchDescriptor<InkPondProject>()
                     let documents = (try? modelContext.fetch(descriptor)) ?? []
                     Task {
                         await storageManager.retryFailedMigration(documents: documents)
@@ -230,7 +230,7 @@ struct ICloudSettingsView: View {
             get: { storageManager.mode == .iCloud },
             set: { newValue in
                 let targetMode: StorageMode = newValue ? .iCloud : .local
-                let descriptor = FetchDescriptor<InkPondDocument>()
+                let descriptor = FetchDescriptor<InkPondProject>()
                 let documents = (try? modelContext.fetch(descriptor)) ?? []
                 Task {
                     await storageManager.setMode(targetMode, documents: documents)

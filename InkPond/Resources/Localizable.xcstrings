@@ -1,0 +1,345 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "@" : {
+
+    },
+    "#figure(image(\"path\"), caption: [...])" : {
+
+    },
+    "#image(\"path\")" : {
+
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "Acknowledgements" : {
+
+    },
+    "Add Font…" : {
+
+    },
+    "Ants-Aare" : {
+
+    },
+    "Bibliography" : {
+
+    },
+    "Bundled CJK fonts used as default fallbacks in InkPond." : {
+
+    },
+    "Cache Error" : {
+
+    },
+    "Cached Documents" : {
+
+    },
+    "Cached Packages" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Clear All" : {
+
+    },
+    "Clear All Compile Cache" : {
+
+    },
+    "Clear All Compile Cache?" : {
+
+    },
+    "Clear All Package Cache" : {
+
+    },
+    "Clear All Package Cache?" : {
+
+    },
+    "Compile Cache" : {
+
+    },
+    "Compile Now" : {
+
+    },
+    "Compiling…" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Create" : {
+
+    },
+    "Create File" : {
+
+    },
+    "Create Folder" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete Document" : {
+
+    },
+    "Document" : {
+
+    },
+    "Documents" : {
+
+    },
+    "Done" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Editing" : {
+
+    },
+    "Enter a name for the new .typ file." : {
+
+    },
+    "Entry" : {
+
+    },
+    "Entry File" : {
+
+    },
+    "Error" : {
+
+    },
+    "Export .typ" : {
+
+    },
+    "Export Error" : {
+
+    },
+    "Export PDF" : {
+
+    },
+    "Export Project as Zip" : {
+
+    },
+    "File" : {
+
+    },
+    "File Error" : {
+
+    },
+    "filename.typ" : {
+
+    },
+    "Folder" : {
+
+    },
+    "Font" : {
+
+    },
+    "Font Directory" : {
+
+    },
+    "Fonts" : {
+
+    },
+    "Format" : {
+
+    },
+    "Hello World" : {
+
+    },
+    "Helloooo World" : {
+
+    },
+    "Image" : {
+
+    },
+    "Image Directory" : {
+
+    },
+    "Image Import Error" : {
+
+    },
+    "Image Insertion" : {
+
+    },
+    "Import Error" : {
+
+    },
+    "Import File" : {
+
+    },
+    "Import Font" : {
+
+    },
+    "Import Project" : {
+
+    },
+    "InkPond could not find any .typ files in this project." : {
+
+    },
+    "local" : {
+
+    },
+    "my-thesis" : {
+
+    },
+    "New .typ File" : {
+
+    },
+    "New Source File" : {
+
+    },
+    "No .typ Files Found" : {
+
+    },
+    "No cached @preview packages" : {
+
+    },
+    "No cached document previews" : {
+
+    },
+    "No Document Selected" : {
+
+    },
+    "No files" : {
+
+    },
+    "OK" : {
+
+    },
+    "Overview" : {
+
+    },
+    "Package Cache" : {
+
+    },
+    "Packages" : {
+
+    },
+    "PDF" : {
+
+    },
+    "Pin" : {
+
+    },
+    "Project Error" : {
+
+    },
+    "Project Files" : {
+
+    },
+    "Project Settings" : {
+
+    },
+    "Recompile" : {
+
+    },
+    "Reference implementation for Swift/Rust interop." : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename Document" : {
+
+    },
+    "Search" : {
+
+    },
+    "Select a document from the list or create a new one." : {
+
+    },
+    "Selecting a font directory imports its font files into the project font library. You can also skip this step." : {
+
+    },
+    "Share PDF" : {
+
+    },
+    "Skip" : {
+
+    },
+    "Slideshow" : {
+
+    },
+    "Soothing pastel color palette powering the editor themes." : {
+
+    },
+    "Special Thanks" : {
+
+    },
+    "Subdirectory name" : {
+
+    },
+    "Table Document" : {
+
+    },
+    "Thanks to everyone at Donut for support and inspiration." : {
+
+    },
+    "The open-source typesetting system at the core of InkPond." : {
+
+    },
+    "This project does not include main.typ. Choose the file used for compilation." : {
+
+    },
+    "This removes all cached compiled PDF previews. Documents will recompile the next time they open." : {
+
+    },
+    "This removes all downloaded @preview packages. They will be downloaded again on the next compile." : {
+
+    },
+    "Title" : {
+
+    },
+    "Total Size" : {
+
+    },
+    "Typst Document" : {
+
+    },
+    "Updated %@" : {
+      "comment" : "Compiled preview cache updated time"
+    },
+    "Vector Graphic" : {
+
+    },
+    "Watch" : {
+
+    }
+  },
+  "version" : "1.2"
+}

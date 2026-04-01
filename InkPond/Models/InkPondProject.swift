@@ -47,4 +47,4 @@ final class TypistDocument {
     }
 }
 
-typealias InkPondDocument = TypistDocument
+typealias InkPondProject = TypistDocument

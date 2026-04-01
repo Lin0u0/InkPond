@@ -10,7 +10,7 @@ import QuickLook
 import UniformTypeIdentifiers
 
 struct ProjectFileBrowserSheet: View {
-    @Bindable var document: InkPondDocument
+    @Bindable var document: InkPondProject
     var currentFileName: String
     var openFile: (String) -> Void
 
@@ -151,7 +151,7 @@ struct ProjectFileBrowserSheet: View {
 
     private func rowView(for row: VisibleProjectRow) -> AnyView {
         let node = row.node
-        if node.isDirectory {
+        if node.kind == .directory {
             return AnyView(Button {
                 toggleExpansion(for: node.relativePath)
             } label: {
@@ -266,7 +266,7 @@ struct ProjectFileBrowserSheet: View {
     private func rowLabel(for row: VisibleProjectRow) -> some View {
         let node = row.node
         return HStack(spacing: 10) {
-            if node.isDirectory {
+            if node.kind == .directory {
                 Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.tertiary)
@@ -275,14 +275,14 @@ struct ProjectFileBrowserSheet: View {
                 Color.clear
                     .frame(width: 12, height: 18)
             }
-            Image(systemName: iconName(for: node))
+            Image(systemName: node.kind.symbolName)
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 18, alignment: .center)
             Text(node.displayName)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            if storageManager.isUsingiCloud, !node.isDirectory {
+            if storageManager.isUsingiCloud, node.kind != .directory {
                 cloudStatusIndicator(for: node.relativePath)
             }
             Spacer()
@@ -350,28 +350,11 @@ struct ProjectFileBrowserSheet: View {
         }
     }
 
-    private func iconName(for node: ProjectTreeNode) -> String {
-        switch node.kind {
-        case .directory:
-            return "folder"
-        case .typ:
-            return "doc.plaintext"
-        case .reference:
-            return "doc.text"
-        case .image:
-            return "photo"
-        case .font:
-            return "character.textbox"
-        case .other:
-            return "doc"
-        }
-    }
-
     private func appendVisibleRows(from nodes: [ProjectTreeNode], depth: Int, into rows: inout [VisibleProjectRow]) {
         for node in nodes {
             let isExpanded = expandedNodes.contains(node.relativePath)
             rows.append(VisibleProjectRow(node: node, depth: depth, isExpanded: isExpanded))
-            if node.isDirectory, isExpanded {
+            if node.kind == .directory, isExpanded {
                 appendVisibleRows(from: node.children, depth: depth + 1, into: &rows)
             }
         }
@@ -432,7 +415,7 @@ struct ProjectFileBrowserSheet: View {
         }
     }
 
-    private func deleteFile(at relativePath: String, kind: ProjectTreeNode.Kind) {
+    private func deleteFile(at relativePath: String, kind: FileKind) {
         do {
             try ProjectFileManager.deleteProjectFile(relativePath: relativePath, for: document)
             if kind == .font {
@@ -528,7 +511,7 @@ struct ProjectFileBrowserSheet: View {
 
     private func rowAccessibilityLabel(for row: VisibleProjectRow) -> String {
         let node = row.node
-        if node.isDirectory {
+        if node.kind == .directory {
             return L10n.a11yProjectFilesFolderLabel(node.displayName)
         }
         return L10n.a11yProjectFilesFileLabel(kind: accessibilityKindLabel(for: node.kind), name: node.displayName)
@@ -536,7 +519,7 @@ struct ProjectFileBrowserSheet: View {
 
     private func rowAccessibilityValue(for row: VisibleProjectRow) -> String {
         var values: [String] = []
-        if row.node.isDirectory {
+        if row.node.kind == .directory {
             values.append(row.isExpanded ? L10n.a11yStateExpanded : L10n.a11yStateCollapsed)
         }
         if row.node.relativePath == document.entryFileName {
@@ -548,20 +531,28 @@ struct ProjectFileBrowserSheet: View {
         return values.joined(separator: ", ")
     }
 
-    private func accessibilityKindLabel(for kind: ProjectTreeNode.Kind) -> String {
-        switch kind {
+    private func accessibilityKindLabel(for kind: FileKind) -> String {
+        return switch kind {
         case .directory:
-            return L10n.tr("a11y.project_files.kind.folder")
+            L10n.tr("a11y.project_files.kind.folder")
         case .typ:
-            return L10n.tr("a11y.project_files.kind.typ")
-        case .reference:
-            return L10n.tr("a11y.project_files.kind.reference")
+            L10n.tr("a11y.project_files.kind.typ")
         case .image:
-            return L10n.tr("a11y.project_files.kind.image")
+            L10n.tr("a11y.project_files.kind.image")
         case .font:
-            return L10n.tr("a11y.project_files.kind.font")
+            L10n.tr("a11y.project_files.kind.font")
+        case .table:
+            L10n.tr("a11y.project_files.kind.table")
         case .other:
-            return L10n.tr("a11y.project_files.kind.file")
+            L10n.tr("a11y.project_files.kind.file")
+        case .vector:
+            L10n.tr("a11y.project_files.kind.image")
+        case .pdf:
+            L10n.tr("a11y.project_files.kind.file")
+        case .bibliography:
+            L10n.tr("a11y.project_files.kind.file")
+        case .configuration:
+            L10n.tr("a11y.project_files.kind.file")
         }
     }
 

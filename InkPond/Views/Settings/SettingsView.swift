@@ -10,13 +10,13 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppFontLibrary.self) var appFontLibrary
-    @Environment(AppAppearanceManager.self) var appAppearanceManager
     @Environment(ThemeManager.self) var themeManager
     @Environment(StorageManager.self) var storageManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
 
     @State var showingZipImporter = false
+    @State private var colorScheme: Int = 0
     @State var zipImportError: String?
 
     var onImport: (URL) -> Void
@@ -150,20 +150,14 @@ extension SettingsView {
 
     var appearanceSection: some View {
         Section(L10n.tr("Appearance")) {
-            Picker(selection: Binding(
-                get: { appAppearanceManager.mode },
-                set: { newMode in
-                    withTransaction(Transaction(animation: nil)) {
-                        appAppearanceManager.mode = newMode
-                    }
-                }
-            )) {
-                Text(L10n.tr("Follow System")).tag(AppAppearanceMode.system.rawValue)
-                Text(L10n.tr("Light")).tag(AppAppearanceMode.light.rawValue)
-                Text(L10n.tr("Dark")).tag(AppAppearanceMode.dark.rawValue)
+            Picker(selection: $colorScheme) {
+                Text(L10n.tr("Follow System")).tag(2)
+                Text(L10n.tr("Light")).tag(1)
+                Text(L10n.tr("Dark")).tag(0)
             } label: {
                 Label(L10n.tr("App Appearance"), systemImage: "circle.lefthalf.filled")
             }
+            .preferredColorScheme(colorScheme == 0 ? ColorScheme.dark : colorScheme == 1 ? ColorScheme.light : nil)
 
             Picker(selection: Binding(
                 get: { themeManager.themeID },

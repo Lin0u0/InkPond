@@ -31,7 +31,7 @@ enum ExportManager {
 
     /// Compile document to PDF data on a background thread.
     /// Reads source from the entry file on disk.
-    static func compilePDF(for document: InkPondDocument) async -> Result<Data, TypstBridgeError> {
+    static func compilePDF(for document: InkPondProject) async -> Result<Data, TypstBridgeError> {
         ProjectFileManager.migrateContentIfNeeded(for: document)
         let source: String
         do {
@@ -58,7 +58,7 @@ enum ExportManager {
 
     /// Write .typ source to a temporary file and return its URL.
     /// Uses `fileName` as the exported file name (e.g. "main.typ").
-    static func temporaryTypURL(for document: InkPondDocument, fileName: String) throws -> URL {
+    static func temporaryTypURL(for document: InkPondProject, fileName: String) throws -> URL {
         let sanitized = fileName.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(sanitized)
@@ -70,7 +70,7 @@ enum ExportManager {
 
     /// Zip the entire project directory and return a temporary URL.
     /// The zip file is named after the document title.
-    static func zipProject(for document: InkPondDocument) throws -> URL {
+    static func zipProject(for document: InkPondProject) throws -> URL {
         let projectDir = ProjectFileManager.projectDirectory(for: document)
         let sanitized = document.title.replacingOccurrences(of: "/", with: "-")
         let zipURL = FileManager.default.temporaryDirectory

@@ -285,7 +285,7 @@ enum FontManager {
     /// Copy a font file into the project's fonts directory.
     /// Returns the destination file name on success.
     @discardableResult
-    static func importFont(from sourceURL: URL, for document: InkPondDocument) throws -> String {
+    static func importFont(from sourceURL: URL, for document: InkPondProject) throws -> String {
         let accessing = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
 
@@ -300,14 +300,14 @@ enum FontManager {
     }
 
     /// Full path for a font file in a document's project, or nil if missing.
-    static func fontFilePath(for fileName: String, in document: InkPondDocument) -> String? {
+    static func fontFilePath(for fileName: String, in document: InkPondProject) -> String? {
         let path = ProjectFileManager.fontsDirectory(for: document)
             .appendingPathComponent(fileName).path
         return FileManager.default.fileExists(atPath: path) ? path : nil
     }
 
     /// Delete a font file from the document's project directory.
-    static func deleteFont(fileName: String, from document: InkPondDocument) throws {
+    static func deleteFont(fileName: String, from document: InkPondProject) throws {
         let url = ProjectFileManager.fontsDirectory(for: document)
             .appendingPathComponent(fileName)
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -332,7 +332,7 @@ enum FontManager {
 
     /// Returns all font file paths in precedence order:
     /// bundled CJK fonts, project fonts, then imported App fonts.
-    static func allFontPaths(for document: InkPondDocument, appRootURL: URL? = nil) -> [String] {
+    static func allFontPaths(for document: InkPondProject, appRootURL: URL? = nil) -> [String] {
         var paths: [String] = bundledCJKFontPaths
         for name in document.fontFileNames {
             if let path = fontFilePath(for: name, in: document) {
