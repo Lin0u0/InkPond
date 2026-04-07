@@ -39,43 +39,7 @@ struct ProjectFiles {
     var fontFiles: [String]
 }
 
-struct ProjectTreeNode: Identifiable, Hashable {
-    
 
-    let relativePath: String
-    let displayName: String
-    let kind: FileKind
-    let children: [ProjectTreeNode]
-
-    var id: String { relativePath }
-    
-    var accessibilityLabel: String{
-        let labelKind = switch kind {
-        case .directory:
-            L10n.tr("a11y.project_files.kind.folder")
-        case .typ:
-            L10n.tr("a11y.project_files.kind.typ")
-        case .image:
-            L10n.tr("a11y.project_files.kind.image")
-        case .vector:
-                L10n.tr("a11y.project_files.kind.image")
-        case .font:
-            L10n.tr("a11y.project_files.kind.font")
-        case .other:
-            L10n.tr("a11y.project_files.kind.file")
-        case .table:
-            L10n.tr("a11y.project_files.kind.table")
-        case .pdf:
-            L10n.tr("a11y.project_files.kind.file")
-        case .bibliography:
-            L10n.tr("a11y.project_files.kind.file")
-        case .configuration:
-            L10n.tr("a11y.project_files.kind.file")
-        }
-
-        return L10n.a11yProjectFilesFileLabel(kind: labelKind, name: displayName)
-    }
-}
 
 struct EntryFileResolution {
     let entryFileName: String?
@@ -85,13 +49,6 @@ struct EntryFileResolution {
 // MARK: - ProjectFileManager
 
 enum ProjectFileManager {
-    static let supportedImageFileExtensions: Set<String> = [
-        "bmp", "eps", "gif", "heic", "heif", "jpg", "jpeg",
-        "pdf", "png", "svg", "tif", "tiff", "webp"
-    ]
-    static let supportedTableFileExtensions: Set<String> = ["csv","tsv"]
-    static let fontFileExtensions: Set<String> = ["otf", "ttf", "woff", "woff2"]
-
     /// Shared StorageManager reference — set at app launch from InkPondApp.
     /// Protected by a lock for thread-safe access from any actor context.
     private nonisolated static let _storageManagerLock = OSAllocatedUnfairLock<StorageManager?>(initialState: nil)
@@ -118,7 +75,7 @@ enum ProjectFileManager {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     }
 
-    static func projectDirectory(for document: InkPondDocument) -> URL {
+    static func projectDirectory(for document: InkPondProject) -> URL {
         if let bookmarkURL = BookmarkManager.loadBookmark(projectID: document.projectID) {
             return bookmarkURL
         }
@@ -255,7 +212,7 @@ enum ProjectFileManager {
         ensureDefaultAssetDirectories(for: document)
     }
 
-    static func deleteProjectDirectory(for document: InkPondDocument) throws {
+    static func deleteProjectDirectory(for document: InkPondProject) throws {
         if BookmarkManager.hasBookmark(projectID: document.projectID) {
             BookmarkManager.removeBookmark(projectID: document.projectID)
             os_log(.info, "ProjectFileManager: removed bookmark for %{public}@", document.projectID)
@@ -406,7 +363,8 @@ enum ProjectFileManager {
     static func buildProjectTree(
         in directory: URL,
         relativePrefix: String,
-        imageDirectoryName: String
+        imageDirectoryName: String,
+        project: InkPondProject
     ) -> [ProjectTreeNode] {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
@@ -430,16 +388,21 @@ enum ProjectFileManager {
                     children: buildProjectTree(
                         in: url,
                         relativePrefix: relativePath,
-                        imageDirectoryName: imageDirectoryName
-                    )
+                        imageDirectoryName: imageDirectoryName,
+                        project: project
+                    ),
+                    parent: nil,
+                    project:project,
                 )
             }
 
             return ProjectTreeNode(
                 relativePath: relativePath,
                 displayName: name,
-                kind: fileKind(for: relativePath, imageDirectoryName: imageDirectoryName),
-                children: []
+                kind: FileKind.pathToFileKind(relativePath: relativePath),
+                children: [],
+                parent: nil,
+                project:project
             )
         }
 
@@ -448,22 +411,6 @@ enum ProjectFileManager {
                 return (lhs.kind == .directory) && !(rhs.kind == .directory)
             }
             return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-        }
-    }
-
-    static func fileKind(for relativePath: String, imageDirectoryName: String) -> FileKind {
-        let ext = (relativePath as NSString).pathExtension.lowercased()
-        if ext == "typ" { return .typ }
-        if relativePath.hasPrefix("fonts/") { return .font }
-        if !imageDirectoryName.isEmpty, relativePath.hasPrefix(imageDirectoryName + "/") { return .image }
-        if supportedImageFileExtensions.contains(ext) {
-            return .image
-        }
-        switch ext {
-        case "otf", "ttf", "woff", "woff2":
-            return .font
-        default:
-            return .other
         }
     }
 }

@@ -24,17 +24,7 @@ extension DocumentListView {
         .task {
             startFilesystemMonitoring()
         }
-        .onChange(of: storageManager.mode) { _, _ in
-            guard !storageManager.isMigrating else { return }
-            scheduleFilesystemMonitoringRestart()
-        }
-        .onChange(of: storageManager.isMigrating) { _, isMigrating in
-            guard !isMigrating else { return }
-            scheduleFilesystemMonitoringRestart()
-        }
-        .onChange(of: storageManager.iCloudAvailable) { _, _ in
-            scheduleFilesystemMonitoringRestart()
-        }
+        
         .onDisappear {
             monitor.stop()
             syncTask?.cancel()

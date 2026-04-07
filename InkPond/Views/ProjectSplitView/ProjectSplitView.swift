@@ -11,65 +11,17 @@ struct ProjectSplitView: View{
     
     var body: some View {
         NavigationSplitView(preferredCompactColumn: $preferredColumn) {
-            List {
-                if projectRootNodes.isEmpty {
-                    Text("No files")
-                        .foregroundStyle(.tertiary)
-                } else {
-                    ForEach(projectRootNodes){ childNode in
-                        switch childNode.kind {
-                            case .directory: FileBrowserDirectoryView(node: childNode, depth: 0)
-                            default: FileBrowserFileView(node: childNode, depth: 0)
-                        }
-                    }
-                }
-            }
-            .toolbar {sidebarToolbar}
-            .navigationDestination(for: ProjectTreeNode.self) { node in
-                Label(node.relativePath, systemImage: node.kind.symbolName)
-            }
+            ProjectSplitViewFileBrowser(projectRootNodes:$projectRootNodes)
         } detail: {
-
+            Text("Helloo Woorrrld")
+                .navigationTitle("Detail")
         }
-        .navigationTitle("Hello World")
-        .navigationSubtitle("Helloooo World")
         .searchable(text: $searchString)
         .inspector(isPresented: $isInspectorVisible) {
             EmptyView()
         }
     }
-    
-    @ToolbarContentBuilder
-    var sidebarToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-            } label: {
-                Text("Edit")
-            }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Menu{
-                Button{}label:{
-                    Label("Create File", systemImage: "document.badge.plus")
-                }
-                Button{}label:{
-                    Label("Create Folder", systemImage: "folder.badge.plus")
-                }
-                Button{}label:{
-                    Label("Import File", systemImage: "link.badge.plus")
-                }
-                Button{}label:{
-                    Label("Import Font", systemImage: "at.badge.plus")
-                }
-            }label: {
-                Image(systemName: "plus")
-            }
-        }
-        DefaultToolbarItem(kind: .search, placement: .bottomBar)
-    }
 }
-
-
 
 #Preview {
     @Previewable @State var project = InkPondProject()

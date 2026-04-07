@@ -3,7 +3,9 @@ import SwiftUI
 struct FileBrowserDirectoryView: View{
     var node: ProjectTreeNode
     @State var isExpanded: Bool = false
+    @Environment(\.editMode) var editMode
     var depth: Int
+    @Binding var selected: Set<ProjectTreeNode>
     
     var body: some View {
         Button {
@@ -12,6 +14,26 @@ struct FileBrowserDirectoryView: View{
             }
         } label: {
             HStack {
+                if editMode?.wrappedValue.isEditing == true {
+                    Image(systemName:  selected.contains(node) ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(Color.accentColor)
+                        .font(.system(size:20,weight: .semibold))
+                        .onTapGesture() {
+                            if selected.contains(node){
+                                selected.remove(node)
+                                node.children.forEach { child in
+                                    selected.remove(child)
+                                }
+                            }else{
+                                selected.insert(node)
+                                //TODO: Add recursion
+                                node.children.forEach { child in
+                                    selected.insert(child)
+                                }
+                            }
+                        }
+                }
+                
                 Label(node.displayName, systemImage: node.kind.symbolName)
                     .lineLimit(1)
                 Spacer()
@@ -25,7 +47,7 @@ struct FileBrowserDirectoryView: View{
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
             } label: {
-                Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                Label("Delete", systemImage: "trash").labelStyle(.titleOnly)
             }
             Button() {
             } label: {
@@ -38,8 +60,8 @@ struct FileBrowserDirectoryView: View{
         if isExpanded{
             ForEach(node.children){ childNode in
                 switch childNode.kind{
-                case .directory:FileBrowserDirectoryView(node: childNode, depth: depth + 1)
-                default: FileBrowserFileView(node: childNode, depth: depth + 1)
+                case .directory:FileBrowserDirectoryView(node: childNode, depth: depth + 1, selected: $selected)
+                default: FileBrowserFileView(node: childNode, depth: depth + 1, selected: $selected)
                 }
             }
         }
@@ -48,12 +70,28 @@ struct FileBrowserDirectoryView: View{
 
 struct FileBrowserFileView: View{
     @Environment(InkPondProject.self) var selectedProject: InkPondProject
+    @Environment(\.editMode) var editMode
     var node: ProjectTreeNode
     var depth: Int
+    @Binding var selected: Set<ProjectTreeNode>
     
     var body: some View {
         NavigationLink(value: node) {
             HStack{
+                if editMode?.wrappedValue.isEditing == true {
+                    Image(systemName:  selected.contains(node) ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(Color.accentColor)
+                        .font(.system(size:20,weight: .semibold))
+                        .onTapGesture() {
+                            if selected.contains(node){
+                                selected.remove(node)
+//                                if node.parent != nil{
+//                                selected.remove(node.parent)}
+                            }else{
+                                selected.insert(node)
+                            }
+                        }
+                }
                 Label(node.displayName, systemImage: node.kind.symbolName)
                     .lineLimit(1)
                 Spacer()
@@ -97,6 +135,12 @@ struct FileBrowserFileView: View{
             }
             Divider()
             if node.kind == .typ {
+                if node.relativePath != selectedProject.entryFileName{
+                    Button {
+                    } label: {
+                        Label("Set Entry", systemImage: "eye")
+                    }                    
+                }
                 Button {
                 } label: {
                     Label("Export PDF", systemImage: "square.and.arrow.up")

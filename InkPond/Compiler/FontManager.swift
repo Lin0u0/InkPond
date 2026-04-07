@@ -166,7 +166,7 @@ enum FontManager {
     }
 
     private nonisolated static var defaultAppFontsRootURL: URL {
-        guard StorageSyncPreferences.syncFonts,
+        guard AppPreferences.GetSyncState(for: .appFonts),
               let ubiquityDocumentsURL = FileManager.default
                 .url(forUbiquityContainerIdentifier: AppIdentity.iCloudContainerIdentifier)?
                 .appendingPathComponent("Documents", isDirectory: true) else {

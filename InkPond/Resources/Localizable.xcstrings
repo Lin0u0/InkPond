@@ -115,6 +115,12 @@
     "Delete Document" : {
 
     },
+    "Deselect All" : {
+
+    },
+    "Detail" : {
+
+    },
     "Document" : {
 
     },
@@ -178,10 +184,7 @@
     "Format" : {
 
     },
-    "Hello World" : {
-
-    },
-    "Helloooo World" : {
+    "Helloo Woorrrld" : {
 
     },
     "Image" : {
@@ -283,7 +286,13 @@
     "Select a document from the list or create a new one." : {
 
     },
+    "Select All" : {
+
+    },
     "Selecting a font directory imports its font files into the project font library. You can also skip this step." : {
+
+    },
+    "Set Entry" : {
 
     },
     "Share PDF" : {

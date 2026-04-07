@@ -1,62 +1,15 @@
-//
-//  StorageManager.swift
-//  InkPond
-//
-
 import Foundation
 import Network
 import os
 
-enum StorageMode: String {
-    case local
-    case iCloud
-}
-
-enum SyncContentCategory {
-    case appFonts
-    case localPackages
-    case snippets
-
-    nonisolated var directoryName: String {
-        switch self {
-        case .appFonts:
-            return "AppFonts"
-        case .localPackages:
-            return "LocalPackages"
-        case .snippets:
-            return "Snippets"
-        }
-    }
-
-    nonisolated var localRootURL: URL? {
-        switch self {
-        case .appFonts:
-            return FontManager.localAppFontsRootURL
-        case .localPackages:
-            return TypstBridge.localPackagesRootURL
-        case .snippets:
-            return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-                .appendingPathComponent(AppIdentity.snippetStoreDirectoryName, isDirectory: true)
-        }
-    }
-}
-
 @Observable
 final class StorageManager {
-    private static let storageKey = StorageSyncPreferences.storageModeKey
-    private static let syncFontsKey = StorageSyncPreferences.syncFontsKey
-    private static let syncPackagesKey = StorageSyncPreferences.syncPackagesKey
-    private static let syncSnippetsKey = StorageSyncPreferences.syncSnippetsKey
-
-    private(set) var mode: StorageMode
     private(set) var iCloudAvailable: Bool = false
     private(set) var isMigrating: Bool = false
     private(set) var migrationError: String?
     /// Migration progress (0.0–1.0) for UI feedback.
     private(set) var migrationProgress: Double = 0
-    private(set) var syncFontsInICloud: Bool
-    private(set) var syncPackagesInICloud: Bool
-    private(set) var syncSnippetsInICloud: Bool
+
 
     /// Project IDs that failed during the last migration attempt.
     /// Non-empty means the migration partially succeeded and can be retried.
@@ -74,24 +27,19 @@ final class StorageManager {
     private let _isUsingiCloudLock = OSAllocatedUnfairLock<Bool>(initialState: false)
 
     init() {
-        let raw = UserDefaults.standard.string(forKey: Self.storageKey) ?? StorageMode.local.rawValue
-        self.mode = StorageMode(rawValue: raw) ?? .local
-        self.syncFontsInICloud = StorageSyncPreferences.fontPreferenceEnabled
-        self.syncPackagesInICloud = StorageSyncPreferences.packagePreferenceEnabled
-        self.syncSnippetsInICloud = StorageSyncPreferences.snippetPreferenceEnabled
         // Perform initial availability check. url(forUbiquityContainerIdentifier:)
         // may trigger a first-time container setup, so keep it synchronous at launch
         // to ensure the URL is ready before any file operations.
         let url = FileManager.default.url(forUbiquityContainerIdentifier: AppIdentity.iCloudContainerIdentifier)
         self.ubiquityURL = url
         self.iCloudAvailable = url != nil
-        let initialUsingiCloud = self.mode == .iCloud && self.iCloudAvailable
+        let initialUsingiCloud = AppPreferences.getProjectStorageMode == .iCloud && self.iCloudAvailable
         self._isUsingiCloudLock.withLock { $0 = initialUsingiCloud }
     }
 
     /// The active documents base URL, depending on current storage mode.
     var activeDocumentsURL: URL {
-        if mode == .iCloud, let ubiquityDocuments = ubiquityDocumentsURL {
+        if AppPreferences.getProjectStorageMode == .iCloud, let ubiquityDocuments = ubiquityDocumentsURL {
             return ubiquityDocuments
         }
         return localDocumentsURL
@@ -100,7 +48,7 @@ final class StorageManager {
     /// The documents directory that can be safely enumerated for sync/monitoring.
     /// Returns `nil` while iCloud mode is selected but the ubiquity container is unavailable.
     var syncDocumentsURL: URL? {
-        switch mode {
+        switch AppPreferences.getProjectStorageMode {
         case .local:
             return localDocumentsURL
         case .iCloud:
@@ -139,7 +87,7 @@ final class StorageManager {
     }
 
     func setMode(_ newMode: StorageMode, documents: [InkPondProject]) async {
-        guard newMode != mode else { return }
+        guard newMode != AppPreferences.getProjectStorageMode else { return }
         guard !isMigrating else { return }
 
         // Verify network connectivity before attempting migration
@@ -185,9 +133,6 @@ final class StorageManager {
 
         let projectIDs = documents.map(\.projectID)
         let toiCloud = newMode == .iCloud
-        let syncFontsInICloud = self.syncFontsInICloud
-        let syncPackagesInICloud = self.syncPackagesInICloud
-        let syncSnippetsInICloud = self.syncSnippetsInICloud
         let appFontsDirectoryName = SyncContentCategory.appFonts.directoryName
         let appFontsLocalRootURL = SyncContentCategory.appFonts.localRootURL
         let localPackagesDirectoryName = SyncContentCategory.localPackages.directoryName
@@ -207,7 +152,7 @@ final class StorageManager {
                             self.migrationProgress = progress
                         }
                     }
-                if syncFontsInICloud, let localFontsRoot = appFontsLocalRootURL {
+                if AppPreferences.GetSyncState(for: .appFonts), let localFontsRoot = appFontsLocalRootURL {
                     try self.migrateAuxiliaryDirectory(
                         named: appFontsDirectoryName,
                         from: toiCloud ? localFontsRoot : sourceBase,
@@ -217,7 +162,7 @@ final class StorageManager {
                     )
                 }
 
-                if syncPackagesInICloud, let localPackagesRoot = localPackagesRootURL {
+                if AppPreferences.GetSyncState(for: .localPackages), let localPackagesRoot = localPackagesRootURL {
                     try self.migrateAuxiliaryDirectory(
                         named: localPackagesDirectoryName,
                         from: toiCloud ? localPackagesRoot : sourceBase,
@@ -227,7 +172,7 @@ final class StorageManager {
                     )
                 }
 
-                if syncSnippetsInICloud, let snippetsRoot = snippetsLocalRootURL {
+                if AppPreferences.GetSyncState(for: .snippets), let snippetsRoot = snippetsLocalRootURL {
                     try self.migrateAuxiliaryDirectory(
                         named: snippetsDirectoryName,
                         from: toiCloud ? snippetsRoot : sourceBase,
@@ -241,9 +186,8 @@ final class StorageManager {
 
             // Switch mode even with partial failures — successfully migrated projects
             // are already at the destination. Failed ones can be retried.
-            mode = newMode
             syncCachedFlag()
-            UserDefaults.standard.set(newMode.rawValue, forKey: Self.storageKey)
+            AppPreferences.setProjectStorageMode(mode: newMode)
             failedProjectIDs = failures
 
             if failures.isEmpty {
@@ -284,9 +228,8 @@ final class StorageManager {
 
         let sourceBase: URL
         let destBase: URL
-        let toiCloud = mode == .iCloud
 
-        if toiCloud {
+        if AppPreferences.syncProjects {
             sourceBase = localDocumentsURL
             destBase = iCloudDocs
         } else {
@@ -301,7 +244,7 @@ final class StorageManager {
                 projectIDs: retryIDs,
                 from: sourceBase,
                 to: destBase,
-                toiCloud: toiCloud
+                toiCloud: AppPreferences.syncProjects
             ) { progress in
                 Task { @MainActor in
                     self.migrationProgress = progress
@@ -329,16 +272,16 @@ final class StorageManager {
 
     /// Call after changing mode or iCloudAvailable to update the cross-actor cache.
     private func syncCachedFlag() {
-        let value = mode == .iCloud && iCloudAvailable
+        let value = AppPreferences.syncProjects && iCloudAvailable
         _isUsingiCloudLock.withLock { $0 = value }
     }
 
     private func setAuxiliarySync(_ enabled: Bool, for category: SyncContentCategory) async {
         guard !isMigrating else { return }
-        guard auxiliarySyncState(for: category) != enabled else { return }
+        guard AppPreferences.GetSyncState(for: category) != enabled else { return }
 
-        guard mode == .iCloud else {
-            persistAuxiliarySync(enabled, for: category)
+        guard AppPreferences.syncProjects else {
+            AppPreferences.SetSyncState(enabled, for: category)
             return
         }
 
@@ -371,38 +314,13 @@ final class StorageManager {
             }.value
 
             migrationProgress = 1
-            persistAuxiliarySync(enabled, for: category)
+            AppPreferences.SetSyncState(enabled, for: category)
         } catch {
             migrationError = error.localizedDescription
             os_log(.error, "StorageManager: auxiliary migration failed: %{public}@", error.localizedDescription)
         }
 
         isMigrating = false
-    }
-
-    private func auxiliarySyncState(for category: SyncContentCategory) -> Bool {
-        switch category {
-        case .appFonts:
-            return syncFontsInICloud
-        case .localPackages:
-            return syncPackagesInICloud
-        case .snippets:
-            return syncSnippetsInICloud
-        }
-    }
-
-    private func persistAuxiliarySync(_ enabled: Bool, for category: SyncContentCategory) {
-        switch category {
-        case .appFonts:
-            syncFontsInICloud = enabled
-            UserDefaults.standard.set(enabled, forKey: Self.syncFontsKey)
-        case .localPackages:
-            syncPackagesInICloud = enabled
-            UserDefaults.standard.set(enabled, forKey: Self.syncPackagesKey)
-        case .snippets:
-            syncSnippetsInICloud = enabled
-            UserDefaults.standard.set(enabled, forKey: Self.syncSnippetsKey)
-        }
     }
 
     // MARK: - Migration

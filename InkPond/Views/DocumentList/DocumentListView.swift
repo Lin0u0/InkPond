@@ -146,9 +146,9 @@ struct DocumentListView: View {
 
 private struct DocumentListAlertsModifier: ViewModifier {
     @Binding var exporter: ExportController
-    @Binding var renamingDocument: InkPondDocument?
+    @Binding var renamingDocument: InkPondProject?
     @Binding var newTitle: String
-    @Binding var documentToDelete: InkPondDocument?
+    @Binding var documentToDelete: InkPondProject?
     @Binding var projectActionError: String?
     @Binding var zipImportError: String?
     @Binding var showingSettings: Bool
@@ -157,7 +157,7 @@ private struct DocumentListAlertsModifier: ViewModifier {
     @Environment(\.modelContext) var modelContext
     let linkExternalFolder: (URL) -> Void
     let importZip: (URL) -> Void
-    @Binding var selectedDocument: InkPondDocument?
+    @Binding var selectedDocument: InkPondProject?
     let scenePhase: ScenePhase
     let scheduleFilesystemSync: (Duration) -> Void
 
@@ -319,7 +319,7 @@ private struct DocumentListStateChangeModifier: ViewModifier {
     @Binding var exporter: ExportController
     @Binding var projectActionError: String?
     @Binding var zipImportError: String?
-    @Binding var selectedDocument: InkPondDocument?
+    @Binding var selectedDocument: InkPondProject?
 
     func body(content: Content) -> some View {
         content

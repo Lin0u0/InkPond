@@ -1,15 +1,15 @@
-//
-//  InkPondDocument.swift
-//  InkPond
-//
-
 import Foundation
 import SwiftData
 
 /// Keep the SwiftData model's underlying type name stable so existing stores
 /// continue to open seamlessly after the app rename.
+///
+/// Data is from now on stored in typst.toml, ProjectConfiguration is from now on the model object for the typst.toml
+/// Only Inkpond related editor data should still be stored in this class.
 @Model
 final class TypistDocument {
+    // start deprecated
+    
     var title: String = L10n.untitledBase
     var content: String = ""
     var createdAt: Date = Date()
@@ -25,6 +25,8 @@ final class TypistDocument {
     var importEntryFileOptions: [String] = []
     var importImageDirectoryOptions: [String] = []
     var importFontDirectoryOptions: [String] = []
+    
+    // end deprecated
 
     /// Last editing position — persisted for cross-launch resume.
     var lastEditedFileName: String = ""
@@ -44,6 +46,10 @@ final class TypistDocument {
         default:
             return "#image(\"%@\")"
         }
+    }
+    
+    var isExternalFolder: Bool {
+        BookmarkManager.hasBookmark(projectID: projectID)
     }
 }
 

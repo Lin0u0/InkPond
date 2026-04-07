@@ -268,7 +268,7 @@ extension DocumentListView {
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
         let title = url.lastPathComponent
-        let doc = InkPondDocument(title: title, content: "")
+        let doc = InkPondProject(title: title, content: "")
         doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
 
         do {
