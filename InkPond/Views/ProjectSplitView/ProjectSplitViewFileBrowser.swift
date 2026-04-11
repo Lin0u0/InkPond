@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ProjectSplitViewFileBrowser: View{
     @Environment(InkPondProject.self) var selectedProject: InkPondProject
-    @Binding var projectRootNodes: [ProjectTreeNode]
+    var projectRootNodes: [ProjectTreeNode] = []
     @State var selectedNodes: Set<ProjectTreeNode> = []
     @State private var editMode: EditMode = .inactive
     
@@ -83,7 +83,7 @@ struct ProjectSplitViewFileBrowser: View{
 
     //TODO: moving files from subfolders is broken. Also add the actual file moving implementation
     func move(from source: IndexSet, to destination: Int) {
-        projectRootNodes.move(fromOffsets: source, toOffset: destination)
+//        projectRootNodes.move(fromOffsets: source, toOffset: destination)
     }
     func deleteNodeAndChildren(node: ProjectTreeNode){
         

@@ -19,7 +19,7 @@ class ProjectTreeNode: Identifiable, Hashable {
         self.displayName = displayName
         self.kind = kind
         self.children = children
-        self.parent = parent
+        self.parent = nil
         self.project = project
     }
     

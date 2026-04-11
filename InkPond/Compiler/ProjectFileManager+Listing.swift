@@ -82,15 +82,15 @@ extension ProjectFileManager {
 
     static func projectTree(for document: InkPondProject) -> [ProjectTreeNode] {
         let imageDirectoryName = safeImageDirectoryName(from: document.imageDirectoryName)
-        return buildProjectTree(in: projectDirectory(for: document), relativePrefix: "", imageDirectoryName: imageDirectoryName)
+        return buildProjectTree(in: projectDirectory(for: document), relativePrefix: "", imageDirectoryName: imageDirectoryName, project: document)
     }
 
     static func imageDirectoryCandidates(from relativePaths: [String]) -> [String] {
-        relevantDirectoryCandidates(from: relativePaths, matching: supportedImageFileExtensions)
+        relevantDirectoryCandidates(from: relativePaths, matching: FileKind.image.supportedFileTypes)
     }
 
     static func fontDirectoryCandidates(from relativePaths: [String]) -> [String] {
-        relevantDirectoryCandidates(from: relativePaths, matching: fontFileExtensions)
+        relevantDirectoryCandidates(from: relativePaths, matching: FileKind.font.supportedFileTypes)
     }
 
     static func requiresImportDirectorySelection(_ directories: [String]) -> Bool {
@@ -104,7 +104,7 @@ extension ProjectFileManager {
     }
 
     static func importFontFiles(from relativeDirectory: String, for document: InkPondProject) -> [String] {
-        let urls = listFiles(in: relativeDirectory, for: document, matching: fontFileExtensions)
+        let urls = listFiles(in: relativeDirectory, for: document, matching: FileKind.font.supportedFileTypes)
         guard !urls.isEmpty else {
             document.fontFileNames = []
             return []

@@ -34,69 +34,51 @@ struct ContentView: View {
     @State private var selectedDocument: InkPondProject?
     @State private var themeManager = ThemeManager()
     @State private var appFontLibrary = AppFontLibrary()
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var searchText: String = ""
-    @State private var didSeedUITestDocument = false
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-
+//#if DEBUG
+    @State private var navigationController: NavigationController = NavigationController()
+//#else
+//    @State private var navigationController: NavigationController = NavigationController()
+//#endif
+    
     var body: some View {
-        if hasCompletedOnboarding || shouldSkipOnboardingForUITests {
-            mainContent
-        } else {
-            OnboardingView {
-                withAnimation { hasCompletedOnboarding = true }
-            }
-            .preferredColorScheme(colorScheme)
-        }
-    }
-
-    private var shouldSkipOnboardingForUITests: Bool {
-        let processInfo = ProcessInfo.processInfo
-        return processInfo.arguments.contains("UITEST_SKIP_ONBOARDING")
-            || processInfo.environment["UITEST_SKIP_ONBOARDING"] == "1"
-    }
-
-    private var mainContent: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            DocumentListView(selectedDocument: $selectedDocument, searchText: $searchText)
-                .navigationSplitViewColumnWidth(min: 320, ideal: 340)
-        } detail: {
-            if let document = selectedDocument {
-                DocumentEditorView(
-                    document: document)
-                    .id(document.persistentModelID)
-            } else {
-                ContentUnavailableView(
-                    "No Document Selected",
-                    systemImage: "doc.text",
-                    description: Text("Select a document from the list or create a new one.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        Group{
+            switch navigationController.navigationState {
+            case .projectsGridView: ProjectsGridView()
+            case .projectEditor: ProjectSplitView()
+            case .appSettings: SettingsView()
+            case .onboarding: OnboardingView{
+                    withAnimation {
+                        navigationController.hasCompletedOnboarding = true
+                        navigationController.navigationState = .projectsGridView
+                    }
+                }
             }
         }
         .background(SceneTitleSetter(title: selectedDocument?.title ?? L10n.appName))
-        .preferredColorScheme(colorScheme)
         .environment(themeManager)
         .environment(appFontLibrary)
+        .environment(navigationController)
+        .preferredColorScheme(colorScheme)
         .task {
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
             try? LocalPackageStore().ensureRootDirectory()
+#if DEBUG
             seedUITestDocumentIfNeeded()
+#endif
         }
-        .onChange(of: storageManager.mode) { _, _ in
+        .onChange(of: AppPreferences.GetSyncState(for: .projects)) { _, _ in
             appFontLibrary.stopMonitoring()
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
             try? LocalPackageStore().ensureRootDirectory()
         }
-        .onChange(of: storageManager.syncFontsInICloud) { _, _ in
+        .onChange(of: AppPreferences.GetSyncState(for: .appFonts)) { _, _ in
             appFontLibrary.stopMonitoring()
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
         }
-        .onChange(of: storageManager.syncPackagesInICloud) { _, _ in
+        .onChange(of: AppPreferences.GetSyncState(for: .localPackages)) { _, _ in
             try? LocalPackageStore().ensureRootDirectory()
         }
         .onDisappear {
@@ -104,6 +86,14 @@ struct ContentView: View {
         }
     }
 
+#if DEBUG
+    @State private var didSeedUITestDocument = false
+    private var shouldSkipOnboardingForUITests: Bool {
+        let processInfo = ProcessInfo.processInfo
+        return processInfo.arguments.contains("UITEST_SKIP_ONBOARDING")
+            || processInfo.environment["UITEST_SKIP_ONBOARDING"] == "1"
+    }
+    
     private var shouldSeedUITestDocument: Bool {
         let processInfo = ProcessInfo.processInfo
         return processInfo.arguments.contains("UITEST_SEED_SAMPLE_DOCUMENT")
@@ -141,6 +131,7 @@ struct ContentView: View {
             try? ProjectFileManager.deleteProjectDirectory(for: document)
         }
     }
+    #endif
 }
 
 #Preview {

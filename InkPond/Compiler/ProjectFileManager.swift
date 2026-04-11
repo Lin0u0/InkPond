@@ -297,7 +297,7 @@ enum ProjectFileManager {
         return String(trimmed.prefix(80))
     }
 
-    static func relevantDirectoryCandidates(from relativePaths: [String], matching extensions: Set<String>) -> [String] {
+    static func relevantDirectoryCandidates(from relativePaths: [String], matching extensions: [String]) -> [String] {
         var directories: Set<String> = []
 
         for path in relativePaths {
@@ -341,7 +341,7 @@ enum ProjectFileManager {
             }
     }
 
-    static func listFiles(in relativeDirectory: String, for document: InkPondProject, matching extensions: Set<String>) -> [URL] {
+    static func listFiles(in relativeDirectory: String, for document: InkPondProject, matching extensions: [String]) -> [URL] {
         let directoryURL = (try? validatedProjectPath(relativePath: relativeDirectory, for: document, allowEmpty: true))
             ?? projectDirectory(for: document)
         guard let urls = try? FileManager.default.contentsOfDirectory(
@@ -391,8 +391,7 @@ enum ProjectFileManager {
                         imageDirectoryName: imageDirectoryName,
                         project: project
                     ),
-                    parent: nil,
-                    project:project,
+                    project: project
                 )
             }
 
@@ -401,8 +400,7 @@ enum ProjectFileManager {
                 displayName: name,
                 kind: FileKind.pathToFileKind(relativePath: relativePath),
                 children: [],
-                parent: nil,
-                project:project
+                project: project
             )
         }
 
