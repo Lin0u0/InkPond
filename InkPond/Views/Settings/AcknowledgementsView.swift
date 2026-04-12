@@ -41,11 +41,19 @@ struct AcknowledgementsView: View {
                     license: nil,
                     url: "https://donutblogs.com/"
                 )
+            }
+            Section("Contributors") {
                 creditRow(
-                    name: "Contributor",
-                    detail: "Ants-Aare",
+                    name: "Ants-Aare",
+                    detail: "Contributor",
                     license: nil,
                     url: "https://github.com/Ants-Aare"
+                )
+                creditRow(
+                    name: "mseidel42",
+                    detail: "Contributor",
+                    license: nil,
+                    url: "https://github.com/mseidel42"
                 )
             }
         }
