@@ -487,32 +487,6 @@ final class TypstTextView: UITextView {
         )
     }
 
-    /// Scroll the cursor to the center of the visible area, but only if
-    /// it is outside a comfortable zone (top 25% or bottom 25%).
-    /// Uses animated scroll to avoid fighting UITextView's own scrolling.
-    func scrollSelectionToCenterIfNeeded(animated: Bool) {
-        guard isFirstResponder else { return }
-        guard let range = selectedTextRange else { return }
-        let caret = caretRect(for: range.end)
-        let visibleHeight = bounds.height - adjustedContentInset.top - adjustedContentInset.bottom
-        guard visibleHeight > 0 else { return }
-
-        let caretInVisible = caret.midY - contentOffset.y - adjustedContentInset.top
-        let topThreshold = visibleHeight * 0.25
-        let bottomThreshold = visibleHeight * 0.75
-
-        // Cursor is in the comfortable zone — do nothing.
-        guard caretInVisible < topThreshold || caretInVisible > bottomThreshold else { return }
-
-        let desiredOffsetY = caret.midY - visibleHeight * 0.4 - adjustedContentInset.top
-        let minOffsetY = -adjustedContentInset.top
-        let maxOffsetY = max(minOffsetY, contentSize.height - bounds.height + adjustedContentInset.bottom)
-        setContentOffset(
-            CGPoint(x: contentOffset.x, y: min(max(desiredOffsetY, minOffsetY), maxOffsetY)),
-            animated: animated
-        )
-    }
-
     private func startJumpHighlightDisplayLinkIfNeeded() {
         jumpHighlightDisplayLink?.invalidate()
 

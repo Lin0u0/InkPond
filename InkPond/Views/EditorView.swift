@@ -200,19 +200,11 @@ struct EditorView: UIViewRepresentable {
             isProcessingTextChange = true
             defer { isProcessingTextChange = false }
             let newLength = textView.text.utf16.count
-            let wasDeleting = newLength < previousTextLength
             previousTextLength = newLength
             parent.text = textView.text
             captureViewState(from: typstTextView)
             typstTextView.scheduleHighlighting(.debounced, textChanged: true)
             typstTextView.updateCompletion()
-            // After deletion, center the cursor so the user can see content above.
-            // Deferred to next run loop so UITextView finishes its own layout first.
-            if wasDeleting {
-                DispatchQueue.main.async {
-                    typstTextView.scrollSelectionToCenterIfNeeded(animated: true)
-                }
-            }
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
@@ -221,12 +213,6 @@ struct EditorView: UIViewRepresentable {
             // After a tap-to-dismiss, skip re-triggering completion for this selection change
             if typstTextView.consumeSelectionSuppression() { return }
             typstTextView.updateCompletion()
-            // On deliberate cursor movement (tap, arrow keys), center the cursor.
-            if !isProcessingTextChange {
-                DispatchQueue.main.async {
-                    typstTextView.scrollSelectionToCenterIfNeeded(animated: true)
-                }
-            }
             // Only sync cursor to preview on deliberate navigation (tap, arrow keys),
             // not on every keystroke — typing causes noisy preview jumps.
             if !isProcessingTextChange,
