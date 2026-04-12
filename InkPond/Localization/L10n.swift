@@ -25,6 +25,10 @@ enum L10n {
         format("alert.delete_document.message", title)
     }
 
+    nonisolated static func unlinkDocumentMessage(title: String) -> String {
+        format("alert.unlink_document.message", title)
+    }
+
     nonisolated static func imageInserted(path: String) -> String {
         format("toast.image_inserted.single", path)
     }
@@ -51,6 +55,9 @@ enum L10n {
     nonisolated static var appFontsExportWarningTitle: String { tr("app_fonts.export_warning.title") }
     nonisolated static var appFontsExportWarningMessage: String { tr("app_fonts.export_warning.message") }
     nonisolated static var uiTestSampleDocumentTitle: String { tr("ui_test.sample_document_title") }
+
+    nonisolated static var docListNewDocument: String { tr("doc.list.action.new") }
+    nonisolated static var docListLinkExternalFolder: String { tr("doc.list.action.link_external") }
 
     nonisolated static var a11yDocumentListSettingsLabel: String { tr("a11y.document_list.settings.label") }
     nonisolated static var a11yDocumentListSettingsHint: String { tr("a11y.document_list.settings.hint") }

@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct DocumentListView: View {
     enum SortField: String, CaseIterable, Identifiable {
@@ -69,6 +70,7 @@ struct DocumentListView: View {
     @State var sortField: SortField = .modifiedAt
     @State var sortDirection: SortDirection = .descending
     @State var showingSortPopover = false
+    @State var showingFolderImporter = false
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
@@ -98,6 +100,31 @@ struct DocumentListView: View {
     var isIPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
+        baseContent
+            .modifier(DocumentListAlertsModifier(
+                exporter: $exporter,
+                renamingDocument: $renamingDocument,
+                newTitle: $newTitle,
+                documentToDelete: $documentToDelete,
+                projectActionError: $projectActionError,
+                zipImportError: $zipImportError,
+                showingSettings: $showingSettings,
+                showingFolderImporter: $showingFolderImporter,
+                linkExternalFolder: linkExternalFolder(from:),
+                importZip: importZip(from:),
+                selectedDocument: $selectedDocument,
+                scenePhase: scenePhase,
+                scheduleFilesystemSync: scheduleFilesystemSync
+            ))
+            .modifier(DocumentListStateChangeModifier(
+                exporter: $exporter,
+                projectActionError: $projectActionError,
+                zipImportError: $zipImportError,
+                selectedDocument: $selectedDocument
+            ))
+    }
+
+    private var baseContent: some View {
         documentList
             .searchable(text: $searchText, prompt: "Search")
             .navigationTitle(L10n.appName)
@@ -114,59 +141,130 @@ struct DocumentListView: View {
                     }
                 }
             }
-            .sheet(item: $exporter.exportURL) { ActivityView(activityItems: [$0]) }
-            .onChange(of: exporter.exportURL) { _, newValue in
-                guard newValue != nil else { return }
-                InteractionFeedback.notify(.success)
-                AccessibilitySupport.announce(L10n.a11yExportReady)
-            }
-            .onChange(of: exporter.exportError) { _, newValue in
-                guard newValue != nil else { return }
-                InteractionFeedback.notify(.error)
-                AccessibilitySupport.announce(newValue)
-            }
-            .alert("Export Error", isPresented: Binding(
-                get: { exporter.exportError != nil },
-                set: { if !$0 { exporter.exportError = nil } }
-            )) {
+    }
+}
+
+private struct DocumentListAlertsModifier: ViewModifier {
+    @Binding var exporter: ExportController
+    @Binding var renamingDocument: InkPondDocument?
+    @Binding var newTitle: String
+    @Binding var documentToDelete: InkPondDocument?
+    @Binding var projectActionError: String?
+    @Binding var zipImportError: String?
+    @Binding var showingSettings: Bool
+    @Binding var showingFolderImporter: Bool
+
+    @Environment(\.modelContext) var modelContext
+    let linkExternalFolder: (URL) -> Void
+    let importZip: (URL) -> Void
+    @Binding var selectedDocument: InkPondDocument?
+    let scenePhase: ScenePhase
+    let scheduleFilesystemSync: (Duration) -> Void
+
+    // Break up complex bindings to avoid type-checker timeouts
+    private var isExportErrorPresented: Binding<Bool> {
+        Binding(
+            get: { exporter.exportError != nil },
+            set: { if !$0 { exporter.exportError = nil } }
+        )
+    }
+
+    private var isRenamingPresented: Binding<Bool> {
+        Binding(
+            get: { renamingDocument != nil },
+            set: { if !$0 { renamingDocument = nil } }
+        )
+    }
+
+    private var isDeletePresented: Binding<Bool> {
+        Binding(
+            get: { documentToDelete != nil },
+            set: { if !$0 { documentToDelete = nil } }
+        )
+    }
+
+    private var isProjectErrorPresented: Binding<Bool> {
+        Binding(
+            get: { projectActionError != nil },
+            set: { if !$0 { projectActionError = nil } }
+        )
+    }
+
+    private var isImportErrorPresented: Binding<Bool> {
+        Binding(
+            get: { zipImportError != nil },
+            set: { if !$0 { zipImportError = nil } }
+        )
+    }
+
+    // Helper subviews to simplify the main body
+    @ViewBuilder
+    private var exportSheet: some View {
+        if let url = exporter.exportURL {
+            ActivityView(activityItems: [url])
+        }
+    }
+
+    @ViewBuilder
+    private var exportErrorAlertMessage: some View {
+        Text(exporter.exportError ?? "")
+    }
+
+    @ViewBuilder
+    private var projectErrorAlertMessage: some View {
+        Text(projectActionError ?? "")
+    }
+
+    @ViewBuilder
+    private var importErrorAlertMessage: some View {
+        Text(zipImportError ?? "")
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $exporter.exportURL) { _ in exportSheet }
+            .alert("Export Error", isPresented: isExportErrorPresented) {
                 Button("OK") { exporter.exportError = nil }
             } message: {
-                Text(exporter.exportError ?? "")
+                exportErrorAlertMessage
             }
-            .alert("Rename Document", isPresented: Binding(
-                get: { renamingDocument != nil },
-                set: { if !$0 { renamingDocument = nil } }
-            )) {
+            .alert("Rename Document", isPresented: isRenamingPresented) {
                 TextField("Title", text: $newTitle)
                 Button("Rename") {
                     if let doc = renamingDocument {
-                        do {
-                            let oldProjectID = doc.projectID
-                            let newFolderName = try ProjectFileManager.renameProjectDirectory(for: doc, to: newTitle)
-                            try? CompiledPreviewCacheStore().moveCache(
-                                from: oldProjectID,
-                                to: newFolderName,
-                                documentTitle: newTitle
-                            )
-                            doc.projectID = newFolderName
+                        if doc.isExternalFolder {
                             doc.title = newTitle
                             doc.modifiedAt = Date()
-                        } catch {
-                            projectActionError = error.localizedDescription
+                        } else {
+                            do {
+                                let oldProjectID = doc.projectID
+                                let newFolderName = try ProjectFileManager.renameProjectDirectory(for: doc, to: newTitle)
+                                try? CompiledPreviewCacheStore().moveCache(
+                                    from: oldProjectID,
+                                    to: newFolderName,
+                                    documentTitle: newTitle
+                                )
+                                doc.projectID = newFolderName
+                                doc.title = newTitle
+                                doc.modifiedAt = Date()
+                            } catch {
+                                projectActionError = error.localizedDescription
+                            }
                         }
                     }
                     renamingDocument = nil
                 }
                 Button("Cancel", role: .cancel) { renamingDocument = nil }
             }
-            .alert("Delete Document", isPresented: Binding(
-                get: { documentToDelete != nil },
-                set: { if !$0 { documentToDelete = nil } }
-            )) {
-                Button("Delete", role: .destructive) {
+            .alert(documentToDelete?.isExternalFolder == true ? "Unlink Folder" : "Delete Document", isPresented: isDeletePresented) {
+                Button(documentToDelete?.isExternalFolder == true ? "Unlink" : "Delete", role: .destructive) {
                     if let doc = documentToDelete {
                         do {
-                            try ProjectFileManager.deleteProjectDirectory(for: doc)
+                            if doc.isExternalFolder {
+                                BookmarkManager.removeBookmark(projectID: doc.projectID)
+                            } else {
+                                try ProjectFileManager.deleteProjectDirectory(for: doc)
+                            }
                             try? CompiledPreviewCacheStore().remove(projectID: doc.projectID)
                             if selectedDocument == doc { selectedDocument = nil }
                             modelContext.delete(doc)
@@ -179,39 +277,65 @@ struct DocumentListView: View {
                 Button("Cancel", role: .cancel) { documentToDelete = nil }
             } message: {
                 if let doc = documentToDelete {
-                    Text(L10n.deleteDocumentMessage(title: doc.title))
+                    if doc.isExternalFolder {
+                        Text(L10n.unlinkDocumentMessage(title: doc.title))
+                    } else {
+                        Text(L10n.deleteDocumentMessage(title: doc.title))
+                    }
                 }
             }
-            .alert("Project Error", isPresented: Binding(
-                get: { projectActionError != nil },
-                set: { if !$0 { projectActionError = nil } }
-            )) {
+            .alert("Project Error", isPresented: isProjectErrorPresented) {
                 Button("OK") { projectActionError = nil }
             } message: {
-                Text(projectActionError ?? "")
+                projectErrorAlertMessage
             }
-            .sheet(isPresented: $showingSettings, onDismiss: {
-                if needsFilesystemSync {
-                    needsFilesystemSync = false
-                    startFilesystemMonitoring()
-                }
-            }) {
-                SettingsView(onImport: { url in importZip(from: url) })
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(onImport: { url in importZip(url) })
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { scheduleFilesystemSync(delay: .milliseconds(100)) }
+                if phase == .active { scheduleFilesystemSync(.milliseconds(100)) }
             }
             .onChange(of: selectedDocument?.persistentModelID) { _, newValue in
                 guard newValue != nil else { return }
                 InteractionFeedback.selection()
             }
-            .alert("Import Error", isPresented: Binding(
-                get: { zipImportError != nil },
-                set: { if !$0 { zipImportError = nil } }
-            )) {
+            .alert("Import Error", isPresented: isImportErrorPresented) {
                 Button("OK") { zipImportError = nil }
             } message: {
-                Text(zipImportError ?? "")
+                importErrorAlertMessage
+            }
+            .fileImporter(isPresented: $showingFolderImporter, allowedContentTypes: [.folder]) { result in
+                switch result {
+                case .success(let url):
+                    linkExternalFolder(url)
+                case .failure(let error):
+                    zipImportError = error.localizedDescription
+                }
+            }
+    }
+}
+
+private struct DocumentListStateChangeModifier: ViewModifier {
+    @Binding var exporter: ExportController
+    @Binding var projectActionError: String?
+    @Binding var zipImportError: String?
+    @Binding var selectedDocument: InkPondDocument?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: exporter.exportURL) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yExportReady)
+            }
+            .onChange(of: exporter.exportError) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(newValue)
+            }
+            .onChange(of: selectedDocument?.persistentModelID) { _, newValue in
+                guard newValue != nil else { return }
+                InteractionFeedback.selection()
             }
             .onChange(of: projectActionError) { _, newValue in
                 guard newValue != nil else { return }

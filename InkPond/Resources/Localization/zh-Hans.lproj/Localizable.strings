@@ -22,6 +22,8 @@
 "doc.list.empty.title" = "还没有文档";
 "doc.list.empty.message" = "新建一个文档，开始写作。";
 "doc.list.empty.action" = "新建文档";
+"doc.list.action.new" = "新建文档";
+"doc.list.action.link_external" = "链接外部文件夹";
 
 "action.find_replace" = "查找与替换";
 "action.insert_image" = "插入图片";
@@ -406,3 +408,9 @@
 "icloud.conflict.message" = "「%@」在你编辑期间被其他设备修改了。请选择保留哪个版本。";
 "icloud.conflict.keep_local" = "保留我的修改";
 "icloud.conflict.keep_remote" = "使用其他设备的版本";
+
+"action.unlink" = "解除链接";
+"alert.unlink_document.message" = "\"%@\" 将被解除链接。其原始文件不会被删除。";
+"a11y.document_row.action.unlink" = "解除链接";
+"Unlink Folder" = "解除链接文件夹";
+"Unlink" = "解除链接";

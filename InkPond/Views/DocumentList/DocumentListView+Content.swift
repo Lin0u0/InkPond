@@ -47,9 +47,15 @@ extension DocumentListView {
     func documentRow(_ document: InkPondDocument) -> some View {
         NavigationLink(value: document) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(document.title)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if document.isExternalFolder {
+                        Image(systemName: "link")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(document.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(L10n.tr("doc.time.created")): \(document.createdAt.formatted(rowDateFormat))")
                     Text("\(L10n.tr("doc.time.modified")): \(document.modifiedAt.formatted(rowDateFormat))")
@@ -81,7 +87,7 @@ extension DocumentListView {
         .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.export_source"))) {
             exporter.exportTypSource(for: document, fileName: document.entryFileName)
         }
-        .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.delete"))) {
+        .accessibilityAction(named: Text(document.isExternalFolder ? L10n.tr("a11y.document_row.action.unlink") : L10n.tr("a11y.document_row.action.delete"))) {
             InteractionFeedback.notify(.warning)
             documentToDelete = document
         }
@@ -108,7 +114,11 @@ extension DocumentListView {
                 InteractionFeedback.notify(.warning)
                 documentToDelete = document
             } label: {
-                Label("Delete", systemImage: "trash")
+                if document.isExternalFolder {
+                    Label("Unlink", systemImage: "personalhotspot.slash")
+                } else {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
     }
@@ -188,7 +198,16 @@ extension DocumentListView {
             sortMenu
         }
         ToolbarItem(placement: .primaryAction) {
-            Button(action: addDocument) {
+            Menu {
+                Button(action: addDocument) {
+                    Label(L10n.docListNewDocument, systemImage: "doc.badge.plus")
+                }
+                Button {
+                    showingFolderImporter = true
+                } label: {
+                    Label(L10n.docListLinkExternalFolder, systemImage: "link.badge.plus")
+                }
+            } label: {
                 Image(systemName: "folder.badge.plus")
                     .scaleEffect(0.8)
             }
@@ -223,10 +242,21 @@ extension DocumentListView {
             ToolbarSpacer(.flexible, placement: .bottomBar)
         }
         ToolbarItem(placement: .bottomBar) {
-            Button(action: addDocument) { Image(systemName: "plus") }
-                .accessibilityLabel(L10n.a11yDocumentListAddLabel)
-                .accessibilityHint(L10n.a11yDocumentListAddHint)
-                .accessibilityIdentifier("document-list.add")
+            Menu {
+                Button(action: addDocument) {
+                    Label(L10n.docListNewDocument, systemImage: "doc.badge.plus")
+                }
+                Button {
+                    showingFolderImporter = true
+                } label: {
+                    Label(L10n.docListLinkExternalFolder, systemImage: "link")
+                }
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .accessibilityLabel(L10n.a11yDocumentListAddLabel)
+            .accessibilityHint(L10n.a11yDocumentListAddHint)
+            .accessibilityIdentifier("document-list.add")
         }
     }
 

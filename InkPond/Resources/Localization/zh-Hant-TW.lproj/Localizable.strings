@@ -22,6 +22,8 @@
 "doc.list.empty.title" = "尚無文件";
 "doc.list.empty.message" = "建立新文件，開始寫作。";
 "doc.list.empty.action" = "新增文件";
+"doc.list.action.new" = "新增文件";
+"doc.list.action.link_external" = "連結外部資料夾";
 
 "action.find_replace" = "尋找與取代";
 "action.insert_image" = "插入圖片";
@@ -406,3 +408,9 @@
 "icloud.conflict.message" = "「%@」在你編輯期間被其他裝置修改了。請選擇保留哪個版本。";
 "icloud.conflict.keep_local" = "保留我的修改";
 "icloud.conflict.keep_remote" = "使用其他裝置的版本";
+
+"action.unlink" = "解除連結";
+"alert.unlink_document.message" = "\"%@\" 將被解除連結。其原始檔案不會被刪除。";
+"a11y.document_row.action.unlink" = "解除連結";
+"Unlink Folder" = "解除連結資料夾";
+"Unlink" = "解除連結";

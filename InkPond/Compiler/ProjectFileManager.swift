@@ -102,11 +102,17 @@ enum ProjectFileManager {
     }
 
     static func projectDirectory(for document: InkPondDocument) -> URL {
-        documentsURL.appendingPathComponent(document.projectID, isDirectory: true)
+        if let bookmarkURL = BookmarkManager.loadBookmark(projectID: document.projectID) {
+            return bookmarkURL
+        }
+        return documentsURL.appendingPathComponent(document.projectID, isDirectory: true)
     }
 
     static func projectDirectory(folderName: String) -> URL {
-        documentsURL.appendingPathComponent(folderName, isDirectory: true)
+        if let bookmarkURL = BookmarkManager.loadBookmark(projectID: folderName) {
+            return bookmarkURL
+        }
+        return documentsURL.appendingPathComponent(folderName, isDirectory: true)
     }
 
     static func sanitizeFolderName(_ title: String) -> String {
@@ -121,9 +127,9 @@ enum ProjectFileManager {
     static func uniqueFolderName(for title: String) -> String {
         let fm = FileManager.default
         let base = sanitizeFolderName(title)
-        if !fm.fileExists(atPath: documentsURL.appendingPathComponent(base).path) { return base }
+        if !fm.fileExists(atPath: documentsURL.appendingPathComponent(base).path) && !BookmarkManager.hasBookmark(projectID: base) { return base }
         var i = 2
-        while fm.fileExists(atPath: documentsURL.appendingPathComponent("\(base) \(i)").path) { i += 1 }
+        while fm.fileExists(atPath: documentsURL.appendingPathComponent("\(base) \(i)").path) || BookmarkManager.hasBookmark(projectID: "\(base) \(i)") { i += 1 }
         return "\(base) \(i)"
     }
 
@@ -233,6 +239,11 @@ enum ProjectFileManager {
     }
 
     static func deleteProjectDirectory(for document: InkPondDocument) throws {
+        if BookmarkManager.hasBookmark(projectID: document.projectID) {
+            BookmarkManager.removeBookmark(projectID: document.projectID)
+            os_log(.info, "ProjectFileManager: removed bookmark for %{public}@", document.projectID)
+            return
+        }
         let dir = projectDirectory(for: document)
         if FileManager.default.fileExists(atPath: dir.path) {
             if useCoordination {

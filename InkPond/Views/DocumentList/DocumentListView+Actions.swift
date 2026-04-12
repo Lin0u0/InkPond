@@ -65,6 +65,7 @@ extension DocumentListView {
         }
 
         for document in documents where !existingFolders.contains(document.projectID) {
+            if BookmarkManager.hasBookmark(projectID: document.projectID) { continue }
             try? CompiledPreviewCacheStore().remove(projectID: document.projectID)
             if selectedDocument == document {
                 selectedDocument = nil
@@ -258,6 +259,38 @@ extension DocumentListView {
             AccessibilitySupport.announce(L10n.a11yDocumentImported(title))
         } catch {
             try? ProjectFileManager.deleteProjectDirectory(for: doc)
+            zipImportError = error.localizedDescription
+        }
+    }
+
+    func linkExternalFolder(from url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+        let title = url.lastPathComponent
+        let doc = InkPondDocument(title: title, content: "")
+        doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
+
+        do {
+            try BookmarkManager.saveBookmark(for: url, projectID: doc.projectID)
+
+            // Build relative paths for files in the external folder to configure import
+            var allFiles: [String] = []
+            if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey]) {
+                for case let fileURL as URL in enumerator {
+                    if let isRegularFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile, isRegularFile {
+                        let path = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+                        allFiles.append(path)
+                    }
+                }
+            }
+            configureImportedDocument(doc, relativePaths: allFiles)
+            modelContext.insert(doc)
+            selectedDocument = doc
+            InteractionFeedback.notify(.success)
+            AccessibilitySupport.announce(L10n.a11yDocumentImported(title))
+        } catch {
+            BookmarkManager.removeBookmark(projectID: doc.projectID)
             zipImportError = error.localizedDescription
         }
     }

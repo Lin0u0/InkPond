@@ -22,6 +22,8 @@
 "doc.list.empty.title" = "No Documents Yet";
 "doc.list.empty.message" = "Create a new document to start writing.";
 "doc.list.empty.action" = "New Document";
+"doc.list.action.new" = "New Document";
+"doc.list.action.link_external" = "Link External Folder";
 
 "action.find_replace" = "Find & Replace";
 "action.insert_image" = "Insert Image";
@@ -405,3 +407,9 @@
 "network.status.disconnected" = "No network connection";
 "network.status.expensive" = "Connected (cellular)";
 "network.status.constrained" = "Connected (limited)";
+
+"action.unlink" = "Unlink";
+"alert.unlink_document.message" = "\"%@\" will be unlinked. Its original files will not be deleted.";
+"a11y.document_row.action.unlink" = "Unlink";
+"Unlink Folder" = "Unlink Folder";
+"Unlink" = "Unlink";
