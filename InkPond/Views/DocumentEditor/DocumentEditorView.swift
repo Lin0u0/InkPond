@@ -79,7 +79,7 @@ struct DocumentEditorView: View {
     @State var fileLoadToken = UUID()
     @State var pendingCursorJump: Int?
     @State var pendingManualCompileFeedback = false
-    @State var cachedBibEntries: [(key: String, type: String)] = []
+    @State var cachedBibEntries: [TypstBibliographyEntry] = []
     @State var cachedExternalLabels: [(name: String, kind: String)] = []
     @State var cachedImageFiles: [String] = []
     @State var cachedPackageSpecs: [String] = []

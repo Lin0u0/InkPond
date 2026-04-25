@@ -37,7 +37,7 @@ struct EditorView: UIViewRepresentable {
     var onImagePasted: (Data, NSRange) -> Void = { _, _ in }
     var onRichPaste: ([TypstTextView.PasteFragment], NSRange) -> Void = { _, _ in }
     var fontFamilies: [String] = []
-    var bibEntries: [(key: String, type: String)] = []
+    var bibEntries: [TypstBibliographyEntry] = []
     var externalLabels: [(name: String, kind: String)] = []
     var imageFiles: [String] = []
     var packageSpecs: [String] = []

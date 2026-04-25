@@ -254,6 +254,73 @@ struct TypstBridge {
 #endif
     }
 
+    /// Parse Typst source and return syntax-tree label definitions.
+    nonisolated static func labels(source: String) -> [TypstLabelEntry]? {
+#if TYPST_FFI_AVAILABLE
+        source.withCString { cSource in
+            let result = typst_labels(cSource)
+            defer { typst_free_label_result(result) }
+
+            guard result.success else { return nil }
+            guard let ptr = result.items, result.item_len > 0 else { return [] }
+
+            let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.item_len))
+            var labels: [TypstLabelEntry] = []
+            labels.reserveCapacity(buffer.count)
+
+            for item in buffer {
+                guard let namePtr = item.name,
+                      let kindPtr = item.kind else { continue }
+                let name = String(cString: namePtr)
+                guard !name.isEmpty else { continue }
+                labels.append(TypstLabelEntry(
+                    name: name,
+                    kind: String(cString: kindPtr)
+                ))
+            }
+
+            return labels
+        }
+#else
+        return nil
+#endif
+    }
+
+    /// Parse BibLaTeX or Hayagriva YAML content and return cite entries.
+    nonisolated static func bibliographyEntries(source: String, fileName: String) -> [TypstBibliographyEntry]? {
+#if TYPST_FFI_AVAILABLE
+        source.withCString { cSource in
+            fileName.withCString { cFileName in
+                let result = typst_bibliography_entries(cSource, cFileName)
+                defer { typst_free_bibliography_result(result) }
+
+                guard result.success else { return nil }
+                guard let ptr = result.entries, result.entry_len > 0 else { return [] }
+
+                let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.entry_len))
+                var entries: [TypstBibliographyEntry] = []
+                entries.reserveCapacity(buffer.count)
+
+                for entry in buffer {
+                    guard let keyPtr = entry.key,
+                          let typePtr = entry.entry_type else { continue }
+                    let key = String(cString: keyPtr)
+                    guard !key.isEmpty else { continue }
+                    entries.append(TypstBibliographyEntry(
+                        key: key,
+                        type: String(cString: typePtr),
+                        title: Self.nonEmptyCString(entry.title)
+                    ))
+                }
+
+                return entries
+            }
+        }
+#else
+        return nil
+#endif
+    }
+
     /// Return Typst-library completion symbols plus source-local bindings.
     nonisolated static func completionSymbols(source: String) -> [TypstCompletionSymbolInfo]? {
 #if TYPST_FFI_AVAILABLE

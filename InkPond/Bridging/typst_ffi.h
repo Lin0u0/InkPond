@@ -128,6 +128,47 @@ TypstOutlineResult typst_outline(const char *source);
 /// Free a TypstOutlineResult.
 void typst_free_outline_result(TypstOutlineResult result);
 
+/// A single Typst label definition.
+typedef struct {
+    char *name;
+    char *kind;
+} TypstLabelItem;
+
+/// Result returned by typst_labels. Free with typst_free_label_result.
+typedef struct {
+    TypstLabelItem *items;
+    size_t          item_len;
+    char           *error_message;
+    bool            success;
+} TypstLabelResult;
+
+/// Parse Typst source and return label definitions.
+TypstLabelResult typst_labels(const char *source);
+
+/// Free a TypstLabelResult.
+void typst_free_label_result(TypstLabelResult result);
+
+/// A single bibliography entry parsed by Hayagriva.
+typedef struct {
+    char *key;
+    char *entry_type;
+    char *title;
+} TypstBibliographyItem;
+
+/// Result returned by typst_bibliography_entries. Free with typst_free_bibliography_result.
+typedef struct {
+    TypstBibliographyItem *entries;
+    size_t                 entry_len;
+    char                  *error_message;
+    bool                   success;
+} TypstBibliographyResult;
+
+/// Parse BibLaTeX or Hayagriva YAML content and return cite entries.
+TypstBibliographyResult typst_bibliography_entries(const char *source, const char *file_name);
+
+/// Free a TypstBibliographyResult.
+void typst_free_bibliography_result(TypstBibliographyResult result);
+
 /// A literal value accepted by a Typst function parameter.
 typedef struct {
     char *label;
