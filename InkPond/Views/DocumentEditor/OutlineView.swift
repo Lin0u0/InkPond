@@ -64,24 +64,13 @@ struct OutlineView: View {
     }
 
     static func parseHeadings(from text: String) -> [OutlineItem] {
-        guard let regex = try? NSRegularExpression(pattern: #"^(={1,6})\s+(.+)$"#, options: .anchorsMatchLines) else {
-            return []
-        }
-        let nsString = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-        return matches.compactMap { match in
-            guard match.numberOfRanges >= 3 else { return nil }
-            let equalsRange = match.range(at: 1)
-            let titleRange = match.range(at: 2)
-            let level = equalsRange.length
-            var title = nsString.substring(with: titleRange).trimmingCharacters(in: .whitespaces)
-            // Strip trailing Typst bookmark labels like <intro>
-            if let labelRange = title.range(of: #"\s*<[^>]+>\s*$"#, options: .regularExpression) {
-                title = String(title[title.startIndex..<labelRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-            }
-            guard !title.isEmpty else { return nil }
-            let characterOffset = match.range.location
-            return OutlineItem(level: level, title: title, characterOffset: characterOffset)
+        guard let entries = TypstBridge.outlineItems(source: text) else { return [] }
+        return entries.map { entry in
+            OutlineItem(
+                level: entry.level,
+                title: entry.title,
+                characterOffset: entry.location
+            )
         }
     }
 }

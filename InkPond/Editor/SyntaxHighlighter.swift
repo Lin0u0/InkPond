@@ -7,18 +7,9 @@ import UIKit
 
 final class SyntaxHighlighter {
     private let baseFont: UIFont
+    private let tokenProvider: (String) -> [TypstSyntaxToken]?
     private var theme: EditorTheme
 
-    private struct Rule {
-        let regex: NSRegularExpression
-        let color: (EditorTheme) -> UIColor
-        let bold: Bool
-        let italic: Bool
-        /// When true, brackets inside matched ranges are excluded from mismatch detection.
-        let excludeFromBracketCheck: Bool
-    }
-
-    private var rules: [Rule] = []
     private lazy var boldFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .semibold)
     private lazy var italicFont: UIFont = {
         let descriptor = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
@@ -33,60 +24,15 @@ final class SyntaxHighlighter {
     var jumpHighlightOpacity: CGFloat = 0
 
     init(font: UIFont = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular),
-         theme: EditorTheme = .system) {
+         theme: EditorTheme = .system,
+         tokenProvider: @escaping (String) -> [TypstSyntaxToken]? = TypstBridge.syntaxHighlightTokens) {
         self.baseFont = font
+        self.tokenProvider = tokenProvider
         self.theme = theme
-        buildRules()
     }
 
     func updateTheme(_ theme: EditorTheme) {
         self.theme = theme
-    }
-
-    // MARK: - Rule Construction
-
-    private func buildRules() {
-        // (pattern, options, colorKeyPath, bold, italic, excludeFromBracketCheck)
-        // Rules applied in order; later rules override earlier ones.
-        let specs: [(String, NSRegularExpression.Options, (EditorTheme) -> UIColor, Bool, Bool, Bool)] = [
-            // 1. Bold *...* / Italic _..._
-            (#"\*[^*\n]+\*|_[^_\n]+_"#,                         [],                   { $0.markup },   false, false, false),
-            // 2. Numbers with optional units (% separated to avoid \b mismatch)
-            (#"\b\d+(?:\.\d+)?(?:em|pt|cm|mm|in|px|fr|deg|rad|sp)\b|\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\b"#, [],
-                                                                                       { $0.number },   false, false, false),
-            // 3. Math $...$
-            (#"\$[^$\n]+\$"#,                                    [],                   { $0.math },     false, false, true),
-            // 4. Code block ```...```
-            (#"```[\s\S]*?```"#,                                 [],                   { $0.code },     false, false, true),
-            // 5. Inline code `...`
-            (#"`[^`\n]*`"#,                                      [],                   { $0.code },     false, false, true),
-            // 6. Label <...> / Ref @... (supports fig:my-label, bib.key, etc.)
-            (#"<[a-zA-Z][a-zA-Z0-9_.\-:]*>|@[a-zA-Z_][a-zA-Z0-9_.\-:]*"#, [],        { $0.label },    false, false, false),
-            // 7. Bare keywords (in markup context)
-            (#"\b(?:else|in|and|or|not|with|as)\b"#,            [],                   { $0.keyword },  true,  false, false),
-            // 8. Bare bool/none/auto literals
-            (#"\b(?:true|false|none|auto)\b"#,                   [],                   { $0.bool },     false, false, false),
-            // 9. Functions #name (general)
-            (#"#[a-zA-Z_][a-zA-Z0-9_-]*"#,                      [],                   { $0.functionColor }, false, false, false),
-            // 10. #bool — overrides function color
-            (#"#(?:true|false|none|auto)\b"#,                    [],                   { $0.bool },     false, false, false),
-            // 11. #keyword — bold
-            (#"#(?:let|if|else|for|while|import|include|show|set|return|break|continue|and|or|not|in|with|as)\b"#,
-                                                                  [],                   { $0.keyword },  true,  false, false),
-            // 12. Headings ^={1,6}...
-            (#"^={1,6}[^\n]*"#,                                  .anchorsMatchLines,   { $0.heading },  true,  false, false),
-            // 13. Strings "..." (overrides tokens inside)
-            (#"\"(?:[^\"\\]|\\.)*\""#,                           [],                   { $0.string },   false, false, true),
-            // 14. Block comments /* ... */
-            (#"/\*[\s\S]*?\*/"#,                                 [],                   { $0.comment },  false, true,  true),
-            // 15. Line comments //...
-            (#"//[^\n]*"#,                                        .anchorsMatchLines,   { $0.comment },  false, true,  true),
-        ]
-
-        rules = specs.compactMap { pattern, options, colorFn, bold, italic, exclude in
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
-            return Rule(regex: regex, color: colorFn, bold: bold, italic: italic, excludeFromBracketCheck: exclude)
-        }
     }
 
     // MARK: - Highlight
@@ -102,28 +48,15 @@ final class SyntaxHighlighter {
             .foregroundColor: theme.text,
         ], range: fullRange)
 
-        // Collect ranges where brackets should be excluded from mismatch detection
-        // (strings, comments, code blocks, math)
-        var excludedOffsets = IndexSet()
-
-        // Apply syntax rules
-        for rule in rules {
-            rule.regex.enumerateMatches(in: textStorage.string, range: fullRange) { match, _, _ in
-                guard let range = match?.range else { return }
-                textStorage.addAttribute(.foregroundColor, value: rule.color(theme), range: range)
-                if rule.bold {
-                    textStorage.addAttribute(.font, value: boldFont, range: range)
-                } else if rule.italic {
-                    textStorage.addAttribute(.font, value: italicFont, range: range)
-                }
-                if rule.excludeFromBracketCheck, range.length > 0 {
-                    excludedOffsets.insert(integersIn: range.location..<(range.location + range.length))
-                }
-            }
+        let excludedOffsets: IndexSet
+        if let tokens = tokenProvider(textStorage.string) {
+            excludedOffsets = applyTypstTokens(tokens, to: textStorage)
+        } else {
+            excludedOffsets = IndexSet()
         }
 
         // Rainbow bracket pass (runs last, overrides all)
-        applyRainbowBrackets(textStorage, fullRange: fullRange)
+        applyRainbowBrackets(textStorage, fullRange: fullRange, excludedOffsets: excludedOffsets)
 
         // Bracket mismatch detection (context-aware)
         applyBracketMismatchUnderlines(textStorage, excludedOffsets: excludedOffsets)
@@ -135,15 +68,95 @@ final class SyntaxHighlighter {
         textStorage.endEditing()
     }
 
+    private func applyTypstTokens(_ tokens: [TypstSyntaxToken], to textStorage: NSTextStorage) -> IndexSet {
+        var excludedOffsets = IndexSet()
+
+        for token in tokens {
+            let range = NSRange(location: token.location, length: token.length)
+            guard range.length > 0,
+                  range.location >= 0,
+                  NSMaxRange(range) <= textStorage.length else {
+                continue
+            }
+
+            textStorage.addAttribute(.foregroundColor, value: color(for: token.kind), range: range)
+            switch token.kind {
+            case .heading, .keyword, .strong, .listTerm:
+                textStorage.addAttribute(.font, value: boldFont, range: range)
+            case .comment, .emphasis:
+                textStorage.addAttribute(.font, value: italicFont, range: range)
+            default:
+                break
+            }
+
+            if shouldExcludeFromBracketCheck(token.kind) {
+                excludedOffsets.insert(integersIn: range.location..<NSMaxRange(range))
+            }
+
+            if token.kind == .error {
+                textStorage.addAttributes([
+                    .underlineStyle: NSUnderlineStyle.thick.rawValue,
+                    .underlineColor: UIColor.systemRed,
+                    .foregroundColor: UIColor.systemRed,
+                ], range: range)
+            }
+        }
+
+        return excludedOffsets
+    }
+
+    private func color(for kind: TypstSyntaxToken.Kind) -> UIColor {
+        switch kind {
+        case .comment:
+            return theme.comment
+        case .punctuation:
+            return theme.text
+        case .escape, .strong, .emphasis, .listMarker, .listTerm:
+            return theme.markup
+        case .link, .label, .reference:
+            return theme.label
+        case .raw:
+            return theme.code
+        case .heading:
+            return theme.heading
+        case .mathDelimiter, .mathOperator:
+            return theme.math
+        case .keyword, .operatorToken:
+            return theme.keyword
+        case .number:
+            return theme.number
+        case .string:
+            return theme.string
+        case .function, .interpolated:
+            return theme.functionColor
+        case .error:
+            return UIColor.systemRed
+        }
+    }
+
+    private func shouldExcludeFromBracketCheck(_ kind: TypstSyntaxToken.Kind) -> Bool {
+        switch kind {
+        case .comment, .raw, .string:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: - Rainbow Brackets
 
-    private func applyRainbowBrackets(_ textStorage: NSTextStorage, fullRange: NSRange) {
+    private func applyRainbowBrackets(
+        _ textStorage: NSTextStorage,
+        fullRange: NSRange,
+        excludedOffsets: IndexSet
+    ) {
         let utf16 = textStorage.string.utf16
         let rainbow = theme.rainbow
         let count = rainbow.count
         var depth = 0
 
         for (i, unit) in utf16.enumerated() {
+            guard !excludedOffsets.contains(i) else { continue }
             switch unit {
             case 123, 40, 91:  // { ( [
                 let color = rainbow[depth % count]

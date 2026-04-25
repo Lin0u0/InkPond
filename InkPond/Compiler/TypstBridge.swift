@@ -192,6 +192,68 @@ struct TypstBridge {
 #endif
     }
 
+    /// Parse Typst source and return syntax-highlight tokens in UTF-16 offsets.
+    nonisolated static func syntaxHighlightTokens(source: String) -> [TypstSyntaxToken]? {
+#if TYPST_FFI_AVAILABLE
+        source.withCString { cSource in
+            let result = typst_highlight(cSource)
+            defer { typst_free_highlight_result(result) }
+
+            guard result.success else { return nil }
+            guard let ptr = result.tokens, result.token_len > 0 else { return [] }
+
+            let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.token_len))
+            var tokens: [TypstSyntaxToken] = []
+            tokens.reserveCapacity(buffer.count)
+
+            for entry in buffer {
+                guard let kind = TypstSyntaxToken.Kind(rawValue: entry.tag) else { continue }
+                tokens.append(TypstSyntaxToken(
+                    location: Int(entry.utf16_location),
+                    length: Int(entry.utf16_length),
+                    kind: kind
+                ))
+            }
+
+            return tokens
+        }
+#else
+        return nil
+#endif
+    }
+
+    /// Parse Typst source and return heading outline entries in UTF-16 offsets.
+    nonisolated static func outlineItems(source: String) -> [TypstOutlineEntry]? {
+#if TYPST_FFI_AVAILABLE
+        source.withCString { cSource in
+            let result = typst_outline(cSource)
+            defer { typst_free_outline_result(result) }
+
+            guard result.success else { return nil }
+            guard let ptr = result.items, result.item_len > 0 else { return [] }
+
+            let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.item_len))
+            var items: [TypstOutlineEntry] = []
+            items.reserveCapacity(buffer.count)
+
+            for entry in buffer {
+                guard let titlePtr = entry.title else { continue }
+                let title = String(cString: titlePtr)
+                guard !title.isEmpty else { continue }
+                items.append(TypstOutlineEntry(
+                    location: Int(entry.utf16_location),
+                    level: Int(entry.level),
+                    title: title
+                ))
+            }
+
+            return items
+        }
+#else
+        return nil
+#endif
+    }
+
 #if TYPST_FFI_AVAILABLE
     nonisolated private static func parseSourceMap(_ result: TypstResultWithMap) -> SourceMap {
         guard let ptr = result.source_map, result.source_map_len > 0 else {
