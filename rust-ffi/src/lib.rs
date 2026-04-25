@@ -2,19 +2,22 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::os::raw::c_char;
-use std::path::{Component, Path, PathBuf};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime};
 use typst::layout::{Frame, FrameItem, PagedDocument, Point, Transform};
+use typst::syntax::ast::AstNode;
 use typst::syntax::package::PackageSpec;
-use typst::syntax::{FileId, Source, Span, VirtualPath};
+use typst::syntax::{
+    ast, highlight, parse, FileId, LinkedNode, Source, Span, SyntaxKind, Tag, VirtualPath,
+};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
-use typst_pdf::{PdfOptions, pdf};
+use typst_pdf::{pdf, PdfOptions};
 
 const EXTRA_FONT_CACHE_LIMIT: usize = 16;
 
@@ -96,7 +99,10 @@ impl SimpleWorld {
         if !options.is_null() {
             let opts = &*options;
 
-            debug_log!("[typst-ffi] font_path_count from Swift: {}", opts.font_path_count);
+            debug_log!(
+                "[typst-ffi] font_path_count from Swift: {}",
+                opts.font_path_count
+            );
 
             // Gather extra font paths from Swift.
             if !opts.font_paths.is_null() {
@@ -218,14 +224,11 @@ impl SimpleWorld {
             }
         }
 
-        let cache_root = self
-            .pkg_cache_root
-            .as_ref()
-            .ok_or_else(|| {
-                FileError::Package(PackageError::Other(Some(
-                    "package cache directory is unavailable".into(),
-                )))
-            })?;
+        let cache_root = self.pkg_cache_root.as_ref().ok_or_else(|| {
+            FileError::Package(PackageError::Other(Some(
+                "package cache directory is unavailable".into(),
+            )))
+        })?;
 
         let pkg_dir = cache_root
             .join(spec.namespace.as_str())
@@ -349,8 +352,8 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError>
         .read_to_end(&mut buf)
         .map_err(|e| PackageError::NetworkFailed(Some(format!("{e}").into())))?;
 
-    let staging_dir = make_staging_directory(dest)
-        .map_err(|e| PackageError::Other(Some(e.into())))?;
+    let staging_dir =
+        make_staging_directory(dest).map_err(|e| PackageError::Other(Some(e.into())))?;
     if let Err(error) = extract_tar_gz_bytes(&buf, &staging_dir) {
         let _ = std::fs::remove_dir_all(&staging_dir);
         return Err(PackageError::MalformedArchive(Some(error.into())));
@@ -428,7 +431,9 @@ fn extract_tar_gz_bytes(bytes: &[u8], dest: &Path) -> Result<(), String> {
         }
 
         if !entry_type.is_file() {
-            return Err(format!("archive contains unsupported entry type: {entry_type:?}"));
+            return Err(format!(
+                "archive contains unsupported entry type: {entry_type:?}"
+            ));
         }
 
         if let Some(parent) = target_path.parent() {
@@ -487,14 +492,14 @@ impl World for SimpleWorld {
             pkg_dir.join(id.vpath().as_rootless_path())
         } else {
             // Local file — resolve against root_dir
-            let root = self.root_dir.as_ref().ok_or_else(|| {
-                FileError::NotFound(id.vpath().as_rootless_path().to_owned())
-            })?;
+            let root = self
+                .root_dir
+                .as_ref()
+                .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
             root.join(id.vpath().as_rootless_path())
         };
 
-        let text = std::fs::read_to_string(&path)
-            .map_err(|_| FileError::NotFound(path.clone()))?;
+        let text = std::fs::read_to_string(&path).map_err(|_| FileError::NotFound(path.clone()))?;
         let src = Source::new(id, text);
         self.source_cache.lock().unwrap().insert(id, src.clone());
         Ok(src)
@@ -512,14 +517,14 @@ impl World for SimpleWorld {
             pkg_dir.join(id.vpath().as_rootless_path())
         } else {
             // Local file (e.g. images) — resolve against root_dir
-            let root = self.root_dir.as_ref().ok_or_else(|| {
-                FileError::NotFound(id.vpath().as_rootless_path().to_owned())
-            })?;
+            let root = self
+                .root_dir
+                .as_ref()
+                .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
             root.join(id.vpath().as_rootless_path())
         };
 
-        let data = std::fs::read(&path)
-            .map_err(|_| FileError::NotFound(path.clone()))?;
+        let data = std::fs::read(&path).map_err(|_| FileError::NotFound(path.clone()))?;
         let bytes = Bytes::new(data);
         self.file_cache.lock().unwrap().insert(id, bytes.clone());
         Ok(bytes)
@@ -580,16 +585,15 @@ pub unsafe extern "C" fn typst_compile(
     source: *const c_char,
     options: *const TypstOptions,
 ) -> TypstResult {
-    match catch_unwind(AssertUnwindSafe(|| unsafe { typst_compile_impl(source, options) })) {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_compile_impl(source, options)
+    })) {
         Ok(result) => result,
         Err(_) => error_result("Typst compiler panicked"),
     }
 }
 
-unsafe fn typst_compile_impl(
-    source: *const c_char,
-    options: *const TypstOptions,
-) -> TypstResult {
+unsafe fn typst_compile_impl(source: *const c_char, options: *const TypstOptions) -> TypstResult {
     if source.is_null() {
         return error_result("null source pointer");
     }
@@ -705,7 +709,8 @@ fn walk_frame(
                                 y_pt: point.y.to_pt() as f32,
                                 x_pt: point.x.to_pt() as f32,
                                 source_offset: range.start as u32,
-                                source_length: (range.end - range.start).min(u16::MAX as usize) as u16,
+                                source_length: (range.end - range.start).min(u16::MAX as usize)
+                                    as u16,
                                 line: (line + 1) as u32,
                                 column: (col + 1) as u16,
                             });
@@ -934,6 +939,335 @@ pub unsafe extern "C" fn typst_free_result_with_map(result: TypstResultWithMap) 
     }
 }
 
+// ---------------------------------------------------------------------------
+// C FFI — syntax highlighting
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct TypstHighlightToken {
+    /// UTF-16 code-unit offset for NSTextStorage/NSRange.
+    pub utf16_location: u32,
+    /// UTF-16 code-unit length for NSTextStorage/NSRange.
+    pub utf16_length: u32,
+    /// Numeric value matching typst_syntax::Tag order.
+    pub tag: u32,
+}
+
+/// Result returned by `typst_highlight`.
+#[repr(C)]
+pub struct TypstHighlightResult {
+    pub tokens: *mut TypstHighlightToken,
+    pub token_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+/// Parse Typst source and return syntax-highlight tokens.
+///
+/// # Safety
+/// `source` must be a valid null-terminated UTF-8 C string.
+/// Free the result with `typst_free_highlight_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_highlight(source: *const c_char) -> TypstHighlightResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe { typst_highlight_impl(source) })) {
+        Ok(result) => result,
+        Err(_) => error_highlight_result("Typst highlighter panicked"),
+    }
+}
+
+unsafe fn typst_highlight_impl(source: *const c_char) -> TypstHighlightResult {
+    if source.is_null() {
+        return error_highlight_result("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_highlight_result("source is not valid UTF-8"),
+    };
+
+    let tokens = highlight_tokens_for_source(source_str);
+    let token_len = tokens.len();
+    let (tokens, token_len) = if token_len > 0 {
+        let mut boxed = tokens.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, token_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstHighlightResult {
+        tokens,
+        token_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn highlight_tokens_for_source(source: &str) -> Vec<TypstHighlightToken> {
+    let root = parse(source);
+    let byte_to_utf16 = byte_to_utf16_offsets(source);
+    let mut tokens = Vec::new();
+    collect_highlight_tokens(&mut tokens, &LinkedNode::new(&root), &byte_to_utf16);
+    tokens
+}
+
+fn collect_highlight_tokens(
+    tokens: &mut Vec<TypstHighlightToken>,
+    node: &LinkedNode,
+    byte_to_utf16: &[usize],
+) {
+    if let Some(tag) = highlight(node) {
+        let range = node.range();
+        if let Some(token) = highlight_token(range.start, range.end, tag, byte_to_utf16) {
+            tokens.push(token);
+        }
+    }
+
+    for child in node.children() {
+        collect_highlight_tokens(tokens, &child, byte_to_utf16);
+    }
+}
+
+fn highlight_token(
+    byte_start: usize,
+    byte_end: usize,
+    tag: Tag,
+    byte_to_utf16: &[usize],
+) -> Option<TypstHighlightToken> {
+    if byte_start >= byte_end || byte_end >= byte_to_utf16.len() {
+        return None;
+    }
+
+    let utf16_start = *byte_to_utf16.get(byte_start)?;
+    let utf16_end = *byte_to_utf16.get(byte_end)?;
+    if utf16_start >= utf16_end {
+        return None;
+    }
+
+    Some(TypstHighlightToken {
+        utf16_location: u32::try_from(utf16_start).ok()?,
+        utf16_length: u32::try_from(utf16_end - utf16_start).ok()?,
+        tag: highlight_tag_id(tag),
+    })
+}
+
+fn byte_to_utf16_offsets(source: &str) -> Vec<usize> {
+    let mut offsets = vec![0; source.len() + 1];
+    let mut utf16_offset = 0;
+    offsets[0] = 0;
+
+    for (byte_offset, ch) in source.char_indices() {
+        offsets[byte_offset] = utf16_offset;
+        utf16_offset += ch.len_utf16();
+        offsets[byte_offset + ch.len_utf8()] = utf16_offset;
+    }
+
+    offsets
+}
+
+fn highlight_tag_id(tag: Tag) -> u32 {
+    match tag {
+        Tag::Comment => 0,
+        Tag::Punctuation => 1,
+        Tag::Escape => 2,
+        Tag::Strong => 3,
+        Tag::Emph => 4,
+        Tag::Link => 5,
+        Tag::Raw => 6,
+        Tag::Label => 7,
+        Tag::Ref => 8,
+        Tag::Heading => 9,
+        Tag::ListMarker => 10,
+        Tag::ListTerm => 11,
+        Tag::MathDelimiter => 12,
+        Tag::MathOperator => 13,
+        Tag::Keyword => 14,
+        Tag::Operator => 15,
+        Tag::Number => 16,
+        Tag::String => 17,
+        Tag::Function => 18,
+        Tag::Interpolated => 19,
+        Tag::Error => 20,
+    }
+}
+
+/// Free a `TypstHighlightResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_highlight` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_highlight_result(result: TypstHighlightResult) {
+    if !result.tokens.is_null() {
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.tokens, result.token_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// C FFI — outline extraction
+// ---------------------------------------------------------------------------
+
+#[repr(C)]
+pub struct TypstOutlineItem {
+    /// UTF-16 code-unit offset for NSTextStorage/NSRange.
+    pub utf16_location: u32,
+    /// Heading depth, where `= Title` is 1.
+    pub level: u32,
+    /// Null-terminated UTF-8 title.
+    pub title: *mut c_char,
+}
+
+/// Result returned by `typst_outline`.
+#[repr(C)]
+pub struct TypstOutlineResult {
+    pub items: *mut TypstOutlineItem,
+    pub item_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+/// Parse Typst source and return heading outline entries.
+///
+/// # Safety
+/// `source` must be a valid null-terminated UTF-8 C string.
+/// Free the result with `typst_free_outline_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_outline(source: *const c_char) -> TypstOutlineResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe { typst_outline_impl(source) })) {
+        Ok(result) => result,
+        Err(_) => error_outline_result("Typst outline parser panicked"),
+    }
+}
+
+unsafe fn typst_outline_impl(source: *const c_char) -> TypstOutlineResult {
+    if source.is_null() {
+        return error_outline_result("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_outline_result("source is not valid UTF-8"),
+    };
+
+    let items = outline_items_for_source(source_str);
+    let item_len = items.len();
+    let (items, item_len) = if item_len > 0 {
+        let mut boxed = items.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, item_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstOutlineResult {
+        items,
+        item_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn outline_items_for_source(source: &str) -> Vec<TypstOutlineItem> {
+    let root = parse(source);
+    let byte_to_utf16 = byte_to_utf16_offsets(source);
+    let mut items = Vec::new();
+    collect_outline_items(&mut items, &LinkedNode::new(&root), &byte_to_utf16);
+    items
+}
+
+fn collect_outline_items(
+    items: &mut Vec<TypstOutlineItem>,
+    node: &LinkedNode,
+    byte_to_utf16: &[usize],
+) {
+    if let Some(heading) = node.get().cast::<ast::Heading>() {
+        if let Some(item) = outline_item(node, heading, byte_to_utf16) {
+            items.push(item);
+        }
+    }
+
+    for child in node.children() {
+        collect_outline_items(items, &child, byte_to_utf16);
+    }
+}
+
+fn outline_item(
+    node: &LinkedNode,
+    heading: ast::Heading,
+    byte_to_utf16: &[usize],
+) -> Option<TypstOutlineItem> {
+    let range = node.range();
+    let utf16_location = *byte_to_utf16.get(range.start)?;
+    let title = heading_title(heading);
+    if title.is_empty() {
+        return None;
+    }
+
+    Some(TypstOutlineItem {
+        utf16_location: u32::try_from(utf16_location).ok()?,
+        level: u32::try_from(heading.depth().get()).ok()?,
+        title: CString::new(title).ok()?.into_raw(),
+    })
+}
+
+fn heading_title(heading: ast::Heading) -> String {
+    let mut title = String::new();
+    collect_heading_title_text(heading.body().to_untyped(), &mut title);
+    title.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn collect_heading_title_text(node: &typst::syntax::SyntaxNode, title: &mut String) {
+    match node.kind() {
+        SyntaxKind::Label
+        | SyntaxKind::HeadingMarker
+        | SyntaxKind::LineComment
+        | SyntaxKind::BlockComment => return,
+        SyntaxKind::Space | SyntaxKind::Parbreak | SyntaxKind::Linebreak => {
+            title.push(' ');
+            return;
+        }
+        SyntaxKind::Text
+        | SyntaxKind::Escape
+        | SyntaxKind::Shorthand
+        | SyntaxKind::SmartQuote
+        | SyntaxKind::Link => {
+            title.push_str(node.text());
+            return;
+        }
+        _ => {}
+    }
+
+    for child in node.children() {
+        collect_heading_title_text(child, title);
+    }
+}
+
+/// Free a `TypstOutlineResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_outline` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_outline_result(result: TypstOutlineResult) {
+    if !result.items.is_null() {
+        let slice = std::slice::from_raw_parts_mut(result.items, result.item_len);
+        for item in slice {
+            if !item.title.is_null() {
+                drop(CString::from_raw(item.title));
+            }
+        }
+
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.items, result.item_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+}
+
 /// Get the embedded typst-ios crate version.
 ///
 /// Returns a pointer to a static null-terminated UTF-8 string.
@@ -969,6 +1303,26 @@ fn error_result_with_map(msg: &str) -> TypstResultWithMap {
     }
 }
 
+fn error_highlight_result(msg: &str) -> TypstHighlightResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstHighlightResult {
+        tokens: std::ptr::null_mut(),
+        token_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
+fn error_outline_result(msg: &str) -> TypstOutlineResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstOutlineResult {
+        items: std::ptr::null_mut(),
+        item_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
 fn format_diagnostics(world: &SimpleWorld, diags: &[SourceDiagnostic]) -> String {
     diags
         .iter()
@@ -992,9 +1346,27 @@ fn format_diagnostic(world: &SimpleWorld, diag: &SourceDiagnostic) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::Compression;
     use flate2::write::GzEncoder;
+    use flate2::Compression;
     use tar::{Builder, EntryType, Header};
+
+    fn outline_item_title(item: &TypstOutlineItem) -> String {
+        if item.title.is_null() {
+            return String::new();
+        }
+
+        unsafe { CStr::from_ptr(item.title).to_string_lossy().into_owned() }
+    }
+
+    fn free_outline_test_items(items: Vec<TypstOutlineItem>) {
+        for item in items {
+            if !item.title.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.title));
+                }
+            }
+        }
+    }
 
     #[test]
     fn extract_tar_gz_bytes_extracts_regular_files() {
@@ -1006,8 +1378,14 @@ mod tests {
 
         extract_tar_gz_bytes(&archive, &dest).unwrap();
 
-        assert_eq!(std::fs::read_to_string(dest.join("main.typ")).unwrap(), "hello");
-        assert_eq!(std::fs::read(dest.join("nested/image.png")).unwrap(), vec![1, 2, 3]);
+        assert_eq!(
+            std::fs::read_to_string(dest.join("main.typ")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            std::fs::read(dest.join("nested/image.png")).unwrap(),
+            vec![1, 2, 3]
+        );
 
         let _ = std::fs::remove_dir_all(dest);
     }
@@ -1118,6 +1496,74 @@ mod tests {
     }
 
     #[test]
+    fn highlight_tokens_use_typst_parser_context() {
+        let tokens = highlight_tokens_for_source("bread and butter\n#let value = 42");
+
+        assert!(
+            tokens.iter().all(|token| token.utf16_location != 6),
+            "plain markup word 'and' should not be highlighted as a keyword"
+        );
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 17
+                && token.utf16_length == 1
+                && token.tag == highlight_tag_id(Tag::Keyword)),
+            "hash before let should receive Typst's keyword tag"
+        );
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 18
+                && token.utf16_length == 3
+                && token.tag == highlight_tag_id(Tag::Keyword)),
+            "let should receive Typst's keyword tag"
+        );
+    }
+
+    #[test]
+    fn highlight_tokens_return_utf16_offsets() {
+        let tokens = highlight_tokens_for_source("你好 #let x = 1");
+
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 3
+                && token.utf16_length == 1
+                && token.tag == highlight_tag_id(Tag::Keyword)),
+            "highlight locations should be UTF-16 offsets, not UTF-8 byte offsets"
+        );
+    }
+
+    #[test]
+    fn outline_items_use_typst_parser_context() {
+        let items = outline_items_for_source(
+            r#"
+= Real <intro>
+
+```typ
+= Not outline
+```
+
+== Next
+"#,
+        );
+
+        let titles: Vec<_> = items.iter().map(outline_item_title).collect();
+        let levels: Vec<_> = items.iter().map(|item| item.level).collect();
+
+        assert_eq!(titles, vec!["Real", "Next"]);
+        assert_eq!(levels, vec![1, 2]);
+
+        free_outline_test_items(items);
+    }
+
+    #[test]
+    fn outline_items_return_utf16_offsets() {
+        let items = outline_items_for_source("你好\n= 标题");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].utf16_location, 3);
+        assert_eq!(outline_item_title(&items[0]), "标题");
+
+        free_outline_test_items(items);
+    }
+
+    #[test]
     fn typst_pdf_embeds_sbix_emoji_as_image_xobject() {
         let emoji_font = Path::new("/System/Library/Fonts/Apple Color Emoji.ttc");
         if !emoji_font.exists() {
@@ -1197,7 +1643,11 @@ mod tests {
         for entry in entries {
             let mut header = Header::new_gnu();
             header.set_entry_type(entry.entry_type);
-            header.set_mode(if entry.entry_type.is_dir() { 0o755 } else { 0o644 });
+            header.set_mode(if entry.entry_type.is_dir() {
+                0o755
+            } else {
+                0o644
+            });
             header.set_size(entry.data.len() as u64);
             if let Some(link_name) = entry.link_name {
                 header.set_link_name(link_name).unwrap();

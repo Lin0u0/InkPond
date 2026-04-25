@@ -61,5 +61,72 @@ TypstResultWithMap typst_compile_with_source_map(const char *source,
 /// Free a TypstResultWithMap.
 void typst_free_result_with_map(TypstResultWithMap result);
 
+/// Syntax-highlight tag IDs returned by typst_highlight.
+enum {
+    TypstHighlightTagComment = 0,
+    TypstHighlightTagPunctuation = 1,
+    TypstHighlightTagEscape = 2,
+    TypstHighlightTagStrong = 3,
+    TypstHighlightTagEmph = 4,
+    TypstHighlightTagLink = 5,
+    TypstHighlightTagRaw = 6,
+    TypstHighlightTagLabel = 7,
+    TypstHighlightTagRef = 8,
+    TypstHighlightTagHeading = 9,
+    TypstHighlightTagListMarker = 10,
+    TypstHighlightTagListTerm = 11,
+    TypstHighlightTagMathDelimiter = 12,
+    TypstHighlightTagMathOperator = 13,
+    TypstHighlightTagKeyword = 14,
+    TypstHighlightTagOperator = 15,
+    TypstHighlightTagNumber = 16,
+    TypstHighlightTagString = 17,
+    TypstHighlightTagFunction = 18,
+    TypstHighlightTagInterpolated = 19,
+    TypstHighlightTagError = 20,
+};
+
+/// A Typst syntax-highlight token in UTF-16 offsets for NSTextStorage.
+typedef struct {
+    uint32_t utf16_location;
+    uint32_t utf16_length;
+    uint32_t tag;
+} TypstHighlightToken;
+
+/// Result returned by typst_highlight. Free with typst_free_highlight_result.
+typedef struct {
+    TypstHighlightToken *tokens;
+    size_t               token_len;
+    char                *error_message;
+    bool                 success;
+} TypstHighlightResult;
+
+/// Parse Typst source and return syntax-highlight tokens.
+TypstHighlightResult typst_highlight(const char *source);
+
+/// Free a TypstHighlightResult.
+void typst_free_highlight_result(TypstHighlightResult result);
+
+/// A single outline heading in UTF-16 offsets for NSTextStorage.
+typedef struct {
+    uint32_t utf16_location;
+    uint32_t level;
+    char    *title;
+} TypstOutlineItem;
+
+/// Result returned by typst_outline. Free with typst_free_outline_result.
+typedef struct {
+    TypstOutlineItem *items;
+    size_t            item_len;
+    char             *error_message;
+    bool              success;
+} TypstOutlineResult;
+
+/// Parse Typst source and return heading outline entries.
+TypstOutlineResult typst_outline(const char *source);
+
+/// Free a TypstOutlineResult.
+void typst_free_outline_result(TypstOutlineResult result);
+
 /// Returns typst-ios crate version (static UTF-8 string).
 const char *typst_version(void);

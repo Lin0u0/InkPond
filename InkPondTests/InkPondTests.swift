@@ -573,6 +573,76 @@ struct InkPondTests {
         #expect(abs((restoredErrorColor?.cgColor.alpha ?? 0) - 0.08) < 0.001)
     }
 
+    @Test func syntaxHighlighterDoesNotFallbackWhenTypstReturnsNoTokens() {
+        let textStorage = NSTextStorage(string: "bread and butter")
+        let theme = EditorTheme.latte
+        let highlighter = SyntaxHighlighter(theme: theme, tokenProvider: { _ in [] })
+
+        highlighter.highlight(textStorage)
+
+        let nsText = textStorage.string as NSString
+        let andRange = nsText.range(of: "and")
+        let color = textStorage.attribute(
+            .foregroundColor,
+            at: andRange.location,
+            effectiveRange: nil
+        ) as? UIColor
+
+        #expect(color?.isEqual(theme.text) == true)
+    }
+
+    @Test func syntaxHighlighterAppliesTypstTokensWithUTF16Offsets() {
+        let textStorage = NSTextStorage(string: "你好 #let x = 1")
+        let theme = EditorTheme.latte
+        let highlighter = SyntaxHighlighter(theme: theme) { _ in
+            [
+                TypstSyntaxToken(location: 3, length: 1, kind: .keyword),
+                TypstSyntaxToken(location: 4, length: 3, kind: .keyword),
+                TypstSyntaxToken(location: 12, length: 1, kind: .number),
+            ]
+        }
+
+        highlighter.highlight(textStorage)
+
+        let hashColor = textStorage.attribute(.foregroundColor, at: 3, effectiveRange: nil) as? UIColor
+        let letColor = textStorage.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? UIColor
+        let numberColor = textStorage.attribute(.foregroundColor, at: 12, effectiveRange: nil) as? UIColor
+
+        #expect(hashColor?.isEqual(theme.keyword) == true)
+        #expect(letColor?.isEqual(theme.keyword) == true)
+        #expect(numberColor?.isEqual(theme.number) == true)
+    }
+
+#if TYPST_FFI_AVAILABLE
+    @Test func outlineParserUsesTypstParserContext() throws {
+        let source = """
+        = Real <intro>
+
+        ```typ
+        = Not outline
+        ```
+
+        == Next
+        """
+
+        let entries = try #require(TypstBridge.outlineItems(source: source))
+        #expect(entries.map(\.title) == ["Real", "Next"])
+        #expect(entries.map(\.level) == [1, 2])
+
+        let items = OutlineView.parseHeadings(from: source)
+        #expect(items.map(\.title) == ["Real", "Next"])
+        #expect(items.map(\.level) == [1, 2])
+    }
+
+    @Test func outlineParserReturnsUTF16Offsets() throws {
+        let entries = try #require(TypstBridge.outlineItems(source: "你好\n= 标题"))
+        let first = try #require(entries.first)
+
+        #expect(first.location == 3)
+        #expect(first.title == "标题")
+    }
+#endif
+
     @MainActor
     @Test func editorFocusCoordinatorRestoresFocusAfterSuppressedLoss() async {
         let coordinator = EditorFocusCoordinator()
