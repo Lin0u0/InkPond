@@ -254,7 +254,121 @@ struct TypstBridge {
 #endif
     }
 
+    /// Return Typst-library completion symbols plus source-local bindings.
+    nonisolated static func completionSymbols(source: String) -> [TypstCompletionSymbolInfo]? {
 #if TYPST_FFI_AVAILABLE
+        source.withCString { cSource in
+            let result = typst_completion_symbols(cSource)
+            defer { typst_free_completion_symbol_result(result) }
+
+            guard result.success else { return nil }
+            guard let ptr = result.symbols, result.symbol_len > 0 else { return [] }
+
+            let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.symbol_len))
+            var symbols: [TypstCompletionSymbolInfo] = []
+            symbols.reserveCapacity(buffer.count)
+
+            for symbol in buffer {
+                guard let namePtr = symbol.name,
+                      let kind = TypstCompletionSymbolInfo.Kind(rawValue: symbol.kind) else { continue }
+
+                let params: [TypstCompletionParamInfo]
+                if let paramPtr = symbol.params, symbol.param_len > 0 {
+                    let paramBuffer = UnsafeBufferPointer(start: paramPtr, count: Int(symbol.param_len))
+                    params = paramBuffer.map { param in
+                        let values: [TypstCompletionValueInfo]
+                        if let valuePtr = param.values, param.value_len > 0 {
+                            let valueBuffer = UnsafeBufferPointer(start: valuePtr, count: Int(param.value_len))
+                            values = valueBuffer.compactMap { value in
+                                guard let labelPtr = value.label,
+                                      let insertPtr = value.insert_text else { return nil }
+                                return TypstCompletionValueInfo(
+                                    label: String(cString: labelPtr),
+                                    insertText: String(cString: insertPtr),
+                                    detail: Self.nonEmptyCString(value.detail)
+                                )
+                            }
+                        } else {
+                            values = []
+                        }
+
+                        return TypstCompletionParamInfo(
+                            name: Self.nonEmptyCString(param.name) ?? "",
+                            docs: Self.nonEmptyCString(param.docs),
+                            input: Self.nonEmptyCString(param.input),
+                            defaultValue: Self.nonEmptyCString(param.default_value),
+                            values: values,
+                            positional: param.positional,
+                            named: param.named,
+                            variadic: param.variadic,
+                            required: param.required,
+                            settable: param.settable
+                        )
+                    }
+                } else {
+                    params = []
+                }
+
+                let location = symbol.utf16_location == UInt32.max ? nil : Int(symbol.utf16_location)
+                let scopeEnd = symbol.utf16_scope_end == UInt32.max ? nil : Int(symbol.utf16_scope_end)
+                symbols.append(TypstCompletionSymbolInfo(
+                    name: String(cString: namePtr),
+                    kind: kind,
+                    detail: Self.nonEmptyCString(symbol.detail),
+                    utf16Location: location,
+                    utf16ScopeEnd: scopeEnd,
+                    params: params
+                ))
+            }
+
+            return symbols
+        }
+#else
+        return nil
+#endif
+    }
+
+    /// Return Typst syntax context at a UTF-16 cursor offset.
+    nonisolated static func contextAt(source: String, utf16Offset: Int) -> TypstCursorContext? {
+#if TYPST_FFI_AVAILABLE
+        let clampedOffset = max(0, min(utf16Offset, source.utf16.count))
+        return source.withCString { cSource in
+            let result = typst_context_at(cSource, UInt32(clampedOffset))
+            defer { typst_free_context_result(result) }
+
+            guard result.success else { return nil }
+            let nodes: [TypstContextNodeInfo]
+            if let ptr = result.items, result.item_len > 0 {
+                let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.item_len))
+                nodes = buffer.compactMap { item in
+                    guard let kindPtr = item.kind else { return nil }
+                    return TypstContextNodeInfo(
+                        kind: String(cString: kindPtr),
+                        location: Int(item.utf16_location),
+                        length: Int(item.utf16_length)
+                    )
+                }
+            } else {
+                nodes = []
+            }
+
+            return TypstCursorContext(
+                nodes: nodes,
+                functionName: Self.nonEmptyCString(result.function_name)
+            )
+        }
+#else
+        return nil
+#endif
+    }
+
+#if TYPST_FFI_AVAILABLE
+    nonisolated private static func nonEmptyCString(_ ptr: UnsafeMutablePointer<CChar>?) -> String? {
+        guard let ptr else { return nil }
+        let value = String(cString: ptr)
+        return value.isEmpty ? nil : value
+    }
+
     nonisolated private static func parseSourceMap(_ result: TypstResultWithMap) -> SourceMap {
         guard let ptr = result.source_map, result.source_map_len > 0 else {
             return SourceMap(byOffset: [], byPosition: [])
