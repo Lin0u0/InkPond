@@ -2335,9 +2335,11 @@ version = "0.14.2"
 dependencies = [
  "flate2",
  "hayagriva",
+ "syntect",
  "tar",
  "typst",
  "typst-assets",
+ "typst-library",
  "typst-pdf",
  "ureq",
 ]
