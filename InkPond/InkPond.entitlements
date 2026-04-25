@@ -15,5 +15,9 @@
 	<array>
 		<string>iCloud.P0int.Typist</string>
 	</array>
+	<key>com.apple.developer.user-fonts</key>
+	<array>
+		<string>app-usage</string>
+	</array>
 </dict>
 </plist>

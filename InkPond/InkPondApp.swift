@@ -13,7 +13,6 @@ import os
 struct InkPondApp: App {
     @State private var storageManager: StorageManager
     @State private var modelContainer: ModelContainer?
-    @State private var containerIdentity = UUID()
     @State private var snippetStore = SnippetStore()
 
     init() {
@@ -57,7 +56,6 @@ struct InkPondApp: App {
             Group {
                 if let container = modelContainer {
                     ContentView()
-                        .id(containerIdentity)
                         .modelContainer(container)
                         .environment(snippetStore)
                         .environment(storageManager)
@@ -68,11 +66,13 @@ struct InkPondApp: App {
             .task {
                 ExportManager.cleanupTemporaryExports()
                 FontManager.pruneRegistrationCache()
+                await Task.detached(priority: .utility) {
+                    CoreTextFontMaterializer.prunePersistentCache()
+                }.value
             }
             .onChange(of: currentStorageMode) { _, newMode in
                 ProjectFileManager.storageManager = storageManager
                 modelContainer = Self.makeModelContainer(using: newMode)
-                containerIdentity = UUID()
             }
         }
     }

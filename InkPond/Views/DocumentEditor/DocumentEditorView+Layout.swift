@@ -130,10 +130,15 @@ extension DocumentEditorView {
         PreviewPane(
             compiler: compiler,
             source: entrySource,
-            fontPaths: compileFontPaths,
+            compileSource: CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts),
+            fontPaths: resolvedCompileFonts.fontPaths,
+            fontWarnings: resolvedCompileFonts.warnings,
+            preflightError: fontResolutionError,
             rootDir: rootDir,
             previewCacheDescriptor: compiledPreviewCacheDescriptor,
             compileToken: compileToken,
+            drivesCompilation: sizeClass == .regular,
+            cancelsCompilerOnDisappear: sizeClass == .regular,
             focusCoordinator: focusCoordinator,
             sourceMap: isSyncEnabled ? compiler.sourceMap : nil,
             syncCoordinator: syncCoordinator,
@@ -215,16 +220,28 @@ extension DocumentEditorView {
             GeometryReader { geo in
                 let topInset = geo.safeAreaInsets.top
                 ZStack {
+                    PreviewCompileDriver(
+                        compiler: compiler,
+                        source: entrySource,
+                        compileSource: CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts),
+                        fontPaths: resolvedCompileFonts.fontPaths,
+                        preflightError: fontResolutionError,
+                        rootDir: rootDir,
+                        previewCacheDescriptor: compiledPreviewCacheDescriptor,
+                        compileToken: compileToken
+                    )
                     editorPane(topViewportInset: topInset)
                         .ignoresSafeArea(edges: .top)
                         .modifier(SoftScrollEdgeEffectModifier())
                         .opacity(selectedTab == editorTab ? 1 : 0)
+                        .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
-                    previewPane(topViewportInset: topInset)
-                        .ignoresSafeArea(edges: .top)
-                        .modifier(SoftScrollEdgeEffectModifier())
-                        .opacity(selectedTab == previewTab ? 1 : 0)
-                        .accessibilityHidden(selectedTab != previewTab)
+                    if selectedTab == previewTab {
+                        previewPane(topViewportInset: topInset)
+                            .ignoresSafeArea(edges: .top)
+                            .modifier(SoftScrollEdgeEffectModifier())
+                            .accessibilityHidden(false)
+                    }
                 }
             }
         }
@@ -234,6 +251,10 @@ extension DocumentEditorView {
         if sizeClass == .regular || selectedTab == previewTab {
             return {
                 guard flushPendingSave() else { return }
+                if let fontResolutionError {
+                    exporter.exportError = fontResolutionError
+                    return
+                }
                 exporter.exportPDF(for: document, cachedPDF: compiler.pdfDocument)
             }
         }
@@ -324,7 +345,10 @@ extension DocumentEditorView {
 
         Section {
             Button {
-                clearCachesAndRecompile()
+                Task { @MainActor in
+                    await Task.yield()
+                    clearCachesAndRecompile()
+                }
             } label: {
                 Label("Recompile", systemImage: "arrow.clockwise.circle")
             }
@@ -517,14 +541,20 @@ extension DocumentEditorView {
                             }
                             Section {
                                 Button {
-                                    compilePreviewNow()
+                                    Task { @MainActor in
+                                        await Task.yield()
+                                        compilePreviewNow()
+                                    }
                                 } label: {
                                     Label("Compile Now", systemImage: "play.circle")
                                 }
                                 .disabled(!canTriggerPreviewActions)
 
                                 Button {
-                                    clearCachesAndRecompile()
+                                    Task { @MainActor in
+                                        await Task.yield()
+                                        clearCachesAndRecompile()
+                                    }
                                 } label: {
                                     Label("Recompile", systemImage: "arrow.clockwise.circle")
                                 }
@@ -619,8 +649,12 @@ extension DocumentEditorView {
     var editorLifecycleHandlers: some View {
         editorPresentation
             .onAppear {
-                refreshCompileFontPaths()
+                if ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" {
+                    selectedTab = previewTab
+                }
                 prepareDocumentForEditing()
+                refreshResolvedFonts(includeAvailableFamilies: false)
+                scheduleAvailableFontFamilyRefresh()
                 refreshReferenceCompletions()
                 if hasSavedPosition() {
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -640,6 +674,8 @@ extension DocumentEditorView {
                 positionRestoreDismissTask = nil
                 positionSyncTask?.cancel()
                 positionSyncTask = nil
+                fontFamilyRefreshTask?.cancel()
+                fontFamilyRefreshTask = nil
                 _ = flushPendingSave()
                 persistEditorPositionIfNeeded()
                 stopConflictMonitoring()
@@ -728,16 +764,20 @@ extension DocumentEditorView {
                     syncCursorToPreviewIfPending()
                 }
                 guard pendingManualCompileFeedback, newValue != nil, compiler.errorMessage == nil else { return }
-                pendingManualCompileFeedback = false
-                InteractionFeedback.notify(.success)
-                AccessibilitySupport.announce(L10n.a11yCompileSuccess)
+                Task { @MainActor in
+                    pendingManualCompileFeedback = false
+                    InteractionFeedback.notify(.success)
+                    AccessibilitySupport.announce(L10n.a11yCompileSuccess)
+                }
             }
             .onChange(of: compiler.errorMessage) { _, newValue in
                 compilationErrorLines = recomputeCompilationErrorLines()
                 guard pendingManualCompileFeedback, newValue != nil else { return }
-                pendingManualCompileFeedback = false
-                InteractionFeedback.notify(.error)
-                AccessibilitySupport.announce(L10n.a11yCompileFailed)
+                Task { @MainActor in
+                    pendingManualCompileFeedback = false
+                    InteractionFeedback.notify(.error)
+                    AccessibilitySupport.announce(L10n.a11yCompileFailed)
+                }
             }
     }
 

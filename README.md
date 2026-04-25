@@ -50,7 +50,7 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 - Multi-file projects with customizable entry file
 - Project file browser with .typ, image, and font sections
 - Image import from Photos, clipboard (including HTML paste), and remote URLs
-- Per-project and app-wide font management (bundled CJK fallback included)
+- Per-project, app-wide, and system font resolution for explicit Typst font declarations
 - ZIP project import and export
 - PDF and source (.typ) export
 
@@ -166,7 +166,7 @@ InkPond/
 │   │   ├── TypstCompiler.swift         # Debounced compilation pipeline + cache
 │   │   ├── SourceMap.swift             # Line↔page bidirectional mapping
 │   │   ├── ProjectFileManager.swift    # Per-project file CRUD + validation
-│   │   ├── FontManager.swift           # Bundled CJK + project + app font resolution
+│   │   ├── FontManager.swift           # Project/app font metadata + parsing helpers
 │   │   ├── ExportManager.swift         # PDF/source/ZIP export (custom ZIP writer)
 │   │   ├── ExportController.swift      # Export UI state machine
 │   │   ├── ZipImporter.swift           # ZIP project import
@@ -215,7 +215,6 @@ InkPond/
 
 - [Typst](https://github.com/typst/typst) - core typesetting engine used for rendering and PDF generation (Apache 2.0)
 - [Catppuccin](https://github.com/catppuccin/catppuccin) - color system used by the editor themes (MIT)
-- [Source Han Sans](https://github.com/adobe-fonts/source-han-sans) / [Source Han Serif](https://github.com/adobe-fonts/source-han-serif) - bundled CJK fonts used by default in the app (SIL Open Font License 1.1)
 - [swift-bridge](https://github.com/chinedufn/swift-bridge) - inspiration and reference for Swift/Rust interop patterns (MIT or Apache-2.0)
 
 ## Special Thanks

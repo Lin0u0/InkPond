@@ -85,8 +85,9 @@ struct TypstBridge {
     /// crossing the MainActor boundary (SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor).
     nonisolated static func compile(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<Data, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
-        os_log(.debug, "TypstBridge: passing %d font paths to Rust", fontPaths.count)
-        for (i, p) in fontPaths.prefix(5).enumerated() {
+        let effectiveFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: fontPaths)
+        os_log(.debug, "TypstBridge: passing %d font paths to Rust", effectiveFontPaths.count)
+        for (i, p) in effectiveFontPaths.prefix(5).enumerated() {
             os_log(.debug, "TypstBridge: font[%d] = %{public}@", i, p as NSString)
         }
 
@@ -101,7 +102,7 @@ struct TypstBridge {
 
         // Hold C strings alive for the duration of the FFI call.
         return source.withCString { cSource in
-            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = fontPaths.map { strdup($0) }
+            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = effectiveFontPaths.map { strdup($0) }
             defer { mutablePtrs.forEach { free($0) } }
 
             return mutablePtrs.withUnsafeBufferPointer { buf in
@@ -142,6 +143,7 @@ struct TypstBridge {
     /// bidirectional editor ↔ preview sync.
     nonisolated static func compileWithSourceMap(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<(Data, SourceMap), TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
+        let effectiveFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: fontPaths)
         let cacheDir = packageCacheDirectoryURL?.path
         if let localPackagesDirectoryURL {
             let store = LocalPackageStore(rootURL: localPackagesDirectoryURL)
@@ -151,7 +153,7 @@ struct TypstBridge {
         let localPkgDir = localPackagesDirectoryURL?.path
 
         return source.withCString { cSource in
-            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = fontPaths.map { strdup($0) }
+            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = effectiveFontPaths.map { strdup($0) }
             defer { mutablePtrs.forEach { free($0) } }
 
             return mutablePtrs.withUnsafeBufferPointer { buf in

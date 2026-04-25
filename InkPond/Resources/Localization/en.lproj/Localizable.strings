@@ -35,16 +35,16 @@
 "app_fonts.summary.imported" = "%d imported";
 "app_fonts.alert.error" = "Font Error";
 "app_fonts.overview.title" = "App fonts are available to every project.";
-"app_fonts.overview.detail" = "Bundled Source Han CJK fonts are built in and read-only. Imported App fonts are not included when you export a project ZIP.";
-"project_fonts.footer" = "App fonts are available to every project. Built-in App fonts are read-only; Add Font imports project-only fonts.";
+"app_fonts.overview.detail" = "Imported App fonts are available to every project. System and installed fonts can be used when a document explicitly references them. Project ZIP exports do not bundle App, system, or installed fonts.";
+"project_fonts.footer" = "App fonts are available to every project. Add Font imports project-only fonts.";
 "project_fonts.empty" = "No project fonts";
 "font.scope.built_in" = "built-in";
 "font.scope.app" = "app";
 "font.scope.project" = "project";
 "font.faces_count" = "%d faces";
 "font.copyName" = "Copy Font Name";
-"app_fonts.export_warning.title" = "App Fonts Not Included";
-"app_fonts.export_warning.message" = "Project ZIP exports only the project directory. Imported App fonts are not bundled and must exist separately on the destination device.";
+"app_fonts.export_warning.title" = "External Fonts Not Included";
+"app_fonts.export_warning.message" = "Project ZIP exports only the project directory. App, system, and installed fonts are not bundled and must exist separately on the destination device.";
 "settings.version_format" = "Version %@ (%@)";
 "settings.typst_version_format" = "Typst iOS %@";
 
@@ -62,6 +62,11 @@
 "error.typst.compiler_not_linked" = "Typst compiler library not linked. Run rust-ffi/build-ios.sh.";
 "error.typst.unknown_compilation" = "Unknown compilation error";
 "error.typst.compilation_timeout" = "Compilation timed out.";
+"error.font_resolution.unresolved_expression" = "InkPond can resolve only literal Typst font names right now. In %1$@, replace %2$@ with a quoted family name such as \"PingFang SC\" or a tuple of quoted family names.";
+"error.font_resolution.missing_families" = "Missing fonts: %@. Install them system-wide, import them into App Fonts, or add them to the project.";
+"warning.font_fallback.title" = "Font Fallback";
+"warning.font_fallback.message" = "Some text may render with fallback font \"%@\" because the selected font does not cover every character.";
+"warning.font_fallback.dismiss" = "Dismiss font fallback warning";
 
 "error.local_package.storage_unavailable" = "Local packages storage directory is unavailable.";
 "error.local_package.missing_manifest" = "The folder does not contain a typst.toml manifest.";
@@ -76,6 +81,7 @@
 "error.image.process_failed" = "Could not process image.";
 "error.datastore.title" = "Unable to Open Data Store";
 "error.datastore.message" = "InkPond could not open its data store. Try restarting the app. If the problem persists, reinstalling may help.";
+"error.cache.unsafe_path" = "The cache file path is invalid.";
 
 "icloud.title" = "iCloud";
 "icloud.summary.on" = "On";
@@ -85,8 +91,10 @@
 "icloud.sync_fonts_toggle" = "Sync Fonts";
 "icloud.sync_packages_toggle" = "Sync Packages";
 "icloud.sync_snippets_toggle" = "Sync Snippets";
-"icloud.sync_footer.on" = "Projects sync via iCloud. Fonts, packages, and snippets follow the toggles above.";
-"icloud.sync_footer.off" = "Projects stay local. You can preselect fonts, packages, and snippets before turning project sync on.";
+"icloud.additional_content_section" = "Additional Content";
+"icloud.additional_content_footer" = "These choices control whether app fonts, local packages, and snippets are stored in iCloud when project sync is on.";
+"icloud.sync_footer.on" = "Project files are stored in iCloud Drive and sync through iCloud.";
+"icloud.sync_footer.off" = "Project files stay on this device. Turn this on to move local projects into iCloud and show iCloud projects.";
 "icloud.error.unavailable" = "iCloud is not available. Please sign in to iCloud in Settings.";
 "icloud.migrating" = "Migrating files…";
 "icloud.restart_title" = "Restart Required";
@@ -194,14 +202,22 @@
 "Compile Cache" = "Compile Cache";
 "Manage Package Cache" = "Manage Package Cache";
 "Package Cache" = "Package Cache";
+"Manage System Font Cache" = "Manage System Font Cache";
+"System Font Cache" = "System Font Cache";
 "Overview" = "Overview";
 "Total Size" = "Total Size";
 "Cached Documents" = "Cached Documents";
 "Cached Packages" = "Cached Packages";
+"Cached Fonts" = "Cached Fonts";
 "Documents" = "Documents";
 "Packages" = "Packages";
 "No cached document previews" = "No cached document previews";
 "No cached @preview packages" = "No cached @preview packages";
+"No cached system fonts" = "No cached system fonts";
+"Clear System Font Cache" = "Clear System Font Cache";
+"Clear System Font Cache?" = "Clear System Font Cache?";
+"This removes generated system font files. InkPond will rebuild them the next time a document needs them." = "This removes generated system font files. InkPond will rebuild them the next time a document needs them.";
+"Generated system font files stay local to this device and are excluded from iCloud Backup." = "Generated system font files stay local to this device and are excluded from iCloud Backup.";
 
 "local_packages.title" = "Local Packages";
 "local_packages.import" = "Import Packages";
@@ -243,6 +259,9 @@
 "This removes all downloaded @preview packages. They will be downloaded again on the next compile." = "This removes all downloaded @preview packages. They will be downloaded again on the next compile.";
 "Updated %@" = "Updated %@";
 "Clear All" = "Clear All";
+"settings.feedback.section" = "Feedback";
+"settings.feedback.github_issues" = "GitHub Issues";
+"settings.feedback.github_issues.hint" = "Opens GitHub Issues to report bugs or share suggestions.";
 "Acknowledgements" = "Acknowledgements";
 "Special Thanks" = "Special Thanks";
 "The open-source typesetting system at the core of InkPond." = "The open-source typesetting system at the core of InkPond.";

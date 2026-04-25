@@ -22,7 +22,7 @@ struct ProjectSettingsSheet: View {
         for fileName in document.fontFileNames {
             let fallbackName = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
             let path = FontManager.fontFilePath(for: fileName, in: document)
-            let familyName = path.flatMap(FontManager.typstFamilyName(forBundledPath:)) ?? fallbackName
+            let familyName = path.flatMap(FontManager.typstFamilyName(forFontAtPath:)) ?? fallbackName
             let faceName = path.flatMap(FontManager.typstFaceName(forFontAtPath:)) ?? fallbackName
             let face = AppFontFace(displayName: faceName, path: path ?? "")
             grouped[familyName, default: ([], [])].fileNames.append(fileName)
@@ -79,7 +79,7 @@ struct ProjectSettingsSheet: View {
                 ) {
                     ExpandableFontList(
                         groups: appFontLibrary.groupedItems,
-                        scopeLabel: { $0.isBuiltIn ? L10n.fontScopeBuiltIn : L10n.fontScopeApp }
+                        scopeLabel: { _ in L10n.fontScopeApp }
                     )
 
                     if document.fontFileNames.isEmpty {
@@ -160,10 +160,20 @@ struct ProjectSettingsSheet: View {
                 actionError = firstError.localizedDescription
             }
         }
+        .fileDialogDefaultDirectory(preferredFontPickerDirectory)
         .onAppear {
             typFiles = ProjectFileManager.listAllTypFiles(for: document)
             if typFiles.isEmpty { typFiles = [document.entryFileName] }
         }
     }
 
+    private var preferredFontPickerDirectory: URL? {
+        if StorageSyncPreferences.syncFonts,
+           let ubiquityDocuments = FileManager.default
+            .url(forUbiquityContainerIdentifier: AppIdentity.iCloudContainerIdentifier)?
+            .appendingPathComponent("Documents", isDirectory: true) {
+            return ubiquityDocuments
+        }
+        return nil
+    }
 }

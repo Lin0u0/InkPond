@@ -67,11 +67,11 @@ xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 - `InkPond/Editor/KeyboardAccessoryView.swift`: accessory bar with photo import and snippet insertion buttons
 
 ### Compiler Layer
-- `InkPond/Compiler/TypstBridge.swift`: Rust FFI wrapper; `compile()` → PDF data; `compileWithSourceMap()` → PDF + `SourceMap`; null-terminated UTF-8 source, font paths (bundled CJK + project + app), rootDir for local file resolution
+- `InkPond/Compiler/TypstBridge.swift`: Rust FFI wrapper; `compile()` → PDF data; `compileWithSourceMap()` → PDF + `SourceMap`; null-terminated UTF-8 source, explicitly resolved font paths, rootDir for local file resolution
 - `InkPond/Compiler/TypstCompiler.swift`: `@Observable @MainActor`; debounced compilation (350ms, `.utility` priority) and immediate compilation (`.medium` priority, for export); 30s timeout; integrates `CompiledPreviewCacheStore`; exposes `pdfDocument`, `errorMessage`, `sourceMap`
 - `InkPond/Compiler/SourceMap.swift`: sorted arrays by source offset and by (page, yPoints); binary search lookup for both directions
 - `InkPond/Compiler/ProjectFileManager.swift` (+ Files/Listing/Sync extensions): per-project directory management; file CRUD with path traversal validation; rename with atomic directory move; import files; build recursive project tree; supported image extensions (bmp/eps/gif/heic/jpg/png/svg/webp/etc), font extensions (otf/ttf/woff/woff2)
-- `InkPond/Compiler/FontManager.swift`: three font sources in precedence: bundled CJK (Source Han Sans/Serif SC), project fonts (`{root}/fonts/`), app fonts (`Library/ApplicationSupport/AppFonts/`); font name extraction from OTF/TTF name table
+- `InkPond/Compiler/FontManager.swift`: project/app font metadata helpers plus system-font parsing from OTF/TTF name tables; compile-time selection is handled separately by the font resolver
 - `InkPond/Compiler/ExportManager.swift`: PDF/source/ZIP export; custom streaming ZIP writer (no external dependency; local file header + central directory + EOCD, CRC-32 per file)
 - `InkPond/Compiler/ZipImporter.swift`: ZIP project import with entry/image/font extraction
 - `InkPond/Compiler/DirectoryMonitor.swift`: `DispatchSourceFileSystemObject` watching Documents for external changes

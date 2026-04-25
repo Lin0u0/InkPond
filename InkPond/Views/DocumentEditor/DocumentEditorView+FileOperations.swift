@@ -73,6 +73,7 @@ extension DocumentEditorView {
         lastPersistedText = text
         if name == document.entryFileName {
             entrySource = text
+            _ = refreshResolvedFonts(includeAvailableFamilies: false)
         }
         compilationErrorLines = recomputeCompilationErrorLines()
 
@@ -104,6 +105,7 @@ extension DocumentEditorView {
         guard !currentFileName.isEmpty else { return }
         if isEditingEntryFile {
             entrySource = content
+            _ = refreshResolvedFonts(includeAvailableFamilies: false)
         }
         scheduleSave(content: content, for: currentFileName)
     }
@@ -147,6 +149,7 @@ extension DocumentEditorView {
                     self.lastPersistedText = content
                     self.document.modifiedAt = Date()
                     if shouldRefreshPreviewAfterSave {
+                        _ = self.refreshResolvedFonts(includeAvailableFamilies: false)
                         self.compileToken = UUID()
                     }
                 }
@@ -221,6 +224,7 @@ extension DocumentEditorView {
             lastPersistedText = content
             document.modifiedAt = Date()
             if shouldRefreshPreviewAfterSave {
+                _ = refreshResolvedFonts(includeAvailableFamilies: false)
                 compileToken = UUID()
             }
             return true
@@ -377,10 +381,15 @@ extension DocumentEditorView {
 
     func compilePreviewNow() {
         guard flushPendingSave() else { return }
+        _ = refreshResolvedFonts(includeAvailableFamilies: false)
+        if let fontResolutionError {
+            compiler.presentPreflightError(fontResolutionError)
+            return
+        }
         pendingManualCompileFeedback = true
         compiler.compileNow(
-            source: entrySource,
-            fontPaths: compileFontPaths,
+            source: CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts),
+            fontPaths: resolvedCompileFonts.fontPaths,
             rootDir: rootDir,
             previewCachePolicy: .bypassCache,
             previewCacheDescriptor: compiledPreviewCacheDescriptor
@@ -389,11 +398,16 @@ extension DocumentEditorView {
 
     func clearCachesAndRecompile() {
         guard flushPendingSave() else { return }
+        _ = refreshResolvedFonts(includeAvailableFamilies: false)
+        if let fontResolutionError {
+            compiler.presentPreflightError(fontResolutionError)
+            return
+        }
         pendingManualCompileFeedback = true
         InteractionFeedback.notify(.warning)
         AccessibilitySupport.announce(L10n.a11yCacheRefreshStarted)
-        let source = entrySource
-        let fontPaths = compileFontPaths
+        let source = CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts)
+        let fontPaths = resolvedCompileFonts.fontPaths
         let rootDirectory = rootDir
 
         compiler.clearPreview()
@@ -421,17 +435,76 @@ extension DocumentEditorView {
     }
 
     @discardableResult
-    func refreshCompileFontPaths() -> Bool {
-        let latestPaths = FontManager.allFontPaths(for: document)
-        guard latestPaths != compileFontPaths else { return false }
-        compileFontPaths = latestPaths
-        return true
+    func refreshResolvedFonts(includeAvailableFamilies: Bool = true) -> Bool {
+        let resolver = CompileFontResolver()
+        let previousFamilies = availableFontFamilies
+        if includeAvailableFamilies {
+            let latestFamilies = resolver.availableFontFamilies(for: document)
+            if latestFamilies != availableFontFamilies {
+                availableFontFamilies = latestFamilies
+            }
+        }
+
+        do {
+            let latestResolvedFonts = try resolver.resolveFonts(
+                for: document,
+                entrySourceOverride: entrySource.isEmpty ? nil : entrySource,
+                preserving: resolvedCompileFonts
+            )
+            if fontResolutionError != nil {
+                fontResolutionError = nil
+            }
+
+            let didChange = latestResolvedFonts != resolvedCompileFonts
+            if didChange {
+                resolvedCompileFonts = latestResolvedFonts
+            }
+            return didChange || previousFamilies != availableFontFamilies
+        } catch {
+            let message = error.localizedDescription
+            if fontResolutionError != message {
+                fontResolutionError = message
+            }
+            return previousFamilies != availableFontFamilies
+        }
     }
 
     func handleCompileInputsChanged() {
-        guard refreshCompileFontPaths() else { return }
+        scheduleAvailableFontFamilyRefresh()
+        let didChange = refreshResolvedFonts(includeAvailableFamilies: false)
+        guard fontResolutionError == nil else { return }
+        guard didChange else { return }
         guard canTriggerPreviewActions else { return }
         compileToken = UUID()
+    }
+
+    func scheduleAvailableFontFamilyRefresh() {
+        fontFamilyRefreshTask?.cancel()
+
+        let projectFamilies = FontManager.familyNames(from: FontManager.projectFontRecords(for: document))
+        let appFamilies = FontManager.familyNames(from: FontManager.appFontRecords())
+        fontFamilyRefreshTask = Task { @MainActor in
+            let systemFamilies = await Task.detached(priority: .utility) {
+                SystemFontCatalog().availableFamilyNames()
+            }.value
+            guard !Task.isCancelled else { return }
+
+            let latestFamilies = mergedFontFamilies([projectFamilies, appFamilies, systemFamilies])
+            if latestFamilies != availableFontFamilies {
+                availableFontFamilies = latestFamilies
+            }
+        }
+    }
+
+    private func mergedFontFamilies(_ buckets: [[String]]) -> [String] {
+        var seen = Set<String>()
+        var families: [String] = []
+        for bucket in buckets {
+            for family in bucket where seen.insert(family).inserted {
+                families.append(family)
+            }
+        }
+        return families.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     func refreshReferenceCompletions() {
@@ -483,7 +556,7 @@ extension DocumentEditorView {
     }
 
     func triggerZipExport() {
-        if appFontLibrary.isEmpty {
+        if !resolvedCompileFonts.includesExternalFonts {
             guard flushPendingSave() else { return }
             exporter.exportZip(for: document)
         } else {

@@ -85,17 +85,8 @@ impl SimpleWorld {
     /// # Safety
     /// `options` must be null or point to a valid `TypstOptions`.
     unsafe fn new(source_text: &str, options: *const TypstOptions) -> Self {
-        let bundled_faces = bundled_font_faces();
-        let mut fonts: Vec<Font> = Vec::with_capacity(bundled_faces.len());
+        let mut fonts: Vec<Font> = Vec::new();
         let mut book = FontBook::new();
-
-        // --- Bundled fonts (Latin, Math, Mono), parsed once then cloned ---
-        for font in bundled_faces.iter().cloned() {
-            book.push(font.info().clone());
-            fonts.push(font);
-        }
-
-        debug_log!("[typst-ffi] bundled fonts: {}", fonts.len());
 
         let mut pkg_cache_root: Option<PathBuf> = None;
         let mut root_dir: Option<PathBuf> = None;
@@ -156,7 +147,13 @@ impl SimpleWorld {
             }
         }
 
-        // --- Extra font paths (system CJK fonts from Swift/CoreText) ---
+        // --- Extra font paths (system/user/project fonts from Swift/CoreText) ---
+        //
+        // Insert these before Typst's bundled fonts. If the user explicitly
+        // selects an iOS family such as PingFang SC and one character needs
+        // fallback (Latin cascade, emoji, etc.), Typst's fallback search should
+        // prefer the platform fonts Swift resolved for this document before
+        // falling back to Libertinus/New Computer Modern from typst-assets.
         if !font_paths.is_empty() {
             let extra_faces = extra_font_faces(&font_paths);
             for font in extra_faces.iter().cloned() {
@@ -169,6 +166,14 @@ impl SimpleWorld {
                 font_paths.len()
             );
         }
+
+        let bundled_faces = bundled_font_faces();
+        for font in bundled_faces.iter().cloned() {
+            book.push(font.info().clone());
+            fonts.push(font);
+        }
+
+        debug_log!("[typst-ffi] bundled fonts: {}", bundled_faces.len());
 
         let main_id = FileId::new(None, VirtualPath::new("main.typ"));
         let source = Source::new(main_id, source_text.to_string());
@@ -1110,6 +1115,52 @@ mod tests {
         let world = unsafe { SimpleWorld::new("= Hello", &options) };
 
         assert!(world.pkg_cache_root.is_none());
+    }
+
+    #[test]
+    fn typst_pdf_embeds_sbix_emoji_as_image_xobject() {
+        let emoji_font = Path::new("/System/Library/Fonts/Apple Color Emoji.ttc");
+        if !emoji_font.exists() {
+            return;
+        }
+
+        let source = CString::new(
+            r#"#set page(width: 120pt, height: 120pt, margin: 12pt)
+#set text(font: "Apple Color Emoji", size: 72pt)
+😀"#,
+        )
+        .unwrap();
+        let font_path = CString::new(emoji_font.to_string_lossy().as_bytes()).unwrap();
+        let font_paths = [font_path.as_ptr()];
+        let options = TypstOptions {
+            font_paths: font_paths.as_ptr(),
+            font_path_count: font_paths.len(),
+            cache_dir: std::ptr::null(),
+            root_dir: std::ptr::null(),
+            local_packages_dir: std::ptr::null(),
+        };
+
+        let result = unsafe { typst_compile_impl(source.as_ptr(), &options) };
+        assert!(
+            result.success,
+            "{}",
+            if result.error_message.is_null() {
+                "compile failed without an error message".to_string()
+            } else {
+                unsafe { CStr::from_ptr(result.error_message) }
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        );
+
+        let pdf = unsafe { std::slice::from_raw_parts(result.pdf_data, result.pdf_len) }.to_vec();
+        unsafe { typst_free_result(result) };
+
+        assert!(
+            pdf.windows(b"/Subtype /Image".len())
+                .any(|window| window == b"/Subtype /Image"),
+            "sbix emoji should be emitted as a PDF image XObject"
+        );
     }
 
     #[derive(Clone)]

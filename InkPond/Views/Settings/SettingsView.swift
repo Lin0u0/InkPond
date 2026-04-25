@@ -9,6 +9,8 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    private static let githubIssuesURL = URL(string: "https://github.com/lin0u0/Typist/issues")!
+
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(AppAppearanceManager.self) var appAppearanceManager
     @Environment(ThemeManager.self) var themeManager
@@ -43,6 +45,7 @@ struct SettingsView: View {
                 packagesSection
                 fontsSection
                 cacheSection
+                feedbackSection
                 aboutSection
             }
             .listStyle(.insetGrouped)
@@ -227,11 +230,7 @@ extension SettingsView {
                     Label(L10n.appFontsTitle, systemImage: "character.textbox")
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text(
-                        appFontLibrary.isEmpty
-                            ? L10n.appFontsBuiltInOnlySummary
-                            : L10n.appFontsImportedSummary(count: appFontLibrary.fileNames.count)
-                    )
+                    Text(L10n.appFontsImportedSummary(count: appFontLibrary.fileNames.count))
                     .foregroundStyle(.secondary)
                 }
             }
@@ -256,6 +255,14 @@ extension SettingsView {
                     .foregroundStyle(.primary)
             }
             .accessibilityIdentifier("settings.cache")
+
+            NavigationLink {
+                MaterializedFontCacheManagementView()
+            } label: {
+                Label(L10n.tr("Manage System Font Cache"), systemImage: "textformat")
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityIdentifier("settings.system-font-cache")
         }
     }
 
@@ -268,6 +275,17 @@ extension SettingsView {
                     .foregroundStyle(.primary)
             }
             .accessibilityIdentifier("settings.acknowledgements")
+        }
+    }
+
+    var feedbackSection: some View {
+        Section(L10n.tr("settings.feedback.section")) {
+            Link(destination: Self.githubIssuesURL) {
+                Label(L10n.tr("settings.feedback.github_issues"), systemImage: "exclamationmark.bubble")
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityIdentifier("settings.feedback.github-issues")
+            .accessibilityHint(L10n.tr("settings.feedback.github_issues.hint"))
         }
     }
 }

@@ -39,11 +39,18 @@ enum ExportManager {
         } catch {
             return .failure(.compilationFailed(error.localizedDescription))
         }
-        let fontPaths = FontManager.allFontPaths(for: document)
+        let resolvedFonts: ResolvedCompileFonts
+        do {
+            resolvedFonts = try CompileFontResolver().resolveFonts(for: document)
+        } catch {
+            return .failure(.compilationFailed(error.localizedDescription))
+        }
+        let effectiveSource = CompileFontResolver.effectiveSource(for: source, resolvedFonts: resolvedFonts)
         let rootDir = ProjectFileManager.projectDirectory(for: document).path
 
         return await Task.detached(priority: TypstCompiler.taskPriority(for: .immediate)) {
-            TypstBridge.compile(source: source, fontPaths: fontPaths, rootDir: rootDir)
+            let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: resolvedFonts.fontPaths)
+            return TypstBridge.compile(source: effectiveSource, fontPaths: materializedFontPaths, rootDir: rootDir)
         }.value
     }
 

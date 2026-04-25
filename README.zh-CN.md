@@ -50,7 +50,7 @@
 - 多文件项目，支持自定义入口文件
 - 项目文件浏览器（.typ / 图片 / 字体分区）
 - 从相册、剪贴板（含 HTML 粘贴）及远程 URL 导入图片
-- 按项目及全局的字体管理（内置 CJK 回退字体）
+- 按项目、App 以及系统字体解析显式 Typst 字体声明
 - ZIP 项目导入与导出
 - PDF 及源文件（.typ）导出
 
@@ -155,7 +155,7 @@ InkPond/
 │   │   ├── TypstCompiler.swift         # 防抖编译管线 + 缓存
 │   │   ├── SourceMap.swift             # 行号 ↔ 页面双向映射
 │   │   ├── ProjectFileManager.swift    # 按项目文件 CRUD + 校验
-│   │   ├── FontManager.swift           # 内置 CJK + 项目 + 全局字体解析
+│   │   ├── FontManager.swift           # 项目/App 字体元数据与解析辅助
 │   │   ├── ExportManager.swift         # PDF/源文件/ZIP 导出（自实现 ZIP）
 │   │   ├── ExportController.swift      # 导出 UI 状态机
 │   │   ├── ZipImporter.swift           # ZIP 项目导入
@@ -202,7 +202,6 @@ InkPond/
 
 - [Typst](https://github.com/typst/typst)：用于排版与 PDF 生成的核心引擎（Apache 2.0）
 - [Catppuccin](https://github.com/catppuccin/catppuccin)：编辑器主题所使用的配色体系（MIT）
-- [Source Han Sans](https://github.com/adobe-fonts/source-han-sans) / [Source Han Serif](https://github.com/adobe-fonts/source-han-serif)：应用内置的 CJK 字体资源（SIL Open Font License 1.1）
 - [swift-bridge](https://github.com/chinedufn/swift-bridge)：Swift/Rust 互操作方案的重要参考（MIT 或 Apache-2.0）
 
 ## 特别感谢

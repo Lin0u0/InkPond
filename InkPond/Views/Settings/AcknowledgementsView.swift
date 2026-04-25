@@ -22,12 +22,6 @@ struct AcknowledgementsView: View {
                     url: "https://github.com/catppuccin/catppuccin"
                 )
                 creditRow(
-                    name: "Source Han Sans / Serif",
-                    detail: "Bundled CJK fonts used as default fallbacks in InkPond.",
-                    license: "OFL-1.1",
-                    url: "https://github.com/adobe-fonts/source-han-sans"
-                )
-                creditRow(
                     name: "swift-bridge",
                     detail: "Reference implementation for Swift/Rust interop.",
                     license: "MIT or Apache-2.0",

@@ -44,12 +44,15 @@ struct DocumentEditorView: View {
     @State var lastPersistedText: String = ""
     @State var saveTask: Task<Void, Never>?
     @State var backgroundFileWriter = BackgroundDocumentFileWriter()
-    @State var compileFontPaths: [String]
+    @State var resolvedCompileFonts: ResolvedCompileFonts = .empty
+    @State var availableFontFamilies: [String] = []
+    @State var fontFamilyRefreshTask: Task<Void, Never>?
+    @State var fontResolutionError: String?
     @State var conflictMonitor = FileConflictMonitor()
 
     let editorTab:Int = 0
     let previewTab:Int = 1
-    @State var selectedTab:Int = 0
+    @State var selectedTab:Int = ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" ? 1 : 0
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
     @State var showingPhotoPicker = false
@@ -102,7 +105,7 @@ struct DocumentEditorView: View {
     }
 
     var completionFontFamilies: [String] {
-        FontManager.completionFamilyNames(from: compileFontPaths)
+        availableFontFamilies
     }
 
     init(
@@ -111,7 +114,6 @@ struct DocumentEditorView: View {
     ) {
         self.document = document
         self.isSidebarVisible = isSidebarVisible
-        _compileFontPaths = State(initialValue: FontManager.allFontPaths(for: document))
     }
 
     var body: some View {
