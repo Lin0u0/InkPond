@@ -26,16 +26,18 @@ struct AutoPairEngine {
         let storage = textView.textStorage
         let selectedRange = textView.selectedRange
         let nsString = storage.string as NSString
+        let source = storage.string
 
         // Handle Enter key — auto-indent
         if text == "\n" {
-            return handleNewline(in: textView, storage: storage, selectedRange: selectedRange, nsString: nsString)
+            return handleNewline(in: textView, storage: storage, selectedRange: selectedRange, nsString: nsString, source: source)
         }
 
         // Only handle single-character inserts for pairing
         guard text.count == 1 else { return false }
 
         let cursorLocation = selectedRange.location
+        let context = TypstBridge.contextAt(source: source, utf16Offset: cursorLocation)
 
         // Type-over: if typing a closing char and next char matches, just move cursor
         if closeChars.contains(text),
@@ -49,6 +51,8 @@ struct AutoPairEngine {
 
         // Auto-close: if typing an opening char, insert the pair
         if let close = openToClose[text] {
+            guard shouldAutoClose(text, context: context) else { return false }
+
             // For quotes and $, only auto-close if not already adjacent to same char
             if text == "\"" || text == "$" {
                 if cursorLocation > 0 {
@@ -121,8 +125,15 @@ struct AutoPairEngine {
 
     // MARK: - Newline / Auto-indent
 
-    private static func handleNewline(in textView: UITextView, storage: NSTextStorage, selectedRange: NSRange, nsString: NSString) -> Bool {
+    private static func handleNewline(
+        in textView: UITextView,
+        storage: NSTextStorage,
+        selectedRange: NSRange,
+        nsString: NSString,
+        source: String
+    ) -> Bool {
         let cursor = selectedRange.location
+        let context = TypstBridge.contextAt(source: source, utf16Offset: cursor)
 
         // Find current line's leading whitespace
         let lineRange = nsString.lineRange(for: NSRange(location: cursor, length: 0))
@@ -133,7 +144,7 @@ struct AutoPairEngine {
         let charBefore = cursor > 0 ? nsString.substring(with: NSRange(location: cursor - 1, length: 1)) : ""
         let charAfter = cursor < nsString.length ? nsString.substring(with: NSRange(location: cursor, length: 1)) : ""
 
-        if bracketOpens.contains(charBefore) {
+        if bracketOpens.contains(charBefore), shouldAutoIndent(after: charBefore, context: context) {
             let indent = leadingWhitespace + "    "
             var insertion = "\n" + indent
             let expectedClose = charBefore == "{" ? "}" : "]"
@@ -172,5 +183,51 @@ struct AutoPairEngine {
         }
 
         return false
+    }
+
+    private static func shouldAutoClose(_ text: String, context: TypstCursorContext?) -> Bool {
+        guard let context, !isSuppressedPairingContext(context) else { return false }
+
+        switch text {
+        case "$":
+            return context.contains("Markup") && !context.contains("Equation") && !context.contains("Math")
+        case "\"":
+            return context.contains("Code")
+                || context.contains("Args")
+                || context.contains("Named")
+                || context.contains("ModuleImport")
+                || context.contains("ModuleInclude")
+        default:
+            return true
+        }
+    }
+
+    private static func shouldAutoIndent(after opener: String, context: TypstCursorContext?) -> Bool {
+        guard let context, !isSuppressedPairingContext(context) else { return false }
+
+        switch opener {
+        case "{":
+            return context.contains("Code")
+                || context.contains("CodeBlock")
+                || context.contains("Conditional")
+                || context.contains("WhileLoop")
+                || context.contains("ForLoop")
+        case "[":
+            return context.contains("ContentBlock")
+                || context.contains("Markup")
+                || context.contains("Args")
+                || context.contains("FuncCall")
+        default:
+            return false
+        }
+    }
+
+    private static func isSuppressedPairingContext(_ context: TypstCursorContext) -> Bool {
+        context.contains("Raw")
+            || context.contains("RawLang")
+            || context.contains("RawDelim")
+            || context.contains("LineComment")
+            || context.contains("BlockComment")
+            || context.contains("Str")
     }
 }

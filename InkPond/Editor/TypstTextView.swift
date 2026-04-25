@@ -979,6 +979,8 @@ final class TypstTextView: UITextView {
         switch kind {
         case .value(let isQuoted):
             if isQuoted {
+                insertText = rawInsertText.strippingTypstStringQuotes()
+            } else if rawInsertText.isSelfContainedTypstValue {
                 insertText = rawInsertText
             } else {
                 insertText = "\"" + rawInsertText + "\""
@@ -1077,6 +1079,20 @@ final class TypstTextView: UITextView {
         }
 
         popup.frame = CGRect(origin: CGPoint(x: x, y: y), size: size)
+    }
+}
+
+private extension String {
+    var isSelfContainedTypstValue: Bool {
+        if hasPrefix("\"") || hasPrefix("<") || hasPrefix("(") || hasPrefix("[") { return true }
+        if self == "auto" || self == "none" || self == "true" || self == "false" { return true }
+        if range(of: #"^-?\d+(\.\d+)?([a-zA-Z%]+)?$"#, options: .regularExpression) != nil { return true }
+        return false
+    }
+
+    func strippingTypstStringQuotes() -> String {
+        guard hasPrefix("\""), hasSuffix("\""), count >= 2 else { return self }
+        return String(dropFirst().dropLast())
     }
 }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::os::raw::c_char;
@@ -7,12 +7,12 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
-use typst::foundations::{Bytes, Datetime};
+use typst::foundations::{Bytes, CastInfo, Datetime, Repr, Value};
 use typst::layout::{Frame, FrameItem, PagedDocument, Point, Transform};
 use typst::syntax::ast::AstNode;
 use typst::syntax::package::PackageSpec;
 use typst::syntax::{
-    ast, highlight, parse, FileId, LinkedNode, Source, Span, SyntaxKind, Tag, VirtualPath,
+    ast, highlight, parse, FileId, LinkedNode, Side, Source, Span, SyntaxKind, Tag, VirtualPath,
 };
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
@@ -1268,6 +1268,765 @@ pub unsafe extern "C" fn typst_free_outline_result(result: TypstOutlineResult) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// C FFI — semantic completion symbols and cursor context
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct TypstCompletionValue {
+    /// Display label for this accepted literal value.
+    pub label: *mut c_char,
+    /// Text to insert. May include quotes for string literals.
+    pub insert_text: *mut c_char,
+    /// Short detail, usually Typst's value documentation.
+    pub detail: *mut c_char,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct TypstCompletionParam {
+    pub name: *mut c_char,
+    pub docs: *mut c_char,
+    pub input: *mut c_char,
+    pub default_value: *mut c_char,
+    pub values: *mut TypstCompletionValue,
+    pub value_len: usize,
+    pub positional: bool,
+    pub named: bool,
+    pub variadic: bool,
+    pub required: bool,
+    pub settable: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct TypstCompletionSymbol {
+    /// Symbol name exactly as Typst exposes it.
+    pub name: *mut c_char,
+    /// 0 keyword, 1 function, 2 value, 3 type, 4 module, 5 source-local.
+    pub kind: u32,
+    /// Short display detail.
+    pub detail: *mut c_char,
+    /// UTF-16 source location for source-local symbols, or u32::MAX otherwise.
+    pub utf16_location: u32,
+    /// UTF-16 end of the source-local scope, or u32::MAX for global symbols.
+    pub utf16_scope_end: u32,
+    pub params: *mut TypstCompletionParam,
+    pub param_len: usize,
+}
+
+/// Result returned by `typst_completion_symbols`.
+#[repr(C)]
+pub struct TypstCompletionSymbolResult {
+    pub symbols: *mut TypstCompletionSymbol,
+    pub symbol_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct TypstContextItem {
+    pub kind: *mut c_char,
+    pub utf16_location: u32,
+    pub utf16_length: u32,
+}
+
+/// Result returned by `typst_context_at`.
+#[repr(C)]
+pub struct TypstContextResult {
+    pub items: *mut TypstContextItem,
+    pub item_len: usize,
+    /// Innermost enclosing function call's callee name, if any.
+    pub function_name: *mut c_char,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+#[derive(Clone, Debug)]
+struct OwnedCompletionValue {
+    label: String,
+    insert_text: String,
+    detail: String,
+}
+
+#[derive(Clone, Debug)]
+struct OwnedCompletionParam {
+    name: String,
+    docs: String,
+    input: String,
+    default_value: String,
+    values: Vec<OwnedCompletionValue>,
+    positional: bool,
+    named: bool,
+    variadic: bool,
+    required: bool,
+    settable: bool,
+}
+
+#[derive(Clone, Debug)]
+struct OwnedCompletionSymbol {
+    name: String,
+    kind: u32,
+    detail: String,
+    utf16_location: u32,
+    utf16_scope_end: u32,
+    params: Vec<OwnedCompletionParam>,
+}
+
+static LIBRARY_COMPLETION_SYMBOLS: OnceLock<Vec<OwnedCompletionSymbol>> = OnceLock::new();
+
+/// Return Typst-library symbols plus `#let` / named `#import` symbols from
+/// `source`. The Swift side should treat this as authoritative.
+///
+/// # Safety
+/// `source` may be null or a valid null-terminated UTF-8 C string.
+/// Free the result with `typst_free_completion_symbol_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_completion_symbols(
+    source: *const c_char,
+) -> TypstCompletionSymbolResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_completion_symbols_impl(source)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_completion_symbol_result("Typst completion symbol parser panicked"),
+    }
+}
+
+unsafe fn typst_completion_symbols_impl(source: *const c_char) -> TypstCompletionSymbolResult {
+    let source_str = if source.is_null() {
+        ""
+    } else {
+        match CStr::from_ptr(source).to_str() {
+            Ok(s) => s,
+            Err(_) => return error_completion_symbol_result("source is not valid UTF-8"),
+        }
+    };
+
+    let mut symbols = library_completion_symbols();
+    if !source_str.is_empty() {
+        symbols.extend(local_completion_symbols(source_str));
+    }
+
+    symbols.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then(a.kind.cmp(&b.kind))
+            .then(a.utf16_location.cmp(&b.utf16_location))
+    });
+    symbols.dedup_by(|a, b| {
+        a.name == b.name && a.kind == b.kind && a.utf16_location == b.utf16_location
+    });
+
+    let symbol_len = symbols.len();
+    let (symbols, symbol_len) = if symbol_len > 0 {
+        let ffi_symbols: Vec<_> = symbols
+            .into_iter()
+            .map(completion_symbol_into_ffi)
+            .collect();
+        let mut boxed = ffi_symbols.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, symbol_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstCompletionSymbolResult {
+        symbols,
+        symbol_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn library_completion_symbols() -> Vec<OwnedCompletionSymbol> {
+    LIBRARY_COMPLETION_SYMBOLS
+        .get_or_init(build_library_completion_symbols)
+        .clone()
+}
+
+fn build_library_completion_symbols() -> Vec<OwnedCompletionSymbol> {
+    let library = Library::default();
+    let mut symbols = keyword_completion_symbols();
+    let mut visited = HashSet::new();
+
+    for (name, binding) in library.global.scope().iter() {
+        let name = name.to_string();
+        let value = binding.read();
+        push_symbol_for_value(
+            &mut symbols,
+            &mut visited,
+            name,
+            value,
+            u32::MAX,
+            u32::MAX,
+            0,
+        );
+    }
+
+    symbols
+}
+
+fn push_symbol_for_value(
+    symbols: &mut Vec<OwnedCompletionSymbol>,
+    visited: &mut HashSet<String>,
+    name: String,
+    value: &Value,
+    utf16_location: u32,
+    utf16_scope_end: u32,
+    depth: usize,
+) {
+    if !visited.insert(name.clone()) {
+        return;
+    }
+
+    symbols.push(completion_symbol_for_value(
+        name.clone(),
+        value,
+        utf16_location,
+        utf16_scope_end,
+    ));
+
+    // Modules, types, and element functions expose scoped fields such as
+    // `calc.sin`, `table.cell`, and `outline.entry`. Keep the walk finite:
+    // two levels covers standard-library fields without chasing cycles in `std`.
+    if depth >= 2 || name == "std" {
+        return;
+    }
+
+    if let Some(scope) = value.scope() {
+        for (field, binding) in scope.iter() {
+            let child_name = format!("{name}.{field}");
+            push_symbol_for_value(
+                symbols,
+                visited,
+                child_name,
+                binding.read(),
+                utf16_location,
+                utf16_scope_end,
+                depth + 1,
+            );
+        }
+    }
+}
+
+fn completion_symbol_for_value(
+    name: String,
+    value: &Value,
+    utf16_location: u32,
+    utf16_scope_end: u32,
+) -> OwnedCompletionSymbol {
+    match value {
+        Value::Func(func) => {
+            let params = func
+                .params()
+                .unwrap_or(&[])
+                .iter()
+                .map(|param| OwnedCompletionParam {
+                    name: param.name.to_string(),
+                    docs: trim_docs(param.docs),
+                    input: cast_info_summary(&param.input),
+                    default_value: param
+                        .default
+                        .map(|default| default().repr().to_string())
+                        .unwrap_or_default(),
+                    values: cast_info_values(&param.input),
+                    positional: param.positional,
+                    named: param.named,
+                    variadic: param.variadic,
+                    required: param.required,
+                    settable: param.settable,
+                })
+                .collect();
+
+            OwnedCompletionSymbol {
+                name,
+                kind: 1,
+                detail: func.title().unwrap_or("function").to_string(),
+                utf16_location,
+                utf16_scope_end,
+                params,
+            }
+        }
+        Value::Type(ty) => OwnedCompletionSymbol {
+            name,
+            kind: 3,
+            detail: ty.title().to_string(),
+            utf16_location,
+            utf16_scope_end,
+            params: vec![],
+        },
+        Value::Module(_) => OwnedCompletionSymbol {
+            name,
+            kind: 4,
+            detail: "module".to_string(),
+            utf16_location,
+            utf16_scope_end,
+            params: vec![],
+        },
+        _ => OwnedCompletionSymbol {
+            name,
+            kind: 2,
+            detail: value.ty().long_name().to_string(),
+            utf16_location,
+            utf16_scope_end,
+            params: vec![],
+        },
+    }
+}
+
+fn keyword_completion_symbols() -> Vec<OwnedCompletionSymbol> {
+    const KEYWORDS: &[&str] = &[
+        "let", "set", "show", "import", "include", "if", "else", "for", "in", "while", "return",
+        "break", "continue", "context",
+    ];
+
+    KEYWORDS
+        .iter()
+        .map(|keyword| OwnedCompletionSymbol {
+            name: (*keyword).to_string(),
+            kind: 0,
+            detail: "keyword".to_string(),
+            utf16_location: u32::MAX,
+            utf16_scope_end: u32::MAX,
+            params: vec![],
+        })
+        .collect()
+}
+
+fn local_completion_symbols(source: &str) -> Vec<OwnedCompletionSymbol> {
+    let root = parse(source);
+    let byte_to_utf16 = byte_to_utf16_offsets(source);
+    let mut symbols = Vec::new();
+    let root = LinkedNode::new(&root);
+    let root_scope_end = root.range().end;
+    collect_local_completion_symbols(&mut symbols, &root, &byte_to_utf16, root_scope_end);
+    symbols
+}
+
+fn collect_local_completion_symbols(
+    symbols: &mut Vec<OwnedCompletionSymbol>,
+    node: &LinkedNode,
+    byte_to_utf16: &[usize],
+    scope_end_byte: usize,
+) {
+    let current_scope_end_byte = local_scope_end_for_node(node).unwrap_or(scope_end_byte);
+    let current_scope_end = utf16_location_for_byte(current_scope_end_byte, byte_to_utf16);
+
+    if let Some(binding) = node.get().cast::<ast::LetBinding>() {
+        let location = utf16_location_for_byte(node.range().end, byte_to_utf16);
+        for ident in binding.kind().bindings() {
+            push_local_symbol(symbols, ident, "local binding", location, current_scope_end);
+        }
+    } else if let Some(import) = node.get().cast::<ast::ModuleImport>() {
+        let location = utf16_location_for_byte(node.range().end, byte_to_utf16);
+        if let Some(rename) = import.new_name() {
+            push_local_symbol(
+                symbols,
+                rename,
+                "module import",
+                location,
+                current_scope_end,
+            );
+        } else if let Some(ast::Imports::Items(items)) = import.imports() {
+            for item in items.iter() {
+                push_local_symbol(
+                    symbols,
+                    item.bound_name(),
+                    "imported symbol",
+                    location,
+                    current_scope_end,
+                );
+            }
+        } else if import.imports().is_none() {
+            if let Ok(name) = import.bare_name() {
+                symbols.push(OwnedCompletionSymbol {
+                    name: name.to_string(),
+                    kind: 5,
+                    detail: "module import".to_string(),
+                    utf16_location: location,
+                    utf16_scope_end: current_scope_end,
+                    params: vec![],
+                });
+            }
+        }
+    } else if let Some(for_loop) = node.get().cast::<ast::ForLoop>() {
+        let body = for_loop.body().to_untyped();
+        let visible_from = utf16_location_for_byte(
+            body.span()
+                .range()
+                .map(|range| range.start)
+                .unwrap_or(node.range().start),
+            byte_to_utf16,
+        );
+        let visible_until = utf16_location_for_byte(
+            body.span()
+                .range()
+                .map(|range| range.end)
+                .unwrap_or(node.range().end),
+            byte_to_utf16,
+        );
+        for ident in for_loop.pattern().bindings() {
+            push_local_symbol(symbols, ident, "loop binding", visible_from, visible_until);
+        }
+    } else if let Some(closure) = node.get().cast::<ast::Closure>() {
+        let body = closure.body().to_untyped();
+        let visible_from = utf16_location_for_byte(
+            body.span()
+                .range()
+                .map(|range| range.start)
+                .unwrap_or(node.range().start),
+            byte_to_utf16,
+        );
+        let visible_until = utf16_location_for_byte(
+            body.span()
+                .range()
+                .map(|range| range.end)
+                .unwrap_or(node.range().end),
+            byte_to_utf16,
+        );
+        for param in closure.params().children() {
+            for ident in param_bindings(param) {
+                push_local_symbol(symbols, ident, "parameter", visible_from, visible_until);
+            }
+        }
+    }
+
+    for child in node.children() {
+        collect_local_completion_symbols(symbols, &child, byte_to_utf16, current_scope_end_byte);
+    }
+}
+
+fn local_scope_end_for_node(node: &LinkedNode) -> Option<usize> {
+    match node.kind() {
+        SyntaxKind::Markup
+        | SyntaxKind::Code
+        | SyntaxKind::CodeBlock
+        | SyntaxKind::ContentBlock => Some(node.range().end),
+        _ => None,
+    }
+}
+
+fn param_bindings(param: ast::Param) -> Vec<ast::Ident> {
+    match param {
+        ast::Param::Pos(pattern) => pattern.bindings(),
+        ast::Param::Named(named) => vec![named.name()],
+        ast::Param::Spread(spread) => spread.sink_ident().into_iter().collect(),
+    }
+}
+
+fn push_local_symbol(
+    symbols: &mut Vec<OwnedCompletionSymbol>,
+    ident: ast::Ident,
+    detail: &str,
+    utf16_location: u32,
+    utf16_scope_end: u32,
+) {
+    symbols.push(OwnedCompletionSymbol {
+        name: ident.get().to_string(),
+        kind: 5,
+        detail: detail.to_string(),
+        utf16_location,
+        utf16_scope_end,
+        params: vec![],
+    });
+}
+
+fn utf16_location_for_byte(byte: usize, byte_to_utf16: &[usize]) -> u32 {
+    byte_to_utf16
+        .get(byte)
+        .and_then(|offset| u32::try_from(*offset).ok())
+        .unwrap_or(u32::MAX)
+}
+
+fn cast_info_summary(info: &CastInfo) -> String {
+    let mut parts = Vec::new();
+    info.walk(|part| match part {
+        CastInfo::Any => parts.push("anything".to_string()),
+        CastInfo::Value(value, _) => parts.push(value.repr().to_string()),
+        CastInfo::Type(ty) => parts.push(ty.long_name().to_string()),
+        CastInfo::Union(_) => {}
+    });
+    parts.dedup();
+    parts.join(" | ")
+}
+
+fn cast_info_values(info: &CastInfo) -> Vec<OwnedCompletionValue> {
+    let mut values = Vec::new();
+    info.walk(|part| {
+        if let CastInfo::Value(value, docs) = part {
+            let insert_text = value.repr().to_string();
+            values.push(OwnedCompletionValue {
+                label: insert_text.trim_matches('"').to_string(),
+                insert_text,
+                detail: trim_docs(docs),
+            });
+        }
+    });
+    values
+}
+
+fn trim_docs(docs: &str) -> String {
+    docs.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+        .trim_start_matches("- ")
+        .to_string()
+}
+
+fn completion_symbol_into_ffi(symbol: OwnedCompletionSymbol) -> TypstCompletionSymbol {
+    let param_len = symbol.params.len();
+    let (params, param_len) = if param_len > 0 {
+        let ffi_params: Vec<_> = symbol
+            .params
+            .into_iter()
+            .map(completion_param_into_ffi)
+            .collect();
+        let mut boxed = ffi_params.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, param_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstCompletionSymbol {
+        name: string_into_raw(symbol.name),
+        kind: symbol.kind,
+        detail: string_into_raw(symbol.detail),
+        utf16_location: symbol.utf16_location,
+        utf16_scope_end: symbol.utf16_scope_end,
+        params,
+        param_len,
+    }
+}
+
+fn completion_param_into_ffi(param: OwnedCompletionParam) -> TypstCompletionParam {
+    let value_len = param.values.len();
+    let (values, value_len) = if value_len > 0 {
+        let ffi_values: Vec<_> = param
+            .values
+            .into_iter()
+            .map(completion_value_into_ffi)
+            .collect();
+        let mut boxed = ffi_values.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, value_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstCompletionParam {
+        name: string_into_raw(param.name),
+        docs: string_into_raw(param.docs),
+        input: string_into_raw(param.input),
+        default_value: string_into_raw(param.default_value),
+        values,
+        value_len,
+        positional: param.positional,
+        named: param.named,
+        variadic: param.variadic,
+        required: param.required,
+        settable: param.settable,
+    }
+}
+
+fn completion_value_into_ffi(value: OwnedCompletionValue) -> TypstCompletionValue {
+    TypstCompletionValue {
+        label: string_into_raw(value.label),
+        insert_text: string_into_raw(value.insert_text),
+        detail: string_into_raw(value.detail),
+    }
+}
+
+/// Free a `TypstCompletionSymbolResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_completion_symbols` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_completion_symbol_result(result: TypstCompletionSymbolResult) {
+    if !result.symbols.is_null() {
+        let symbols = std::slice::from_raw_parts_mut(result.symbols, result.symbol_len);
+        for symbol in symbols {
+            free_raw_string(symbol.name);
+            free_raw_string(symbol.detail);
+
+            if !symbol.params.is_null() {
+                let params = std::slice::from_raw_parts_mut(symbol.params, symbol.param_len);
+                for param in params {
+                    free_raw_string(param.name);
+                    free_raw_string(param.docs);
+                    free_raw_string(param.input);
+                    free_raw_string(param.default_value);
+
+                    if !param.values.is_null() {
+                        let values = std::slice::from_raw_parts_mut(param.values, param.value_len);
+                        for value in values {
+                            free_raw_string(value.label);
+                            free_raw_string(value.insert_text);
+                            free_raw_string(value.detail);
+                        }
+                        let slice_ptr =
+                            std::ptr::slice_from_raw_parts_mut(param.values, param.value_len);
+                        drop(Box::from_raw(slice_ptr));
+                    }
+                }
+
+                let slice_ptr = std::ptr::slice_from_raw_parts_mut(symbol.params, symbol.param_len);
+                drop(Box::from_raw(slice_ptr));
+            }
+        }
+
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.symbols, result.symbol_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    free_raw_string(result.error_message);
+}
+
+/// Return the syntax kind chain at a UTF-16 cursor offset and the enclosing
+/// function call name when the cursor is inside arguments.
+///
+/// # Safety
+/// `source` must be a valid null-terminated UTF-8 C string.
+/// Free the result with `typst_free_context_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_context_at(
+    source: *const c_char,
+    utf16_offset: u32,
+) -> TypstContextResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_context_at_impl(source, utf16_offset)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_context_result("Typst cursor context parser panicked"),
+    }
+}
+
+unsafe fn typst_context_at_impl(source: *const c_char, utf16_offset: u32) -> TypstContextResult {
+    if source.is_null() {
+        return error_context_result("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_context_result("source is not valid UTF-8"),
+    };
+
+    let byte_offset = utf16_to_byte_offset(source_str, utf16_offset as usize);
+    let root = parse(source_str);
+    let linked_root = LinkedNode::new(&root);
+    let leaf = linked_root
+        .leaf_at(byte_offset, Side::Before)
+        .or_else(|| linked_root.leaf_at(byte_offset, Side::After))
+        .unwrap_or_else(|| linked_root.clone());
+
+    let byte_to_utf16 = byte_to_utf16_offsets(source_str);
+    let function_name = enclosing_function_name(&leaf);
+    let mut path = Vec::new();
+    let mut current = Some(leaf);
+    while let Some(node) = current {
+        path.push(node.clone());
+        current = node.parent().cloned();
+    }
+    path.reverse();
+
+    let item_len = path.len();
+    let items: Vec<_> = path
+        .into_iter()
+        .map(|node| context_item_for_node(&node, &byte_to_utf16))
+        .collect();
+    let (items, item_len) = if item_len > 0 {
+        let mut boxed = items.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, item_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstContextResult {
+        items,
+        item_len,
+        function_name: string_option_into_raw(function_name),
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn utf16_to_byte_offset(source: &str, utf16_offset: usize) -> usize {
+    let mut current_utf16 = 0;
+    for (byte_offset, ch) in source.char_indices() {
+        if current_utf16 >= utf16_offset {
+            return byte_offset;
+        }
+        current_utf16 += ch.len_utf16();
+        if current_utf16 >= utf16_offset {
+            return byte_offset + ch.len_utf8();
+        }
+    }
+    source.len()
+}
+
+fn context_item_for_node(node: &LinkedNode, byte_to_utf16: &[usize]) -> TypstContextItem {
+    let range = node.range();
+    let utf16_start = byte_to_utf16.get(range.start).copied().unwrap_or(0);
+    let utf16_end = byte_to_utf16.get(range.end).copied().unwrap_or(utf16_start);
+
+    TypstContextItem {
+        kind: string_into_raw(format!("{:?}", node.kind())),
+        utf16_location: u32::try_from(utf16_start).unwrap_or(u32::MAX),
+        utf16_length: u32::try_from(utf16_end.saturating_sub(utf16_start)).unwrap_or(0),
+    }
+}
+
+fn enclosing_function_name(leaf: &LinkedNode) -> Option<String> {
+    let mut current = Some(leaf.clone());
+    while let Some(node) = current {
+        if let Some(call) = node.get().cast::<ast::FuncCall>() {
+            if let Some(name) = expr_callee_name(call.callee()) {
+                return Some(name);
+            }
+        }
+        current = node.parent().cloned();
+    }
+    None
+}
+
+fn expr_callee_name(expr: ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::Ident(ident) => Some(ident.get().to_string()),
+        ast::Expr::FieldAccess(access) => {
+            let target = expr_callee_name(access.target())?;
+            Some(format!("{}.{}", target, access.field().get()))
+        }
+        ast::Expr::FuncCall(call) => expr_callee_name(call.callee()),
+        ast::Expr::Parenthesized(group) => expr_callee_name(group.expr()),
+        _ => None,
+    }
+}
+
+/// Free a `TypstContextResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_context_at` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_context_result(result: TypstContextResult) {
+    if !result.items.is_null() {
+        let items = std::slice::from_raw_parts_mut(result.items, result.item_len);
+        for item in items {
+            free_raw_string(item.kind);
+        }
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.items, result.item_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    free_raw_string(result.function_name);
+    free_raw_string(result.error_message);
+}
+
 /// Get the embedded typst-ios crate version.
 ///
 /// Returns a pointer to a static null-terminated UTF-8 string.
@@ -1320,6 +2079,43 @@ fn error_outline_result(msg: &str) -> TypstOutlineResult {
         item_len: 0,
         error_message: c.into_raw(),
         success: false,
+    }
+}
+
+fn error_completion_symbol_result(msg: &str) -> TypstCompletionSymbolResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstCompletionSymbolResult {
+        symbols: std::ptr::null_mut(),
+        symbol_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
+fn error_context_result(msg: &str) -> TypstContextResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstContextResult {
+        items: std::ptr::null_mut(),
+        item_len: 0,
+        function_name: std::ptr::null_mut(),
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
+fn string_into_raw(value: String) -> *mut c_char {
+    CString::new(value)
+        .unwrap_or_else(|_| CString::new("").unwrap())
+        .into_raw()
+}
+
+fn string_option_into_raw(value: Option<String>) -> *mut c_char {
+    value.map(string_into_raw).unwrap_or(std::ptr::null_mut())
+}
+
+unsafe fn free_raw_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        drop(CString::from_raw(ptr));
     }
 }
 
@@ -1527,6 +2323,73 @@ mod tests {
                 && token.tag == highlight_tag_id(Tag::Keyword)),
             "highlight locations should be UTF-16 offsets, not UTF-8 byte offsets"
         );
+    }
+
+    #[test]
+    fn completion_symbols_include_nested_typst_library_scopes() {
+        let symbols = library_completion_symbols();
+
+        for expected in ["calc.sin", "table.cell", "outline.entry"] {
+            assert!(
+                symbols
+                    .iter()
+                    .any(|symbol| symbol.name == expected && symbol.kind == 1),
+                "expected library completion for {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_completion_symbols_carry_declaration_scope() {
+        let source = "#let outer = 1\n#let content = [\n  #let inner = 2\n  #inner\n]\n#outer\n";
+        let symbols = local_completion_symbols(source);
+        let outer = symbols
+            .iter()
+            .find(|symbol| symbol.name == "outer")
+            .expect("outer binding should be discovered");
+        let inner = symbols
+            .iter()
+            .find(|symbol| symbol.name == "inner")
+            .expect("inner binding should be discovered");
+        let source_len = source.encode_utf16().count() as u32;
+
+        assert!(
+            outer.utf16_scope_end >= source_len,
+            "top-level binding should remain visible through end of file"
+        );
+        assert!(
+            inner.utf16_scope_end < source_len,
+            "content-block binding should not leak to the rest of the document"
+        );
+        assert!(
+            inner.utf16_location < inner.utf16_scope_end,
+            "local binding should become visible before its scope ends"
+        );
+    }
+
+    #[test]
+    fn context_at_empty_source_returns_root_context() {
+        let source = CString::new("").unwrap();
+        let result = unsafe { typst_context_at_impl(source.as_ptr(), 0) };
+
+        assert!(result.success);
+        assert!(
+            result.item_len > 0,
+            "empty source should still return the root syntax context"
+        );
+
+        unsafe { typst_free_context_result(result) };
+    }
+
+    #[test]
+    fn utf16_to_byte_offset_clamps_to_character_boundaries() {
+        let source = "a😀b";
+
+        assert_eq!(utf16_to_byte_offset(source, 0), 0);
+        assert_eq!(utf16_to_byte_offset(source, 1), "a".len());
+        assert_eq!(utf16_to_byte_offset(source, 2), "a😀".len());
+        assert_eq!(utf16_to_byte_offset(source, 3), "a😀".len());
+        assert_eq!(utf16_to_byte_offset(source, 4), source.len());
     }
 
     #[test]

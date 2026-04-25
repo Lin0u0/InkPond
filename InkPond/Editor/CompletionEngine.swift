@@ -28,333 +28,8 @@ struct CompletionItem {
 final class CompletionEngine {
     static let shared = CompletionEngine()
 
-    private let items: [CompletionItem] = {
-        var all: [CompletionItem] = []
-
-        // Keywords
-        let keywords = [
-            ("let", "let "),
-            ("set", "set "),
-            ("show", "show "),
-            ("import", "import "),
-            ("include", "include "),
-            ("if", "if "),
-            ("else", "else "),
-            ("for", "for "),
-            ("while", "while "),
-            ("return", "return"),
-            ("break", "break"),
-            ("continue", "continue"),
-        ]
-        for (name, insert) in keywords {
-            all.append(CompletionItem(label: name, insertText: insert, kind: .keyword, detail: "keyword"))
-        }
-
-        // Common functions
-        let functions: [(String, String, String?)] = [
-            // Text & content
-            ("text", "text()", "Set text properties"),
-            ("emph", "emph[]", "Emphasize content"),
-            ("strong", "strong[]", "Bold content"),
-            ("heading", "heading[]", "Section heading"),
-            ("par", "par[]", "Paragraph"),
-            ("raw", "raw(\"\")", "Raw text / code"),
-            ("link", "link(\"\")", "Hyperlink"),
-            ("footnote", "footnote[]", "Footnote"),
-            ("cite", "cite(<>)", "Citation"),
-            ("ref", "ref(<>)", "Reference"),
-            ("highlight", "highlight[]", "Highlight text"),
-            ("overline", "overline[]", "Overline"),
-            ("underline", "underline[]", "Underline"),
-            ("strike", "strike[]", "Strikethrough"),
-            ("smallcaps", "smallcaps[]", "Small capitals"),
-            ("sub", "sub[]", "Subscript"),
-            ("super", "super[]", "Superscript"),
-            ("lorem", "lorem()", "Placeholder text"),
-
-            // Layout
-            ("page", "page()", "Page settings"),
-            ("align", "align()[]", "Alignment"),
-            ("pad", "pad()[]", "Padding"),
-            ("block", "block[]", "Block-level container"),
-            ("box", "box[]", "Inline container"),
-            ("stack", "stack()[]", "Stack layout"),
-            ("grid", "grid()", "Grid layout"),
-            ("columns", "columns()[]", "Multi-column layout"),
-            ("place", "place()[]", "Absolute placement"),
-            ("move", "move()[]", "Move content"),
-            ("rotate", "rotate()[]", "Rotate content"),
-            ("scale", "scale()[]", "Scale content"),
-            ("hide", "hide[]", "Hidden content"),
-            ("v", "v()", "Vertical spacing"),
-            ("h", "h()", "Horizontal spacing"),
-            ("colbreak", "colbreak()", "Column break"),
-            ("pagebreak", "pagebreak()", "Page break"),
-            ("parbreak", "parbreak()", "Paragraph break"),
-            ("linebreak", "linebreak()", "Line break"),
-
-            // Media
-            ("image", "image(\"\")", "Include image"),
-            ("figure", "figure()[]", "Figure with caption"),
-            ("table", "table()", "Table"),
-            ("list", "list[]", "Bullet list"),
-            ("enum", "enum[]", "Numbered list"),
-            ("terms", "terms[]", "Term list"),
-            ("outline", "outline()", "Table of contents"),
-            ("bibliography", "bibliography(\"\")", "Bibliography"),
-            ("line", "line()", "Draw a line"),
-            ("rect", "rect[]", "Rectangle"),
-            ("circle", "circle[]", "Circle"),
-            ("ellipse", "ellipse[]", "Ellipse"),
-            ("polygon", "polygon()", "Polygon"),
-            ("path", "path()", "Bézier path"),
-
-            // Data & logic
-            ("numbering", "numbering(\"\")", "Numbering pattern"),
-            ("counter", "counter()", "Counter"),
-            ("state", "state(\"\")", "Stateful value"),
-            ("locate", "locate()[]", "Locate in document"),
-            ("query", "query()", "Query elements"),
-            ("measure", "measure()[]", "Measure content"),
-            ("layout", "layout()[]", "Layout callback"),
-            ("datetime", "datetime()", "Date/time"),
-            ("duration", "duration()", "Duration"),
-
-            // Color
-            ("rgb", "rgb(\"\")", "RGB color"),
-            ("luma", "luma()", "Grayscale color"),
-            ("cmyk", "cmyk()", "CMYK color"),
-            ("color", "color", "Color type"),
-            ("gradient", "gradient", "Gradient"),
-            ("pattern", "pattern()[]", "Tiling pattern"),
-            ("stroke", "stroke()", "Stroke style"),
-
-            // Document
-            ("document", "document()", "Document metadata"),
-            ("context", "context ", "Context expression"),
-        ]
-        for (name, insert, detail) in functions {
-            all.append(CompletionItem(label: name, insertText: insert, kind: .function, detail: detail))
-        }
-
-        return all.sorted { $0.label < $1.label }
-    }()
-
-    // MARK: - Parameter Database
-
-    /// Maps function name → list of (paramName, detail) pairs.
-    private let parameterDB: [String: [(String, String?)]] = [
-        // Text & content
-        "text": [
-            ("font", "Font family"), ("size", "Font size"), ("weight", "Font weight"),
-            ("style", "Font style"), ("fill", "Text color"), ("lang", "Language"),
-            ("region", "Region"), ("dir", "Text direction"), ("hyphenate", "Allow hyphenation"),
-            ("tracking", "Letter spacing"), ("spacing", "Word spacing"),
-            ("baseline", "Baseline shift"), ("top-edge", "Top edge metric"),
-            ("bottom-edge", "Bottom edge metric"), ("overhang", "Overhang"),
-            ("kerning", "Kerning"), ("alternates", "Alternates"),
-            ("stylistic-set", "Stylistic set"), ("ligatures", "Ligatures"),
-            ("discretionary-ligatures", "Discretionary ligatures"),
-            ("historical-ligatures", "Historical ligatures"),
-            ("number-type", "Number type"), ("number-width", "Number width"),
-            ("slashed-zero", "Slashed zero"), ("fractions", "Fractions"),
-            ("features", "OpenType features"),
-        ],
-        "heading": [
-            ("level", "Heading level 1–6"), ("numbering", "Numbering pattern"),
-            ("supplement", "Supplement"), ("outlined", "Show in outline"),
-            ("bookmarked", "Add bookmark"), ("hanging-indent", "Hanging indent"),
-            ("depth", "Depth"),
-        ],
-        "par": [
-            ("leading", "Line spacing"), ("justify", "Justify text"),
-            ("linebreaks", "Line break algorithm"), ("first-line-indent", "First line indent"),
-            ("hanging-indent", "Hanging indent"), ("spacing", "Paragraph spacing"),
-        ],
-        "raw": [
-            ("lang", "Language"), ("block", "Block display"), ("theme", "Syntax theme"),
-            ("tab-size", "Tab size"), ("align", "Alignment"),
-        ],
-        "link": [("dest", "Destination URL")],
-        "strong": [("delta", "Weight delta")],
-        "highlight": [
-            ("fill", "Fill color"), ("stroke", "Stroke"), ("extent", "Extent"),
-            ("radius", "Corner radius"),
-        ],
-        "strike": [
-            ("stroke", "Stroke style"), ("offset", "Vertical offset"),
-            ("extent", "Horizontal extent"), ("background", "Behind text"),
-        ],
-        "underline": [
-            ("stroke", "Stroke style"), ("offset", "Vertical offset"),
-            ("extent", "Horizontal extent"), ("evade", "Evade descenders"),
-            ("background", "Behind text"),
-        ],
-        "overline": [
-            ("stroke", "Stroke style"), ("offset", "Vertical offset"),
-            ("extent", "Horizontal extent"), ("evade", "Evade ascenders"),
-            ("background", "Behind text"),
-        ],
-        "sub": [("typographic", "Use OpenType"), ("baseline", "Baseline shift"), ("size", "Size")],
-        "super": [("typographic", "Use OpenType"), ("baseline", "Baseline shift"), ("size", "Size")],
-        "lorem": [("words", "Word count")],
-
-        // Layout
-        "page": [
-            ("paper", "Paper size"), ("width", "Page width"), ("height", "Page height"),
-            ("margin", "Margins"), ("binding", "Binding side"),
-            ("columns", "Column count"), ("fill", "Background fill"),
-            ("numbering", "Page numbering"), ("number-align", "Number alignment"),
-            ("header", "Header content"), ("footer", "Footer content"),
-            ("header-ascent", "Header ascent"), ("footer-descent", "Footer descent"),
-            ("foreground", "Foreground layer"), ("background", "Background layer"),
-        ],
-        "align": [
-            ("alignment", "center / left / right / top / bottom"),
-        ],
-        "pad": [
-            ("left", "Left padding"), ("right", "Right padding"),
-            ("top", "Top padding"), ("bottom", "Bottom padding"),
-            ("x", "Horizontal padding"), ("y", "Vertical padding"),
-            ("rest", "Remaining sides"),
-        ],
-        "block": [
-            ("width", "Width"), ("height", "Height"), ("fill", "Background fill"),
-            ("stroke", "Border stroke"), ("radius", "Corner radius"),
-            ("inset", "Inner padding"), ("outset", "Outer expansion"),
-            ("spacing", "Surrounding spacing"), ("above", "Space above"),
-            ("below", "Space below"), ("breakable", "Allow page break"),
-            ("clip", "Clip content"), ("sticky", "Sticky"),
-        ],
-        "box": [
-            ("width", "Width"), ("height", "Height"), ("fill", "Background fill"),
-            ("stroke", "Border stroke"), ("radius", "Corner radius"),
-            ("inset", "Inner padding"), ("outset", "Outer expansion"),
-            ("baseline", "Baseline"), ("clip", "Clip content"),
-        ],
-        "stack": [("dir", "Stack direction"), ("spacing", "Item spacing")],
-        "grid": [
-            ("columns", "Column definitions"), ("rows", "Row definitions"),
-            ("gutter", "Gutter size"), ("column-gutter", "Column gutter"),
-            ("row-gutter", "Row gutter"), ("fill", "Cell fill"),
-            ("align", "Cell alignment"), ("stroke", "Cell stroke"),
-            ("inset", "Cell inset"),
-        ],
-        "columns": [("count", "Number of columns"), ("gutter", "Column gutter")],
-        "place": [
-            ("alignment", "Placement"), ("dx", "Horizontal offset"),
-            ("dy", "Vertical offset"), ("float", "Float placement"),
-            ("clearance", "Clearance"), ("scope", "Scope"),
-        ],
-        "move": [("dx", "Horizontal offset"), ("dy", "Vertical offset")],
-        "rotate": [("angle", "Rotation angle"), ("origin", "Transform origin"), ("reflow", "Reflow")],
-        "scale": [
-            ("factor", "Scale factor (e.g. 50%)"),
-            ("x", "Horizontal scale"), ("y", "Vertical scale"),
-            ("origin", "Transform origin"), ("reflow", "Reflow"),
-        ],
-        "v": [("amount", "Spacing amount"), ("weak", "Weak spacing")],
-        "h": [("amount", "Spacing amount"), ("weak", "Weak spacing")],
-
-        // Media
-        "image": [
-            ("source", "Image path"), ("width", "Width"), ("height", "Height"),
-            ("alt", "Alt text"), ("fit", "Fit mode: cover/contain/stretch"),
-            ("format", "Image format"),
-        ],
-        "figure": [
-            ("caption", "Caption"), ("supplement", "Supplement"),
-            ("numbering", "Numbering"), ("placement", "Placement: auto/top/bottom"),
-            ("gap", "Gap between body and caption"), ("outlined", "Show in outline"),
-            ("kind", "Figure kind"),
-        ],
-        "table": [
-            ("columns", "Column definitions"), ("rows", "Row definitions"),
-            ("gutter", "Gutter size"), ("column-gutter", "Column gutter"),
-            ("row-gutter", "Row gutter"), ("fill", "Cell fill"),
-            ("align", "Cell alignment"), ("stroke", "Cell stroke"),
-            ("inset", "Cell inset"),
-        ],
-        "list": [
-            ("marker", "Bullet marker"), ("indent", "Indent"),
-            ("body-indent", "Body indent"), ("spacing", "Item spacing"),
-            ("tight", "Tight spacing"),
-        ],
-        "enum": [
-            ("numbering", "Numbering pattern"), ("start", "Start number"),
-            ("full", "Full numbering"), ("indent", "Indent"),
-            ("body-indent", "Body indent"), ("spacing", "Item spacing"),
-            ("tight", "Tight spacing"),
-        ],
-        "terms": [
-            ("separator", "Separator"), ("indent", "Indent"),
-            ("hanging-indent", "Hanging indent"), ("spacing", "Item spacing"),
-            ("tight", "Tight spacing"),
-        ],
-        "outline": [
-            ("title", "Outline title"), ("target", "Target selector"),
-            ("depth", "Max depth"), ("indent", "Indentation"),
-            ("fill", "Fill between entry and page"),
-        ],
-        "bibliography": [
-            ("path", "Bibliography file"), ("title", "Title"),
-            ("style", "Citation style"), ("full", "Show all entries"),
-        ],
-        "line": [
-            ("length", "Line length"), ("angle", "Angle"),
-            ("start", "Start point"), ("end", "End point"),
-            ("stroke", "Stroke style"),
-        ],
-        "rect": [
-            ("width", "Width"), ("height", "Height"), ("fill", "Fill color"),
-            ("stroke", "Stroke"), ("radius", "Corner radius"),
-            ("inset", "Inner padding"),
-        ],
-        "circle": [
-            ("radius", "Circle radius"), ("fill", "Fill color"),
-            ("stroke", "Stroke"), ("inset", "Inner padding"),
-        ],
-        "ellipse": [
-            ("width", "Width"), ("height", "Height"), ("fill", "Fill color"),
-            ("stroke", "Stroke"), ("inset", "Inner padding"),
-        ],
-        "polygon": [
-            ("vertices", "Vertex points"), ("fill", "Fill color"),
-            ("stroke", "Stroke"),
-        ],
-
-        // Data & logic
-        "numbering": [("pattern", "Numbering pattern")],
-        "counter": [("key", "Counter key")],
-        "state": [("key", "State key"), ("init", "Initial value")],
-        "datetime": [
-            ("year", "Year"), ("month", "Month"), ("day", "Day"),
-            ("hour", "Hour"), ("minute", "Minute"), ("second", "Second"),
-        ],
-        "duration": [
-            ("weeks", "Weeks"), ("days", "Days"), ("hours", "Hours"),
-            ("minutes", "Minutes"), ("seconds", "Seconds"),
-        ],
-
-        // Color
-        "rgb": [("hex", "Hex string or r,g,b,a")],
-        "luma": [("lightness", "Lightness 0–255")],
-        "cmyk": [
-            ("cyan", "Cyan 0%–100%"), ("magenta", "Magenta"),
-            ("yellow", "Yellow"), ("key", "Key/black"),
-        ],
-        "stroke": [
-            ("paint", "Stroke color"), ("thickness", "Thickness"),
-            ("cap", "Line cap: butt/round/square"), ("join", "Line join: miter/round/bevel"),
-            ("dash", "Dash pattern"), ("miter-limit", "Miter limit"),
-        ],
-
-        // Document
-        "document": [
-            ("title", "Document title"), ("author", "Author"),
-            ("keywords", "Keywords"), ("date", "Date"),
-        ],
-    ]
+    private var cachedSymbolSource: String?
+    private var cachedSymbols: [TypstCompletionSymbolInfo] = []
 
     /// Result type that distinguishes `#function` completions from parameter completions.
     enum CompletionContext {
@@ -387,168 +62,13 @@ final class CompletionEngine {
     /// Available package specs for import completion (e.g. "@local/mypackage:1.0.0").
     var packageSpecs: [String] = []
 
-    /// Typst font weight names.
-    private let weightValues: [(String, String)] = [
-        ("thin", "100"), ("extralight", "200"), ("light", "300"),
-        ("regular", "400"), ("medium", "500"), ("semibold", "600"),
-        ("bold", "700"), ("extrabold", "800"), ("black", "900"),
-    ]
-
-    /// Maps (paramName) → static value suggestions. Font is handled dynamically.
-    private let staticValueDB: [String: [(String, String?)]] = [
-        "paper": [
-            ("a0", "841 × 1189 mm"), ("a1", "594 × 841 mm"), ("a2", "420 × 594 mm"),
-            ("a3", "297 × 420 mm"), ("a4", "210 × 297 mm"), ("a5", "148 × 210 mm"),
-            ("a6", "105 × 148 mm"), ("us-letter", "8.5 × 11 in"), ("us-legal", "8.5 × 14 in"),
-        ],
-        "fit": [("cover", "Fill area, crop if needed"), ("contain", "Fit within bounds"), ("stretch", "Stretch to fill")],
-        "format": [("png", nil), ("jpg", nil), ("gif", nil), ("svg", nil)],
-        "linebreaks": [("simple", "Simple algorithm"), ("optimized", "Knuth-Plass algorithm")],
-        "cap": [("butt", "Flat cap"), ("round", "Round cap"), ("square", "Square cap")],
-        "join": [("miter", "Sharp corner"), ("round", "Round corner"), ("bevel", "Flat corner")],
-        "dash": [("solid", nil), ("dotted", nil), ("dashed", nil), ("dash-dotted", nil), ("loosely-dashed", nil), ("densely-dashed", nil)],
-        "numbering": [("1", "Arabic"), ("a", "Lowercase letter"), ("A", "Uppercase letter"), ("i", "Lowercase roman"), ("I", "Uppercase roman"), ("*", "Symbol footnotes")],
-        "supplement": [("auto", "Automatic")],
-    ]
-
-    /// Maps function name → paramName → context-specific value hints.
-    private let contextualValueDB: [String: [String: [(String, String?)]]] = [
-        "text": [
-            "style": [("normal", "Upright"), ("italic", "Italic"), ("oblique", "Oblique")],
-            "dir": [("ltr", "Left to right"), ("rtl", "Right to left")],
-            "number-type": [("lining", "Lining numerals"), ("old-style", "Old-style numerals")],
-            "number-width": [("proportional", "Variable width"), ("tabular", "Fixed width")],
-        ],
-        "bibliography": [
-            "style": [
-                ("ieee", "Engineering / IT"),
-                ("apa", "Psychology / life sciences"),
-                ("mla", "Humanities"),
-                ("chicago-author-date", "Chicago author-date"),
-                ("chicago-notes", "Chicago notes and bibliography"),
-                ("harvard-cite-them-right", "Harvard"),
-                ("american-physics-society", "Physics"),
-                ("vancouver", "Medical / scientific"),
-                ("gb-7714-2015-numeric", "GB/T 7714 numeric"),
-                ("gb-7714-2015-author-date", "GB/T 7714 author-date"),
-            ],
-        ],
-        "stack": [
-            "dir": [("ltr", "Left to right"), ("rtl", "Right to left"), ("ttb", "Top to bottom"), ("btt", "Bottom to top")],
-        ],
-        "figure": [
-            "placement": [("auto", "Automatic"), ("top", "Top of page"), ("bottom", "Bottom of page"), ("none", "Inline")],
-            "kind": [("image", "Image figure"), ("table", "Table figure"), ("raw", "Code figure")],
-            "scope": [("column", "Current column"), ("parent", "Full page")],
-        ],
-        "place": [
-            "alignment": [
-                ("left", nil), ("center", nil), ("right", nil),
-                ("top", nil), ("bottom", nil),
-                ("top + left", nil), ("top + right", nil),
-                ("center + horizon", nil),
-                ("bottom + left", nil), ("bottom + right", nil),
-            ],
-            "scope": [("column", "Current column"), ("parent", "Full page")],
-        ],
-        "grid": [
-            "align": [
-                ("left", nil), ("center", nil), ("right", nil),
-                ("top", nil), ("bottom", nil), ("horizon", nil),
-            ],
-        ],
-        "table": [
-            "align": [
-                ("left", nil), ("center", nil), ("right", nil),
-                ("top", nil), ("bottom", nil), ("horizon", nil),
-            ],
-        ],
-        "page": [
-            "binding": [("left", nil), ("right", nil)],
-            "number-align": [
-                ("left", nil), ("center", nil), ("right", nil),
-                ("top", nil), ("bottom", nil),
-            ],
-        ],
-        "raw": [
-            "align": [("left", nil), ("center", nil), ("right", nil)],
-        ],
-    ]
-
-    /// Parameters listed here are shown as signature hints but should not be inserted as named args.
-    /// These are positional parameters that the user should type directly without `name: `.
-    private let hintOnlyParameters: [String: Set<String>] = [
-        "align": ["alignment"],
-        "bibliography": ["path"],
-        "cmyk": ["cyan", "magenta", "yellow", "key"],
-        "columns": ["count"],
-        "counter": ["key"],
-        "h": ["amount"],
-        "image": ["source"],
-        "link": ["dest"],
-        "lorem": ["words"],
-        "luma": ["lightness"],
-        "numbering": ["pattern"],
-        "place": ["alignment"],
-        "rgb": ["hex"],
-        "rotate": ["angle"],
-        "scale": ["factor"],
-        "state": ["key"],
-        "v": ["amount"],
-    ]
-
-    /// Values to suggest at positional argument positions (after `(` or `,`).
-    /// Tuples: (label, insertText or nil for hint-only, detail).
-    private let positionalValueDB: [String: [(String, String?, String?)]] = [
-        "align": [
-            ("left", "left", "Left"), ("center", "center", "Center"), ("right", "right", "Right"),
-            ("top", "top", "Top"), ("bottom", "bottom", "Bottom"),
-            ("horizon", "horizon", "Horizontal center"),
-            ("start", "start", "Script direction start"), ("end", "end", "Script direction end"),
-            ("left + top", "left + top", nil), ("center + horizon", "center + horizon", nil),
-        ],
-        "place": [
-            ("left", "left", nil), ("center", "center", nil), ("right", "right", nil),
-            ("top", "top", nil), ("bottom", "bottom", nil),
-            ("top + left", "top + left", nil), ("top + right", "top + right", nil),
-            ("center + horizon", "center + horizon", nil),
-            ("bottom + left", "bottom + left", nil), ("bottom + right", "bottom + right", nil),
-        ],
-        "v": [
-            ("em", nil, "Relative to font size"), ("pt", nil, "Points (1/72 in)"),
-            ("mm", nil, "Millimeters"), ("cm", nil, "Centimeters"), ("in", nil, "Inches"),
-            ("%", nil, "Percentage"), ("fr", nil, "Fractional unit"),
-        ],
-        "h": [
-            ("em", nil, "Relative to font size"), ("pt", nil, "Points (1/72 in)"),
-            ("mm", nil, "Millimeters"), ("cm", nil, "Centimeters"), ("in", nil, "Inches"),
-            ("%", nil, "Percentage"), ("fr", nil, "Fractional unit"),
-        ],
-        "rotate": [
-            ("deg", nil, "Degrees"), ("rad", nil, "Radians"), ("turn", nil, "Turns (360° = 1turn)"),
-        ],
-        "columns": [
-            ("2", "2", nil), ("3", "3", nil), ("4", "4", nil),
-        ],
-        "rgb": [
-            ("#000000", "#000000", "Black"), ("#ffffff", "#ffffff", "White"),
-            ("#ff0000", "#ff0000", "Red"), ("#00ff00", "#00ff00", "Green"), ("#0000ff", "#0000ff", "Blue"),
-        ],
-        "luma": [
-            ("0", "0", "Black"), ("128", "128", "Mid-gray"), ("255", "255", "White"),
-        ],
-        "counter": [
-            ("heading", "heading", "Heading counter"), ("page", "page", "Page counter"),
-            ("figure", "figure", "Figure counter"), ("footnote", "footnote", "Footnote counter"),
-        ],
-    ]
-
     // MARK: - Public API
 
     /// Returns completion context for the given cursor position, or nil if none.
     func completions(for text: String, cursorOffset: Int) -> CompletionContext? {
         let utf16 = text.utf16
         guard cursorOffset > 0, cursorOffset <= utf16.count else { return nil }
+        let semanticSymbols = symbols(for: text)
 
         // Try import/package completion (inside `#import "@..."`)
         if let importResult = importCompletions(for: text, cursorOffset: cursorOffset) {
@@ -561,12 +81,12 @@ final class CompletionEngine {
         }
 
         // Try value completion first (highest priority when after `param:`)
-        if let valueResult = valueCompletions(for: text, cursorOffset: cursorOffset) {
+        if let valueResult = valueCompletions(for: text, cursorOffset: cursorOffset, symbols: semanticSymbols) {
             return valueResult
         }
 
         // Try parameter completion (when inside parens)
-        if let paramResult = parameterCompletions(for: text, cursorOffset: cursorOffset) {
+        if let paramResult = parameterCompletions(for: text, cursorOffset: cursorOffset, symbols: semanticSymbols) {
             return paramResult
         }
 
@@ -580,7 +100,7 @@ final class CompletionEngine {
             return abResult
         }
 
-        // Fall back to `#` prefix completion
+        // Finally try `#` symbol completion.
         let cursorIndex = utf16.index(utf16.startIndex, offsetBy: cursorOffset)
 
         var start = cursorIndex
@@ -590,11 +110,12 @@ final class CompletionEngine {
             if ch == "#" {
                 let prefix = String(text[prev..<cursorIndex])
                 let query = String(prefix.dropFirst())
-                let filtered = query.isEmpty ? items : items.filter { $0.label.hasPrefix(query) }
+                let hashItems = completionItems(from: semanticSymbols, cursorOffset: cursorOffset)
+                let filtered = query.isEmpty ? hashItems : hashItems.filter { $0.label.hasPrefix(query) }
                 guard !filtered.isEmpty else { return nil }
                 if filtered.count == 1, filtered[0].label == query { return nil }
                 return .hashPrefix(prefix: prefix, items: filtered)
-            } else if ch.isLetter || ch == "_" || ch == "-" || ch.isNumber {
+            } else if ch.isLetter || ch == "_" || ch == "-" || ch.isNumber || ch == "." {
                 start = prev
                 continue
             } else {
@@ -602,6 +123,116 @@ final class CompletionEngine {
             }
         }
         return nil
+    }
+
+    private func symbols(for text: String) -> [TypstCompletionSymbolInfo] {
+        if cachedSymbolSource == text {
+            return cachedSymbols
+        }
+
+        let symbols = TypstBridge.completionSymbols(source: text) ?? []
+        cachedSymbolSource = text
+        cachedSymbols = symbols
+        return symbols
+    }
+
+    private func completionItems(from symbols: [TypstCompletionSymbolInfo], cursorOffset: Int) -> [CompletionItem] {
+        symbols.compactMap { symbol in
+            if let location = symbol.utf16Location, location > cursorOffset {
+                return nil
+            }
+            if let scopeEnd = symbol.utf16ScopeEnd, cursorOffset > scopeEnd {
+                return nil
+            }
+
+            let kind: CompletionItem.Kind
+            switch symbol.kind {
+            case .keyword:
+                kind = .keyword
+            case .function:
+                kind = .function
+            case .local, .value, .type, .module:
+                kind = .value
+            }
+
+            return CompletionItem(
+                label: symbol.name,
+                insertText: insertText(for: symbol),
+                kind: kind,
+                detail: symbol.detail
+            )
+        }
+    }
+
+    private func insertText(for symbol: TypstCompletionSymbolInfo) -> String? {
+        switch symbol.kind {
+        case .keyword:
+            return keywordInsertText(symbol.name)
+        case .function:
+            return functionInsertText(symbol)
+        case .local, .value, .type, .module:
+            return symbol.name
+        }
+    }
+
+    private func keywordInsertText(_ keyword: String) -> String {
+        switch keyword {
+        case "return", "break", "continue":
+            return keyword
+        default:
+            return keyword + " "
+        }
+    }
+
+    private func functionInsertText(_ symbol: TypstCompletionSymbolInfo) -> String {
+        let params = symbol.params
+        guard !params.isEmpty else { return symbol.name + "()" }
+
+        let bodyParam = params.first { param in
+            param.positional && (param.name == "body" || param.input?.localizedCaseInsensitiveContains("content") == true)
+        }
+        let hasNonBodyParams = params.contains { param in
+            param.name != bodyParam?.name && (param.named || param.positional)
+        }
+
+        if bodyParam != nil {
+            return hasNonBodyParams ? "\(symbol.name)()[]" : "\(symbol.name)[]"
+        }
+
+        if let first = params.first,
+           first.positional,
+           first.input?.localizedCaseInsensitiveContains("label") == true {
+            return "\(symbol.name)(<>)"
+        }
+
+        return symbol.name + "()"
+    }
+
+    private func functionSymbol(named rawName: String, in symbols: [TypstCompletionSymbolInfo]) -> TypstCompletionSymbolInfo? {
+        let functions = symbols.filter { $0.kind == .function }
+        if let exact = functions.first(where: { $0.name == rawName }) {
+            return exact
+        }
+
+        if let baseName = rawName.split(separator: ".").first,
+           let base = functions.first(where: { $0.name == String(baseName) }) {
+            return base
+        }
+
+        return nil
+    }
+
+    private func parameterDetail(_ param: TypstCompletionParamInfo) -> String? {
+        var parts: [String] = []
+        if let docs = param.docs { parts.append(docs) }
+        if let input = param.input { parts.append(input) }
+        if let defaultValue = param.defaultValue { parts.append("default: \(defaultValue)") }
+        if param.required { parts.append("required") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func enclosingFunctionName(in text: String, beforeOffset cursorOffset: Int) -> String? {
+        TypstBridge.contextAt(source: text, utf16Offset: cursorOffset)?.functionName
     }
 
     // MARK: - Import / Package Completion
@@ -751,7 +382,7 @@ final class CompletionEngine {
         guard isNamedPathParam || isPositional else { return nil }
 
         // Determine the enclosing function name
-        guard let funcName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset),
+        guard let funcName = enclosingFunctionName(in: text, beforeOffset: cursorOffset),
               Self.pathFunctions.contains(funcName) else { return nil }
 
         // Select candidate files based on function
@@ -793,7 +424,11 @@ final class CompletionEngine {
 
     // MARK: - Parameter Completion
 
-    private func parameterCompletions(for text: String, cursorOffset: Int) -> CompletionContext? {
+    private func parameterCompletions(
+        for text: String,
+        cursorOffset: Int,
+        symbols: [TypstCompletionSymbolInfo]
+    ) -> CompletionContext? {
         // Walk backwards from cursor to determine if we're at a parameter-name position
         // i.e., right after `(` or `,` with optional whitespace, possibly with a partial name typed.
         let utf16 = text.utf16
@@ -840,74 +475,32 @@ final class CompletionEngine {
         }
 
         // Find the function name: walk backwards from the unmatched `(` to get the identifier
-        let funcName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset)
-        guard let funcName, let params = parameterDB[funcName] else { return nil }
+        let funcName = enclosingFunctionName(in: text, beforeOffset: cursorOffset)
+        guard let funcName,
+              let function = functionSymbol(named: funcName, in: symbols) else { return nil }
 
         // Collect already-used parameter names in this call
         let usedParams = findUsedParameters(in: text, cursorOffset: cursorOffset)
 
-        let paramItems: [CompletionItem] = params.compactMap { (name, detail) in
-            guard !usedParams.contains(name) else { return nil }
-            if !typedPrefix.isEmpty, !name.hasPrefix(typedPrefix) { return nil }
-            let insertText = hintOnlyParameters[funcName]?.contains(name) == true ? nil : name + ": "
-            return CompletionItem(label: name, insertText: insertText, kind: .parameter, detail: detail)
+        let paramItems: [CompletionItem] = function.params.compactMap { param in
+            guard !usedParams.contains(param.name) else { return nil }
+            if !typedPrefix.isEmpty, !param.name.hasPrefix(typedPrefix) { return nil }
+            let insertText = param.named ? param.name + ": " : nil
+            return CompletionItem(label: param.name, insertText: insertText, kind: .parameter, detail: parameterDetail(param))
         }
 
-        // Add positional value suggestions (e.g. `center` for align, unit hints for v/h)
-        var valueItems: [CompletionItem] = []
-        if let positionalValues = positionalValueDB[funcName] {
-            for (label, insert, detail) in positionalValues {
-                if !typedPrefix.isEmpty, !label.localizedCaseInsensitiveContains(typedPrefix) { continue }
-                valueItems.append(CompletionItem(label: label, insertText: insert, kind: .value, detail: detail))
-            }
+        let valueItems = function.params
+            .filter(\.positional)
+            .flatMap(\.values)
+            .compactMap { value -> CompletionItem? in
+                if !typedPrefix.isEmpty, !value.label.localizedCaseInsensitiveContains(typedPrefix) { return nil }
+                return CompletionItem(label: value.label, insertText: value.insertText, kind: .value, detail: value.detail)
         }
 
         let allItems = valueItems + paramItems
         guard !allItems.isEmpty else { return nil }
         if allItems.count == 1, allItems[0].label == typedPrefix { return nil }
         return .parameter(prefix: typedPrefix, items: allItems)
-    }
-
-    /// Find the function name for the innermost unmatched `(` before cursorOffset.
-    private func findEnclosingFunctionName(in text: String, beforeOffset: Int) -> String? {
-        let utf16 = text.utf16
-        let limit = utf16.index(utf16.startIndex, offsetBy: min(beforeOffset, utf16.count))
-        var depth = 0
-        var pos = limit
-
-        while pos > utf16.startIndex {
-            pos = utf16.index(before: pos)
-            let ch = text[pos]
-            if ch == ")" { depth += 1 }
-            else if ch == "(" {
-                if depth == 0 {
-                    // Found the unmatched `(`. Now read the identifier before it.
-                    var nameEnd = pos
-                    // Skip whitespace
-                    while nameEnd > utf16.startIndex {
-                        let prev = utf16.index(before: nameEnd)
-                        if text[prev] == " " || text[prev] == "\t" { nameEnd = prev } else { break }
-                    }
-                    var nameStart = nameEnd
-                    while nameStart > utf16.startIndex {
-                        let prev = utf16.index(before: nameStart)
-                        let c = text[prev]
-                        if c.isLetter || c == "-" || c == "_" || c.isNumber {
-                            nameStart = prev
-                        } else {
-                            break
-                        }
-                    }
-                    guard nameStart < nameEnd else { return nil }
-                    let name = String(text[nameStart..<nameEnd])
-                    // Strip leading `#` if present (e.g. `#text(`)
-                    if name.hasPrefix("#") { return String(name.dropFirst()) }
-                    return name
-                }
-                depth -= 1
-            }
-        }
-        return nil
     }
 
     /// Collect parameter names already used in the current function call.
@@ -963,7 +556,11 @@ final class CompletionEngine {
 
     // MARK: - Value Completion
 
-    private func valueCompletions(for text: String, cursorOffset: Int) -> CompletionContext? {
+    private func valueCompletions(
+        for text: String,
+        cursorOffset: Int,
+        symbols: [TypstCompletionSymbolInfo]
+    ) -> CompletionContext? {
         let utf16 = text.utf16
         guard cursorOffset > 0, cursorOffset <= utf16.count else { return nil }
         let cursorIndex = utf16.index(utf16.startIndex, offsetBy: cursorOffset)
@@ -1049,10 +646,10 @@ final class CompletionEngine {
         }
         guard paramStart < paramEnd else { return nil }
         let paramName = String(text[paramStart..<paramEnd])
-        let functionName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset)
+        let functionName = enclosingFunctionName(in: text, beforeOffset: cursorOffset)
 
         // Look up value suggestions
-        let suggestions = valueSuggestionsForParam(paramName, in: functionName)
+        let suggestions = valueSuggestionsForParam(paramName, in: functionName, symbols: symbols)
         guard !suggestions.isEmpty else { return nil }
 
         let filtered: [CompletionItem]
@@ -1118,25 +715,22 @@ final class CompletionEngine {
         return from // not an array context
     }
 
-    private func valueSuggestionsForParam(_ paramName: String, in functionName: String?) -> [CompletionItem] {
+    private func valueSuggestionsForParam(
+        _ paramName: String,
+        in functionName: String?,
+        symbols: [TypstCompletionSymbolInfo]
+    ) -> [CompletionItem] {
         switch paramName {
         case "font":
             return fontFamilies.map {
                 CompletionItem(label: $0, insertText: $0, kind: .value, detail: "Font family")
             }
-        case "weight":
-            return weightValues.map { (name, num) in
-                CompletionItem(label: name, insertText: nil, kind: .value, detail: num)
-            }
         default:
-            if let functionName, let values = contextualValueDB[functionName]?[paramName] {
-                return values.map { (name, detail) in
-                    CompletionItem(label: name, insertText: nil, kind: .value, detail: detail)
-                }
-            }
-            guard let values = staticValueDB[paramName] else { return [] }
-            return values.map { (name, detail) in
-                CompletionItem(label: name, insertText: nil, kind: .value, detail: detail)
+            guard let functionName,
+                  let function = functionSymbol(named: functionName, in: symbols),
+                  let param = function.params.first(where: { $0.name == paramName }) else { return [] }
+            return param.values.map { value in
+                CompletionItem(label: value.label, insertText: value.insertText, kind: .value, detail: value.detail)
             }
         }
     }
@@ -1188,7 +782,7 @@ final class CompletionEngine {
             if ch == "<" {
                 let query = String(text[start..<cursorIndex])
                 // Determine context: inside cite() → bib keys; inside ref() or unknown → labels
-                let funcName = findEnclosingFunctionName(in: text, beforeOffset: cursorOffset)
+                let funcName = enclosingFunctionName(in: text, beforeOffset: cursorOffset)
                 let candidates: [CompletionItem]
                 if funcName == "cite" {
                     candidates = bibEntries.map {

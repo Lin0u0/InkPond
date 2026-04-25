@@ -128,5 +128,84 @@ TypstOutlineResult typst_outline(const char *source);
 /// Free a TypstOutlineResult.
 void typst_free_outline_result(TypstOutlineResult result);
 
+/// A literal value accepted by a Typst function parameter.
+typedef struct {
+    char *label;
+    char *insert_text;
+    char *detail;
+} TypstCompletionValue;
+
+/// A Typst function parameter as exposed by Func::params().
+typedef struct {
+    char                 *name;
+    char                 *docs;
+    char                 *input;
+    char                 *default_value;
+    TypstCompletionValue *values;
+    size_t                value_len;
+    bool                  positional;
+    bool                  named;
+    bool                  variadic;
+    bool                  required;
+    bool                  settable;
+} TypstCompletionParam;
+
+/// Symbol kinds returned by typst_completion_symbols.
+enum {
+    TypstCompletionKindKeyword = 0,
+    TypstCompletionKindFunction = 1,
+    TypstCompletionKindValue = 2,
+    TypstCompletionKindType = 3,
+    TypstCompletionKindModule = 4,
+    TypstCompletionKindLocal = 5,
+};
+
+/// A Typst completion symbol from Library::default().global or source-local syntax.
+typedef struct {
+    char                 *name;
+    uint32_t              kind;
+    char                 *detail;
+    uint32_t              utf16_location;
+    uint32_t              utf16_scope_end;
+    TypstCompletionParam *params;
+    size_t                param_len;
+} TypstCompletionSymbol;
+
+/// Result returned by typst_completion_symbols. Free with typst_free_completion_symbol_result.
+typedef struct {
+    TypstCompletionSymbol *symbols;
+    size_t                 symbol_len;
+    char                  *error_message;
+    bool                   success;
+} TypstCompletionSymbolResult;
+
+/// Return Typst-library symbols plus #let / named #import symbols from source.
+TypstCompletionSymbolResult typst_completion_symbols(const char *source);
+
+/// Free a TypstCompletionSymbolResult.
+void typst_free_completion_symbol_result(TypstCompletionSymbolResult result);
+
+/// One syntax node in the cursor context chain.
+typedef struct {
+    char     *kind;
+    uint32_t  utf16_location;
+    uint32_t  utf16_length;
+} TypstContextItem;
+
+/// Result returned by typst_context_at. Free with typst_free_context_result.
+typedef struct {
+    TypstContextItem *items;
+    size_t            item_len;
+    char             *function_name;
+    char             *error_message;
+    bool              success;
+} TypstContextResult;
+
+/// Return the syntax kind chain and innermost function call at a UTF-16 offset.
+TypstContextResult typst_context_at(const char *source, uint32_t utf16_offset);
+
+/// Free a TypstContextResult.
+void typst_free_context_result(TypstContextResult result);
+
 /// Returns typst-ios crate version (static UTF-8 string).
 const char *typst_version(void);
