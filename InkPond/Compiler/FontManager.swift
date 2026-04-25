@@ -20,29 +20,15 @@ enum FontManager {
     /// Cache parsed font name records to avoid re-reading OTF binaries on every call.
     private static var fontNameRecordCache: [String: [FontNameRecord]] = [:]
 
-    private static let cachedBundledCJKFontPaths: [String] = [
-        Bundle.main.path(forResource: "SourceHanSansSC-Regular", ofType: "otf"),
-        Bundle.main.path(forResource: "SourceHanSerifSC-Regular", ofType: "otf"),
-        Bundle.main.path(forResource: "SourceHanSansSC-Bold", ofType: "otf"),
-        Bundle.main.path(forResource: "SourceHanSerifSC-Bold", ofType: "otf"),
-    ].compactMap { $0 }
     private static var registeredPreviewFontPaths: Set<String> = []
 
-    // MARK: - Bundled fonts
-
-    /// Paths to bundled CJK fonts (思源黑体 + 思源宋体) used as fallbacks.
-    static var bundledCJKFontPaths: [String] {
-        cachedBundledCJKFontPaths
-    }
-
-    /// Returns the Typst-usable font family name (OTF name record #1) for a bundled font path.
-    static func typstFamilyName(forBundledPath path: String) -> String? {
+    nonisolated static func typstFamilyName(forFontAtPath path: String) -> String? {
         fontNameRecords(forFontAtPath: path)
             .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 1 })?
             .value
     }
 
-    static func typstFaceName(forFontAtPath path: String) -> String? {
+    nonisolated static func typstFaceName(forFontAtPath path: String) -> String? {
         fontNameRecords(forFontAtPath: path)
             .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 2 })?
             .value
@@ -56,7 +42,7 @@ enum FontManager {
             return font
         }
 
-        if let familyName = typstFamilyName(forBundledPath: path),
+        if let familyName = typstFamilyName(forFontAtPath: path),
            let fontName = UIFont.fontNames(forFamilyName: familyName).first,
            let font = UIFont(name: fontName, size: size) {
             return font
@@ -65,7 +51,7 @@ enum FontManager {
         return nil
     }
 
-    private static func fontNameRecords(forFontAtPath path: String) -> [FontNameRecord] {
+    nonisolated private static func fontNameRecords(forFontAtPath path: String) -> [FontNameRecord] {
         if let cached = fontNameRecordCache[path] { return cached }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               data.count > 12 else { return [] }
@@ -132,7 +118,7 @@ enum FontManager {
         }
     }
 
-    private static func postScriptName(forFontAtPath path: String) -> String? {
+    nonisolated private static func postScriptName(forFontAtPath path: String) -> String? {
         if let record = fontNameRecords(forFontAtPath: path)
             .first(where: { $0.platformID == 3 && $0.encodingID == 1 && $0.nameID == 6 })?
             .value,
@@ -203,7 +189,7 @@ enum FontManager {
         try? createAppFontsDirectory(rootURL: rootURL)
     }
 
-    static func appFontFileNames(rootURL: URL? = nil) -> [String] {
+    nonisolated static func appFontFileNames(rootURL: URL? = nil) -> [String] {
         let directory = appFontsDirectory(rootURL: rootURL)
         guard let items = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return []
@@ -214,7 +200,7 @@ enum FontManager {
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
-    static func appImportedFontPaths(rootURL: URL? = nil) -> [String] {
+    nonisolated static func appImportedFontPaths(rootURL: URL? = nil) -> [String] {
         let directory = appFontsDirectory(rootURL: rootURL)
         return appFontFileNames(rootURL: rootURL).compactMap { fileName in
             let path = directory.appendingPathComponent(fileName).path
@@ -223,20 +209,10 @@ enum FontManager {
     }
 
     static func appFontItems(rootURL: URL? = nil) -> [AppFontItem] {
-        let builtInItems = bundledCJKFontPaths.map { path in
-            AppFontItem(
-                displayName: typstFamilyName(forBundledPath: path)
-                    ?? URL(fileURLWithPath: path).lastPathComponent,
-                path: path,
-                fileName: URL(fileURLWithPath: path).lastPathComponent,
-                isBuiltIn: true
-            )
-        }
-
         let importedItems = appImportedFontPaths(rootURL: rootURL).map { path in
             let fileURL = URL(fileURLWithPath: path)
             return AppFontItem(
-                displayName: typstFamilyName(forBundledPath: path)
+                displayName: typstFamilyName(forFontAtPath: path)
                     ?? fileURL.deletingPathExtension().lastPathComponent,
                 path: path,
                 fileName: fileURL.lastPathComponent,
@@ -244,7 +220,7 @@ enum FontManager {
             )
         }
 
-        return builtInItems + importedItems
+        return importedItems
     }
 
     /// Copy a font file into the App font directory.
@@ -300,7 +276,7 @@ enum FontManager {
     }
 
     /// Full path for a font file in a document's project, or nil if missing.
-    static func fontFilePath(for fileName: String, in document: InkPondDocument) -> String? {
+    nonisolated static func fontFilePath(for fileName: String, in document: InkPondDocument) -> String? {
         let path = ProjectFileManager.fontsDirectory(for: document)
             .appendingPathComponent(fileName).path
         return FileManager.default.fileExists(atPath: path) ? path : nil
@@ -328,25 +304,55 @@ enum FontManager {
         }
     }
 
-    // MARK: - Resolve paths for compilation
+    nonisolated static func normalizeFamilyName(_ familyName: String) -> String {
+        familyName.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
 
-    /// Returns all font file paths in precedence order:
-    /// bundled CJK fonts, project fonts, then imported App fonts.
-    static func allFontPaths(for document: InkPondDocument, appRootURL: URL? = nil) -> [String] {
-        var paths: [String] = bundledCJKFontPaths
-        for name in document.fontFileNames {
-            if let path = fontFilePath(for: name, in: document) {
-                paths.append(path)
-            }
+    nonisolated static func familyNames(from fonts: [AvailableCompileFont]) -> [String] {
+        var seen = Set<String>()
+        var families: [String] = []
+
+        for font in fonts where seen.insert(font.familyName).inserted {
+            families.append(font.familyName)
         }
-        paths.append(contentsOf: appImportedFontPaths(rootURL: appRootURL))
-        return paths
+
+        return families.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    nonisolated static func compileFontRecord(for path: String, source: CompileFontSource) -> AvailableCompileFont? {
+        let fileURL = URL(fileURLWithPath: path)
+        guard let familyName = typstFamilyName(forFontAtPath: path) ?? UIFont.familyNames.first(where: {
+            UIFont.fontNames(forFamilyName: $0).contains(postScriptName(forFontAtPath: path) ?? "")
+        }) else {
+            return nil
+        }
+
+        return AvailableCompileFont(
+            familyName: familyName,
+            faceName: typstFaceName(forFontAtPath: path) ?? fileURL.deletingPathExtension().lastPathComponent,
+            postScriptName: postScriptName(forFontAtPath: path) ?? fileURL.deletingPathExtension().lastPathComponent,
+            path: path,
+            source: source
+        )
+    }
+
+    nonisolated static func projectFontRecords(for document: InkPondDocument) -> [AvailableCompileFont] {
+        document.fontFileNames.compactMap { fileName in
+            guard let path = fontFilePath(for: fileName, in: document) else { return nil }
+            return compileFontRecord(for: path, source: .project)
+        }
+    }
+
+    nonisolated static func appFontRecords(rootURL: URL? = nil) -> [AvailableCompileFont] {
+        appImportedFontPaths(rootURL: rootURL).compactMap { path in
+            compileFontRecord(for: path, source: .app)
+        }
     }
 
     static func completionFamilyNames(
         from fontPaths: [String],
         resolveFamilyName: (String) -> String? = { path in
-            typstFamilyName(forBundledPath: path)
+            typstFamilyName(forFontAtPath: path)
         }
     ) -> [String] {
         var seen = Set<String>()

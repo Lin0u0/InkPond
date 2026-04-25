@@ -35,16 +35,16 @@
 "app_fonts.summary.imported" = "已匯入 %d 個";
 "app_fonts.alert.error" = "字型錯誤";
 "app_fonts.overview.title" = "App 字型可供所有專案使用。";
-"app_fonts.overview.detail" = "內置的思源 CJK 字型為唯讀。匯出專案 ZIP 時不會包含已匯入的 App 字型。";
-"project_fonts.footer" = "App 字型可供所有專案使用。內置 App 字型為唯讀；「新增字型」會匯入僅目前專案可用的字型。";
+"app_fonts.overview.detail" = "已匯入的 App 字型可供所有專案使用。文件明確引用時，也可使用系統字型與系統已安裝字型。匯出專案 ZIP 時不會打包 App、系統或系統已安裝字型。";
+"project_fonts.footer" = "App 字型可供所有專案使用；「新增字型」會匯入僅目前專案可用的字型。";
 "project_fonts.empty" = "沒有專案字型";
 "font.scope.built_in" = "內置";
 "font.scope.app" = "App";
 "font.scope.project" = "專案";
 "font.faces_count" = "%d 個字重";
 "font.copyName" = "拷貝字型名稱";
-"app_fonts.export_warning.title" = "不包含 App 字型";
-"app_fonts.export_warning.message" = "專案 ZIP 只會匯出專案目錄。已匯入的 App 字型不會被打包，目標裝置需另行提供這些字型。";
+"app_fonts.export_warning.title" = "不包含外部字型";
+"app_fonts.export_warning.message" = "專案 ZIP 只會匯出專案目錄。App 字型、系統字型與系統已安裝字型都不會被打包，目標裝置需另行提供這些字型。";
 "settings.version_format" = "版本 %@（%@）";
 "settings.typst_version_format" = "Typst iOS %@";
 
@@ -62,6 +62,11 @@
 "error.typst.compiler_not_linked" = "Typst 編譯器函式庫尚未連結，請執行 rust-ffi/build-ios.sh。";
 "error.typst.unknown_compilation" = "未知編譯錯誤";
 "error.typst.compilation_timeout" = "編譯逾時。";
+"error.font_resolution.unresolved_expression" = "InkPond 目前只支援解析字面量 Typst 字型名稱。請在 %1$@ 中把 %2$@ 改成帶引號的字型名稱，例如「PingFang SC」，或改成由帶引號字型名稱組成的 tuple。";
+"error.font_resolution.missing_families" = "缺少這些字型：%@。請先把它們安裝到系統、匯入到 App 字型，或加入目前專案。";
+"warning.font_fallback.title" = "使用了 fallback 字型";
+"warning.font_fallback.message" = "部分文字可能會使用 fallback 字型「%@」顯示，因為目前選擇的字型沒有覆蓋所有字元。";
+"warning.font_fallback.dismiss" = "關閉 fallback 字型警告";
 
 "error.local_package.storage_unavailable" = "本地套件儲存目錄不可用。";
 "error.local_package.missing_manifest" = "資料夾中缺少 typst.toml 清單檔案。";
@@ -77,6 +82,7 @@
 "error.image.process_failed" = "無法處理圖片。";
 "error.datastore.title" = "無法開啟資料儲存";
 "error.datastore.message" = "墨池無法開啟資料儲存，請嘗試重新啟動應用程式。如果問題持續，重新安裝可能有幫助。";
+"error.cache.unsafe_path" = "快取檔案路徑無效。";
 "toast.image_inserted.single" = "已插入 %@";
 "toast.image_inserted.multiple" = "已插入 %d 張圖片";
 
@@ -157,14 +163,22 @@
 "Compile Cache" = "編譯快取";
 "Manage Package Cache" = "管理套件快取";
 "Package Cache" = "套件快取";
+"Manage System Font Cache" = "管理系統字型快取";
+"System Font Cache" = "系統字型快取";
 "Overview" = "概覽";
 "Total Size" = "總大小";
 "Cached Documents" = "已快取文件";
 "Cached Packages" = "已快取套件";
+"Cached Fonts" = "已快取字型";
 "Documents" = "文件";
 "Packages" = "套件";
 "No cached document previews" = "沒有已快取的文件預覽";
 "No cached @preview packages" = "沒有已快取的 @preview 套件";
+"No cached system fonts" = "沒有已快取的系統字型";
+"Clear System Font Cache" = "清空系統字型快取";
+"Clear System Font Cache?" = "清空系統字型快取？";
+"This removes generated system font files. InkPond will rebuild them the next time a document needs them." = "這會刪除生成的系統字型檔案。下次文件需要時，墨池會重新生成。";
+"Generated system font files stay local to this device and are excluded from iCloud Backup." = "生成的系統字型檔案只會保留在本裝置，並已排除於 iCloud 備份之外。";
 
 "local_packages.title" = "本地套件";
 "local_packages.import" = "匯入套件";
@@ -206,6 +220,9 @@
 "This removes all downloaded @preview packages. They will be downloaded again on the next compile." = "這會移除所有已下載的 @preview 套件，下次編譯時會重新下載。";
 "Updated %@" = "更新於 %@";
 "Clear All" = "全部清空";
+"settings.feedback.section" = "意見回饋";
+"settings.feedback.github_issues" = "GitHub Issues";
+"settings.feedback.github_issues.hint" = "打開 GitHub Issues 回報問題或分享建議。";
 "Acknowledgements" = "致謝";
 "Special Thanks" = "特別感謝";
 "The open-source typesetting system at the core of InkPond." = "墨池核心使用的開源排版系統。";
@@ -270,12 +287,12 @@
 "a11y.preview.placeholder.label" = "預覽預留區";
 "a11y.preview.placeholder.hint" = "開始輸入即可產生預覽。";
 "preview.stats.pages" = "%d 頁";
-"preview.stats.words" = "%d 詞";
-"preview.stats.tokens" = "%d 詞";
+"preview.stats.words" = "%d 字";
+"preview.stats.tokens" = "%d 字";
 "preview.stats.characters" = "%d 字元";
-"preview.stats.words.label" = "詞數";
-"preview.stats.tokens.label" = "詞數";
-"preview.stats.characters.label" = "字數";
+"preview.stats.words.label" = "字數";
+"preview.stats.tokens.label" = "字數";
+"preview.stats.characters.label" = "字元數";
 "preview.stats.a11y.value.expanded" = "%1$@，%2$@，%3$@";
 "preview.stats.a11y.hint.collapsed" = "點兩下展開字數與字元統計。";
 "preview.stats.a11y.hint.expanded" = "點兩下收起詳細統計。";
@@ -379,8 +396,10 @@
 "icloud.sync_fonts_toggle" = "同步字型";
 "icloud.sync_packages_toggle" = "同步套件";
 "icloud.sync_snippets_toggle" = "同步程式碼片段";
-"icloud.sync_footer.on" = "專案會透過 iCloud 同步。字型、套件和程式碼片段是否同步由上方開關決定。";
-"icloud.sync_footer.off" = "專案會保留在本機。你可以先設定好字型、套件和程式碼片段的同步偏好，再開啟專案同步。";
+"icloud.additional_content_section" = "附加內容";
+"icloud.additional_content_footer" = "這些選項決定開啟專案同步時，App 字型、本機套件和程式碼片段是否也存入 iCloud。";
+"icloud.sync_footer.on" = "專案檔案會存放在 iCloud 雲碟，並透過 iCloud 同步。";
+"icloud.sync_footer.off" = "專案檔案會保留在本裝置。開啟後會將本機專案遷移到 iCloud，並顯示 iCloud 中的專案。";
 "icloud.error.unavailable" = "iCloud 不可用。請在系統設定中登入 iCloud。";
 "icloud.migrating" = "正在遷移檔案⋯";
 "icloud.restart_title" = "需要重新啟動";

@@ -14,7 +14,8 @@ struct ICloudSettingsView: View {
 
     var body: some View {
         List {
-            syncTogglesSection
+            projectSyncSection
+            auxiliarySyncSection
             if storageManager.mode == .iCloud {
                 syncStatusSection
             }
@@ -43,7 +44,7 @@ struct ICloudSettingsView: View {
 
     // MARK: - Sync Toggles
 
-    private var syncTogglesSection: some View {
+    private var projectSyncSection: some View {
         Section {
             if storageManager.isMigrating {
                 VStack(alignment: .leading, spacing: 8) {
@@ -60,18 +61,6 @@ struct ICloudSettingsView: View {
                     Label(L10n.tr("icloud.sync_toggle"), systemImage: "doc.text")
                 }
                 .disabled(!storageManager.iCloudAvailable && storageManager.mode != .iCloud)
-
-                Toggle(isOn: fontSyncBinding) {
-                    Label(L10n.tr("icloud.sync_fonts_toggle"), systemImage: "character.textbox")
-                }
-
-                Toggle(isOn: packageSyncBinding) {
-                    Label(L10n.tr("icloud.sync_packages_toggle"), systemImage: "shippingbox")
-                }
-
-                Toggle(isOn: snippetSyncBinding) {
-                    Label(L10n.tr("icloud.sync_snippets_toggle"), systemImage: "note.text")
-                }
             }
 
             if let error = storageManager.migrationError {
@@ -95,11 +84,34 @@ struct ICloudSettingsView: View {
                 }
                 .tint(.orange)
             }
+        } header: {
+            Text(L10n.tr("Projects"))
         } footer: {
             Text(storageManager.mode == .iCloud
                  ? L10n.tr("icloud.sync_footer.on")
                  : L10n.tr("icloud.sync_footer.off"))
         }
+    }
+
+    private var auxiliarySyncSection: some View {
+        Section {
+            Toggle(isOn: fontSyncBinding) {
+                Label(L10n.tr("icloud.sync_fonts_toggle"), systemImage: "character.textbox")
+            }
+
+            Toggle(isOn: packageSyncBinding) {
+                Label(L10n.tr("icloud.sync_packages_toggle"), systemImage: "shippingbox")
+            }
+
+            Toggle(isOn: snippetSyncBinding) {
+                Label(L10n.tr("icloud.sync_snippets_toggle"), systemImage: "note.text")
+            }
+        } header: {
+            Text(L10n.tr("icloud.additional_content_section"))
+        } footer: {
+            Text(L10n.tr("icloud.additional_content_footer"))
+        }
+        .disabled(storageManager.isMigrating)
     }
 
     // MARK: - Sync Status

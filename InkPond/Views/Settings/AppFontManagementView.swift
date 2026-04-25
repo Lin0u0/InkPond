@@ -46,6 +46,7 @@ struct AppFontManagementView: View {
         } message: {
             Text(actionError ?? "")
         }
+        .fileDialogDefaultDirectory(preferredPickerDirectory)
     }
 
     private var overviewSection: some View {
@@ -65,7 +66,7 @@ struct AppFontManagementView: View {
         Section(L10n.appFontsTitle) {
             ExpandableFontList(
                 groups: appFontLibrary.groupedItems,
-                scopeLabel: { $0.isBuiltIn ? L10n.fontScopeBuiltIn : L10n.fontScopeApp },
+                scopeLabel: { _ in L10n.fontScopeApp },
                 onDeleteGroup: { group in
                     guard !group.isBuiltIn else { return }
                     InteractionFeedback.notify(.warning)
@@ -83,5 +84,15 @@ struct AppFontManagementView: View {
                     .foregroundStyle(.primary)
             }
         }
+    }
+
+    private var preferredPickerDirectory: URL? {
+        if StorageSyncPreferences.syncFonts,
+           let ubiquityDocuments = FileManager.default
+            .url(forUbiquityContainerIdentifier: AppIdentity.iCloudContainerIdentifier)?
+            .appendingPathComponent("Documents", isDirectory: true) {
+            return ubiquityDocuments
+        }
+        return nil
     }
 }

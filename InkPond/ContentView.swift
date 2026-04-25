@@ -90,6 +90,7 @@ struct ContentView: View {
             seedUITestDocumentIfNeeded()
         }
         .onChange(of: storageManager.mode) { _, _ in
+            selectedDocument = nil
             appFontLibrary.stopMonitoring()
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
@@ -114,6 +115,14 @@ struct ContentView: View {
             || processInfo.environment["UITEST_SEED_SAMPLE_DOCUMENT"] == "1"
     }
 
+    private var uiTestSampleDocumentContent: String {
+        let processInfo = ProcessInfo.processInfo
+        if let override = processInfo.environment["UITEST_SAMPLE_CONTENT"], !override.isEmpty {
+            return override
+        }
+        return "= \(L10n.uiTestSampleDocumentTitle)\n\nHello, InkPond UI tests."
+    }
+
     @MainActor
     private func seedUITestDocumentIfNeeded() {
         guard shouldSeedUITestDocument, !didSeedUITestDocument else { return }
@@ -136,7 +145,7 @@ struct ContentView: View {
             try ProjectFileManager.createInitialProject(for: document)
             try ProjectFileManager.writeTypFile(
                 named: document.entryFileName,
-                content: "= \(L10n.uiTestSampleDocumentTitle)\n\nHello, InkPond UI tests.",
+                content: uiTestSampleDocumentContent,
                 for: document
             )
             modelContext.insert(document)

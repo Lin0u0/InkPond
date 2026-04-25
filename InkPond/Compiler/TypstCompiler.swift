@@ -163,6 +163,19 @@ final class TypstCompiler {
         sourceMap = nil
     }
 
+    func presentPreflightError(_ message: String) {
+        debounceTask?.cancel()
+        debounceTask = nil
+        activeTask?.cancel()
+        activeTask = nil
+        scheduledRequest = nil
+        pendingRequest = nil
+        compileGeneration &+= 1
+        isCompiling = false
+        sourceMap = nil
+        errorMessage = message
+    }
+
     /// Cancel any in-flight compilation (e.g. when document is closed).
     func cancel() {
         debounceTask?.cancel()
@@ -311,11 +324,12 @@ final class TypstCompiler {
         previewCacheStore: CompiledPreviewCacheStore,
         typstVersionProvider: @escaping @Sendable () -> String?
     ) -> WorkerResult {
+        let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: request.fontPaths)
         let cacheInput = request.previewCacheDescriptor.map {
             CompiledPreviewCacheInput(
                 descriptor: $0,
                 source: request.source,
-                fontPaths: request.fontPaths,
+                fontPaths: materializedFontPaths,
                 rootDir: request.rootDir,
                 typstVersion: typstVersionProvider()
             )
@@ -336,7 +350,7 @@ final class TypstCompiler {
         }
 
         let compileInterval = signposter.beginInterval("typst.compile")
-        let result = compileWorker(request.source, request.fontPaths, request.rootDir)
+        let result = compileWorker(request.source, materializedFontPaths, request.rootDir)
         signposter.endInterval("typst.compile", compileInterval)
 
         switch result {

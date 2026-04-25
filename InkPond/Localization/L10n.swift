@@ -54,6 +54,15 @@ enum L10n {
     nonisolated static func fontFacesCount(_ count: Int) -> String { format("font.faces_count", count) }
     nonisolated static var appFontsExportWarningTitle: String { tr("app_fonts.export_warning.title") }
     nonisolated static var appFontsExportWarningMessage: String { tr("app_fonts.export_warning.message") }
+    nonisolated static func fontResolutionUnresolvedExpression(fileName: String, expression: String) -> String {
+        format("error.font_resolution.unresolved_expression", fileName, expression)
+    }
+    nonisolated static func fontResolutionMissingFamilies(_ families: [String]) -> String {
+        format("error.font_resolution.missing_families", families.joined(separator: ", "))
+    }
+    nonisolated static func fontFallbackWarning(family: String) -> String {
+        format("warning.font_fallback.message", family)
+    }
     nonisolated static var uiTestSampleDocumentTitle: String { tr("ui_test.sample_document_title") }
 
     nonisolated static var docListNewDocument: String { tr("doc.list.action.new") }

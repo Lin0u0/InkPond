@@ -39,25 +39,6 @@ private struct PreviewStatisticItem: Identifiable {
     var id: String { title }
 }
 
-private extension Unicode.Scalar {
-    nonisolated var isCJKUnifiedIdeograph: Bool {
-        switch value {
-        case 0x3400...0x4DBF,
-             0x4E00...0x9FFF,
-             0xF900...0xFAFF,
-             0x20000...0x2A6DF,
-             0x2A700...0x2B73F,
-             0x2B740...0x2B81F,
-             0x2B820...0x2CEAF,
-             0x2CEB0...0x2EBEF,
-             0x30000...0x3134F:
-            true
-        default:
-            false
-        }
-    }
-}
-
 private extension Character {
     nonisolated var countsTowardPreviewCharacter: Bool {
         !unicodeScalars.allSatisfy { scalar in
@@ -496,10 +477,15 @@ extension PDFContainerView {
 struct PreviewPane: View {
     var compiler: TypstCompiler
     var source: String
+    var compileSource: String? = nil
     var fontPaths: [String] = []
+    var fontWarnings: [CompileFontWarning] = []
+    var preflightError: String? = nil
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor? = nil
     var compileToken: UUID = UUID()
+    var drivesCompilation: Bool = true
+    var cancelsCompilerOnDisappear: Bool = true
     var focusCoordinator: EditorFocusCoordinator? = nil
     var sourceMap: SourceMap? = nil
     var syncCoordinator: SyncCoordinator? = nil
@@ -515,7 +501,7 @@ struct PreviewPane: View {
     @State private var isShowingStatsDetails = false
     @State private var cachedWordCount: Int = 0
     @State private var cachedCharacterCount: Int = 0
-    @State private var cachedIsCJK: Bool = false
+    @State private var dismissedFontWarningIDs: Set<String> = []
 
     private var previewStatistics: PreviewStatistics? {
         guard let pdf = compiler.pdfDocument else { return nil }
@@ -526,8 +512,8 @@ struct PreviewPane: View {
         )
     }
 
-    private var prefersChineseStatistics: Bool {
-        cachedIsCJK
+    private var visibleFontWarnings: [CompileFontWarning] {
+        fontWarnings.filter { !dismissedFontWarningIDs.contains($0.id) }
     }
     
     var body: some View {
@@ -565,13 +551,6 @@ struct PreviewPane: View {
                     .padding(.top, topViewportInset)
             }
 
-            if let error = compiler.errorMessage {
-                errorToast(error)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
             if compiler.isCompiling {
                 GeometryReader { geometry in
                     let topPadding = topViewportInset > 0
@@ -588,21 +567,36 @@ struct PreviewPane: View {
                 .zIndex(1)
             }
 
-            if let stats = previewStatistics {
-                previewStatisticsButton(stats)
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            if previewStatistics != nil || compiler.errorMessage != nil || !visibleFontWarnings.isEmpty {
+                bottomStatusOverlay
             }
         }
             .onChange(of: source, initial: true) {
-                compileIfNeeded()
+                if drivesCompilation {
+                    compileIfNeeded()
+                }
                 recomputeTextStatistics()
             }
-            .onChange(of: fontPaths) { compileIfNeeded() }
-            .onChange(of: rootDir) { compileIfNeeded() }
-            .onChange(of: compileToken) { compileIfNeeded() }
+            .onChange(of: compileSource) { _, _ in
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: fontPaths) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: preflightError, initial: true) { _, _ in
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: rootDir) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: compileToken) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
             .onChange(of: compiler.pdfDocument != nil) { _, hasPreview in
                 guard !hasPreview else { return }
                 isShowingStatsDetails = false
@@ -614,12 +608,19 @@ struct PreviewPane: View {
                     isShowingErrorDetails = shouldExpand
                 }
             }
+            .onChange(of: fontWarnings) { _, newValue in
+                let activeIDs = Set(newValue.map(\.id))
+                dismissedFontWarningIDs.formIntersection(activeIDs)
+            }
             .onDisappear {
                 focusCoordinator?.clearFocusPreservation()
-                compiler.cancel()
+                if cancelsCompilerOnDisappear {
+                    compiler.cancel()
+                }
             }
             .animation(.easeInOut(duration: 0.2), value: compiler.errorMessage)
             .animation(.easeInOut(duration: 0.2), value: isShowingErrorDetails)
+            .animation(.easeInOut(duration: 0.2), value: fontWarnings)
     }
 
     private func recomputeTextStatistics() {
@@ -627,23 +628,26 @@ struct PreviewPane: View {
         Task.detached(priority: .utility) {
             let wordCount = text.previewWordCount
             let charCount = text.previewCharacterCount
-            let isCJK = text.containsCJKIdeographs
             await MainActor.run {
                 cachedWordCount = wordCount
                 cachedCharacterCount = charCount
-                cachedIsCJK = isCJK
             }
         }
     }
 
     /// Only compile when the source contains meaningful content.
     private func compileIfNeeded() {
-        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let effectiveCompileSource = compileSource ?? source
+        guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             compiler.clearPreview()
             return
         }
+        if let preflightError {
+            compiler.presentPreflightError(preflightError)
+            return
+        }
         compiler.compile(
-            source: source,
+            source: effectiveCompileSource,
             fontPaths: fontPaths,
             rootDir: rootDir,
             previewCachePolicy: .useCacheIfValid,
@@ -677,26 +681,36 @@ struct PreviewPane: View {
         .accessibilityIdentifier("editor.preview.placeholder")
     }
 
+    private var bottomStatusOverlay: some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            if let stats = previewStatistics {
+                previewStatisticsButton(stats)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if let error = compiler.errorMessage {
+                errorToast(error)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if !visibleFontWarnings.isEmpty {
+                fontWarningToast(visibleFontWarnings)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
     private func previewStatisticsButton(_ stats: PreviewStatistics) -> some View {
         let pageText = L10n.previewStatsPages(stats.pageCount)
         let cardCornerRadius: CGFloat = 18
-        let expandedItems: [PreviewStatisticItem]
-
-        if prefersChineseStatistics {
-            expandedItems = [
-                PreviewStatisticItem(title: L10n.tr("preview.stats.characters.label"), value: "\(stats.characterCount)"),
-                PreviewStatisticItem(title: L10n.tr("preview.stats.tokens.label"), value: "\(stats.wordCount)")
-            ]
-        } else {
-            expandedItems = [
-                PreviewStatisticItem(title: L10n.tr("preview.stats.words.label"), value: "\(stats.wordCount)"),
-                PreviewStatisticItem(title: L10n.tr("preview.stats.characters.label"), value: "\(stats.characterCount)")
-            ]
-        }
-
-        let accessibilitySecondaryText = prefersChineseStatistics
-            ? L10n.previewStatsTokens(stats.wordCount)
-            : L10n.previewStatsWords(stats.wordCount)
+        let expandedItems = [
+            PreviewStatisticItem(title: L10n.tr("preview.stats.words.label"), value: "\(stats.wordCount)"),
+            PreviewStatisticItem(title: L10n.tr("preview.stats.characters.label"), value: "\(stats.characterCount)")
+        ]
+        let accessibilitySecondaryText = L10n.previewStatsWords(stats.wordCount)
         let accessibilityCharacterText = L10n.previewStatsCharacters(stats.characterCount)
 
         return Button {
@@ -864,6 +878,59 @@ struct PreviewPane: View {
         .accessibilityValue(presentation.location ?? "")
     }
 
+    private func fontWarningToast(_ warnings: [CompileFontWarning]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "textformat.alt")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 30, height: 30)
+                    .background(Color.orange.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.tr("warning.font_fallback.title"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    ForEach(warnings.prefix(3)) { warning in
+                        Text(warning.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        dismissedFontWarningIDs.formUnion(warnings.map(\.id))
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
+                .accessibilityLabel(L10n.tr("warning.font_fallback.dismiss"))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: 520, alignment: .leading)
+        .systemFloatingSurface(cornerRadius: 18)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.10), radius: 14, y: 7)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.tr("warning.font_fallback.title"))
+        .accessibilityValue(warnings.map(\.message).joined(separator: " "))
+    }
+
     private func normalizedErrorMessage(_ message: String) -> String {
         message.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -923,11 +990,65 @@ struct PreviewPane: View {
     }
 }
 
-private extension String {
-    nonisolated var containsCJKIdeographs: Bool {
-        unicodeScalars.contains { $0.isCJKUnifiedIdeograph }
+struct PreviewCompileDriver: View {
+    var compiler: TypstCompiler
+    var source: String
+    var compileSource: String?
+    var fontPaths: [String]
+    var preflightError: String?
+    var rootDir: String?
+    var previewCacheDescriptor: CompiledPreviewCacheDescriptor?
+    var compileToken: UUID
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: source, initial: true) { _, _ in
+                compileIfNeeded()
+            }
+            .onChange(of: compileSource) { _, _ in
+                compileIfNeeded()
+            }
+            .onChange(of: fontPaths) {
+                compileIfNeeded()
+            }
+            .onChange(of: preflightError, initial: true) { _, _ in
+                compileIfNeeded()
+            }
+            .onChange(of: rootDir) {
+                compileIfNeeded()
+            }
+            .onChange(of: compileToken) {
+                compileIfNeeded()
+            }
+            .onDisappear {
+                compiler.cancel()
+            }
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 
+    private func compileIfNeeded() {
+        let effectiveCompileSource = compileSource ?? source
+        guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            compiler.clearPreview()
+            return
+        }
+        if let preflightError {
+            compiler.presentPreflightError(preflightError)
+            return
+        }
+        compiler.compile(
+            source: effectiveCompileSource,
+            fontPaths: fontPaths,
+            rootDir: rootDir,
+            previewCachePolicy: .useCacheIfValid,
+            previewCacheDescriptor: previewCacheDescriptor
+        )
+    }
+}
+
+private extension String {
     nonisolated var previewWordCount: Int {
         let tokenizer = NLTokenizer(unit: .word)
         tokenizer.string = self

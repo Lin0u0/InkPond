@@ -35,16 +35,16 @@
 "app_fonts.summary.imported" = "已导入 %d 个";
 "app_fonts.alert.error" = "字体错误";
 "app_fonts.overview.title" = "App 字体对所有项目可用。";
-"app_fonts.overview.detail" = "内置的思源 CJK 字体为只读。导出的项目 ZIP 不会包含导入的 App 字体。";
-"project_fonts.footer" = "App 字体对所有项目可用。内置 App 字体为只读；“添加字体”会导入仅当前项目可用的字体。";
+"app_fonts.overview.detail" = "导入的 App 字体对所有项目可用。文档显式引用时，也可以使用系统字体和系统已安装字体。导出的项目 ZIP 不会打包 App、系统或系统已安装字体。";
+"project_fonts.footer" = "App 字体对所有项目可用；“添加字体”会导入仅当前项目可用的字体。";
 "project_fonts.empty" = "没有项目字体";
 "font.scope.built_in" = "内置";
 "font.scope.app" = "App";
 "font.scope.project" = "项目";
 "font.faces_count" = "%d 个字重";
 "font.copyName" = "拷贝字体名称";
-"app_fonts.export_warning.title" = "不包含 App 字体";
-"app_fonts.export_warning.message" = "项目 ZIP 只会导出项目目录。导入的 App 字体不会被打包，目标设备需单独提供这些字体。";
+"app_fonts.export_warning.title" = "不包含外部字体";
+"app_fonts.export_warning.message" = "项目 ZIP 只会导出项目目录。App 字体、系统字体和系统已安装字体都不会被打包，目标设备需单独提供这些字体。";
 "settings.version_format" = "版本 %@（%@）";
 "settings.typst_version_format" = "Typst iOS %@";
 
@@ -62,6 +62,11 @@
 "error.typst.compiler_not_linked" = "Typst 编译器库未链接，请运行 rust-ffi/build-ios.sh。";
 "error.typst.unknown_compilation" = "未知编译错误";
 "error.typst.compilation_timeout" = "编译超时。";
+"error.font_resolution.unresolved_expression" = "InkPond 目前只能解析字面量 Typst 字体名。请在 %1$@ 中把 %2$@ 改成带引号的字体名，例如 \"PingFang SC\"，或改成由带引号字体名组成的元组。";
+"error.font_resolution.missing_families" = "缺少这些字体：%@。请先把它们安装到系统、导入到 App 字体，或加入当前项目。";
+"warning.font_fallback.title" = "使用了 fallback 字体";
+"warning.font_fallback.message" = "部分文本可能会使用 fallback 字体“%@”渲染，因为当前选择的字体没有覆盖所有字符。";
+"warning.font_fallback.dismiss" = "关闭 fallback 字体警告";
 
 "error.local_package.storage_unavailable" = "本地包存储目录不可用。";
 "error.local_package.missing_manifest" = "文件夹中缺少 typst.toml 清单文件。";
@@ -77,6 +82,7 @@
 "error.image.process_failed" = "图片处理失败。";
 "error.datastore.title" = "无法打开数据存储";
 "error.datastore.message" = "墨池无法打开数据存储，请尝试重新启动应用。如果问题持续存在，重新安装可能会有帮助。";
+"error.cache.unsafe_path" = "缓存文件路径无效。";
 "toast.image_inserted.single" = "已插入 %@";
 "toast.image_inserted.multiple" = "已插入 %d 张图片";
 
@@ -157,14 +163,22 @@
 "Compile Cache" = "编译缓存";
 "Manage Package Cache" = "管理包缓存";
 "Package Cache" = "包缓存";
+"Manage System Font Cache" = "管理系统字体缓存";
+"System Font Cache" = "系统字体缓存";
 "Overview" = "概览";
 "Total Size" = "总大小";
 "Cached Documents" = "已缓存文档";
 "Cached Packages" = "已缓存包";
+"Cached Fonts" = "已缓存字体";
 "Documents" = "文档";
 "Packages" = "包";
 "No cached document previews" = "没有已缓存的文档预览";
 "No cached @preview packages" = "没有已缓存的 @preview 包";
+"No cached system fonts" = "没有已缓存的系统字体";
+"Clear System Font Cache" = "清空系统字体缓存";
+"Clear System Font Cache?" = "清空系统字体缓存？";
+"This removes generated system font files. InkPond will rebuild them the next time a document needs them." = "这会删除生成的系统字体文件。下次文档需要时，墨池会重新生成。";
+"Generated system font files stay local to this device and are excluded from iCloud Backup." = "生成的系统字体文件仅保留在本设备，并已排除在 iCloud 备份之外。";
 
 "local_packages.title" = "本地包";
 "local_packages.import" = "导入包";
@@ -206,11 +220,13 @@
 "This removes all downloaded @preview packages. They will be downloaded again on the next compile." = "这会移除所有已下载的 @preview 包。下次编译时会重新下载。";
 "Updated %@" = "更新于 %@";
 "Clear All" = "全部清空";
+"settings.feedback.section" = "反馈";
+"settings.feedback.github_issues" = "GitHub Issues";
+"settings.feedback.github_issues.hint" = "打开 GitHub Issues 反馈问题或建议。";
 "Acknowledgements" = "致谢";
 "Special Thanks" = "特别感谢";
 "The open-source typesetting system at the core of InkPond." = "墨池核心使用的开源排版系统。";
 "Soothing pastel color palette powering the editor themes." = "编辑器主题所用的柔和马卡龙配色。";
-"Bundled CJK fonts used as default fallbacks in InkPond." = "墨池默认使用的内置 CJK 回退字体。";
 "Reference implementation for Swift/Rust interop." = "Swift/Rust 互操作方案的参考实现。";
 "Thanks to everyone at Donut for support and inspiration." = "感谢甜甜圈的所有伙伴给予的支持与启发。";
 "Compilation Error" = "编译错误";
@@ -270,12 +286,12 @@
 "a11y.preview.placeholder.label" = "预览占位";
 "a11y.preview.placeholder.hint" = "开始输入即可生成预览。";
 "preview.stats.pages" = "%d 页";
-"preview.stats.words" = "%d 词";
-"preview.stats.tokens" = "%d 词";
+"preview.stats.words" = "%d 字";
+"preview.stats.tokens" = "%d 字";
 "preview.stats.characters" = "%d 字符";
-"preview.stats.words.label" = "词数";
-"preview.stats.tokens.label" = "词数";
-"preview.stats.characters.label" = "字数";
+"preview.stats.words.label" = "字数";
+"preview.stats.tokens.label" = "字数";
+"preview.stats.characters.label" = "字符数";
 "preview.stats.a11y.value.expanded" = "%1$@，%2$@，%3$@";
 "preview.stats.a11y.hint.collapsed" = "双击展开字数和字符统计。";
 "preview.stats.a11y.hint.expanded" = "双击收起详细统计。";
@@ -379,8 +395,10 @@
 "icloud.sync_fonts_toggle" = "同步字体";
 "icloud.sync_packages_toggle" = "同步包";
 "icloud.sync_snippets_toggle" = "同步代码片段";
-"icloud.sync_footer.on" = "项目会通过 iCloud 同步。字体、包和代码片段是否同步由上面的开关决定。";
-"icloud.sync_footer.off" = "项目会保留在本机。你可以先设置好字体、包和代码片段的同步偏好，再开启项目同步。";
+"icloud.additional_content_section" = "附加内容";
+"icloud.additional_content_footer" = "这些选项决定开启项目同步时，应用字体、本地包和代码片段是否也存入 iCloud。";
+"icloud.sync_footer.on" = "项目文件会存放在 iCloud 云盘，并通过 iCloud 同步。";
+"icloud.sync_footer.off" = "项目文件会保留在本设备。开启后会把本地项目迁移到 iCloud，并显示 iCloud 中的项目。";
 "icloud.error.unavailable" = "iCloud 不可用。请在系统设置中登录 iCloud。";
 "icloud.migrating" = "正在迁移文件…";
 "icloud.restart_title" = "需要重启";

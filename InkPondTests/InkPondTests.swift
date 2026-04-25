@@ -12,6 +12,8 @@ import Testing
 import UIKit
 @testable import InkPond
 
+@Suite(.serialized)
+@MainActor
 struct InkPondTests {
     private let appAppearanceDefaultsKey = "appAppearanceMode"
     private let editorThemeDefaultsKey = "editorThemeID"
@@ -939,35 +941,97 @@ struct InkPondTests {
         #expect(!reloaded.isEmpty)
     }
 
-    @Test func fontManagerAllFontPathsKeepsProjectFontsAheadOfAppFonts() throws {
+    @Test func compileFontResolverResolvesOnlyExplicitFamiliesAndPrefersProjectBeforeExternalSources() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
-        let appRoot = makeTempDirectory()
-        let sourceRoot = makeTempDirectory()
-        defer {
-            try? ProjectFileManager.deleteProjectDirectory(for: doc)
-            try? FileManager.default.removeItem(at: appRoot)
-            try? FileManager.default.removeItem(at: sourceRoot)
-        }
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "Alpha Sans",
+                        faceName: "Regular",
+                        postScriptName: "AlphaSans-Regular",
+                        path: "/system/AlphaSans-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "Beta Serif",
+                        faceName: "Regular",
+                        postScriptName: "BetaSerif-Regular",
+                        path: "/installed/BetaSerif-Regular.ttf",
+                        source: .installed
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "Alpha Sans",
+                        faceName: "Bold",
+                        postScriptName: "AlphaSans-Bold",
+                        path: "/project/AlphaSans-Bold.ttf",
+                        source: .project
+                    )
+                ]
+            },
+            appFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "Beta Serif",
+                        faceName: "Regular",
+                        postScriptName: "BetaSerif-Regular",
+                        path: "/app/BetaSerif-Regular.ttf",
+                        source: .app
+                    )
+                ]
+            },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: (\"Alpha Sans\", \"Beta Serif\"))"]
+            }
+        )
 
-        ProjectFileManager.ensureProjectStructure(for: doc)
+        let resolved = try resolver.resolveFonts(for: doc)
 
-        let projectFontName = "ProjectOverride.ttf"
-        let projectFontURL = ProjectFileManager.fontsDirectory(for: doc).appendingPathComponent(projectFontName)
-        try Data("project".utf8).write(to: projectFontURL)
-        doc.fontFileNames = [projectFontName]
-
-        let appFontSource = sourceRoot.appendingPathComponent("GlobalFallback.otf")
-        try Data("app".utf8).write(to: appFontSource)
-        try FontManager.importAppFont(from: appFontSource, rootURL: appRoot)
-
-        let paths = FontManager.allFontPaths(for: doc, appRootURL: appRoot)
-        let builtInCount = FontManager.bundledCJKFontPaths.count
-
-        #expect(Array(paths.prefix(builtInCount)) == FontManager.bundledCJKFontPaths)
-        #expect(Array(paths.dropFirst(builtInCount)) == [
-            projectFontURL.path,
-            FontManager.appFontsDirectory(rootURL: appRoot).appendingPathComponent("GlobalFallback.otf").path,
+        #expect(resolved.families == ["Alpha Sans", "Beta Serif"])
+        #expect(resolved.fontPaths == [
+            "/project/AlphaSans-Bold.ttf",
+            "/app/BetaSerif-Regular.ttf",
         ])
+        #expect(resolved.sourcesByFamily["Alpha Sans"] == .project)
+        #expect(resolved.sourcesByFamily["Beta Serif"] == .app)
+    }
+
+    @Test func compileFontResolverPrefersInstalledFontsBeforeSystemFonts() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Regular",
+                        postScriptName: "PingFangSC-Regular",
+                        path: "/system/PingFangSC-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Installed",
+                        postScriptName: "PingFangSC-Installed",
+                        path: "/installed/PingFangSC-Installed.ttf",
+                        source: .installed
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: \"PingFang SC\")"]
+            }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.fontPaths == ["/installed/PingFangSC-Installed.ttf"])
+        #expect(resolved.sourcesByFamily["PingFang SC"] == .installed)
     }
 
     @Test func fontManagerCompletionFamiliesOnlyUseCompileFonts() {
@@ -988,11 +1052,376 @@ struct InkPondTests {
         #expect(families == ["Alpha Sans", "Beta Serif"])
     }
 
+    @Test func compileFontResolverAvailableFamiliesMergeProjectAppAndSystemCatalog() {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Regular",
+                        postScriptName: "PingFangSC-Regular",
+                        path: "/system/PingFangSC-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "System UI",
+                        faceName: "Regular",
+                        postScriptName: "SystemUI-Regular",
+                        path: "/system/SystemUI-Regular.ttf",
+                        source: .system
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "Project Sans",
+                        faceName: "Regular",
+                        postScriptName: "ProjectSans-Regular",
+                        path: "/project/ProjectSans-Regular.ttf",
+                        source: .project
+                    )
+                ]
+            },
+            appFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "App Override",
+                        postScriptName: "PingFangSC-App",
+                        path: "/app/PingFangSC-App.ttf",
+                        source: .app
+                    ),
+                    AvailableCompileFont(
+                        familyName: "App Serif",
+                        faceName: "Regular",
+                        postScriptName: "AppSerif-Regular",
+                        path: "/app/AppSerif-Regular.ttf",
+                        source: .app
+                    ),
+                ]
+            },
+            sourceReader: { _, _ in [:] }
+        )
+
+        let families = resolver.availableFontFamilies(for: doc)
+
+        #expect(families == ["App Serif", "PingFang SC", "Project Sans", "System UI"])
+    }
+
+    @Test func requiredFontFamilyScannerFlagsNonLiteralExpressions() {
+        let scanner = RequiredFontFamilyScanner()
+
+        let result = scanner.scan(fileContents: [
+            "main.typ": """
+            #let body-font = "PingFang SC"
+            #set text(font: body-font)
+            """
+        ])
+
+        #expect(result.families.isEmpty)
+        #expect(result.unresolvedExpressions == [
+            RequiredFontFamilyScanner.UnresolvedExpression(
+                fileName: "main.typ",
+                expression: "body-font"
+            )
+        ])
+    }
+
+    @Test func compileFontResolverFailsWhenExplicitFamilyCannotBeResolved() {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: { [] }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: \"Missing CJK\")"]
+            }
+        )
+
+        do {
+            _ = try resolver.resolveFonts(for: doc)
+            Issue.record("Expected missing font resolution failure")
+        } catch {
+            #expect(error.localizedDescription.contains("Missing CJK"))
+        }
+    }
+
+    @Test func compileFontResolverUsesImplicitSystemCJKFallbackWhenNoFontIsSpecified() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "Hiragino Sans GB",
+                        faceName: "W3",
+                        postScriptName: "HiraginoSansGB-W3",
+                        path: "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Regular",
+                        postScriptName: "PingFangSC-Regular",
+                        path: "/system/PingFangSC-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Bold",
+                        postScriptName: "PingFangSC-Semibold",
+                        path: "/system/PingFangSC-Semibold.ttf",
+                        source: .system
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "= 标题\n没有指定字体也应该正常显示中文。"]
+            },
+            preferredLanguagesProvider: { ["zh-Hans"] }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.families == ["PingFang SC"])
+        #expect(resolved.fontPaths.count == 2)
+        #expect(resolved.fontPaths.allSatisfy { $0.contains("PingFangSC") || $0.hasPrefix("/system/") })
+        #expect(resolved.sourcesByFamily["PingFang SC"] == .system)
+        #expect(resolved.warnings.map(\.message).contains { $0.contains("PingFang SC") })
+    }
+
+    @Test func compileFontResolverAddsEmojiFallbackAndWarning() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Regular",
+                        postScriptName: "PingFangSC-Regular",
+                        path: "/system/PingFangSC-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "Apple Color Emoji",
+                        faceName: "Regular",
+                        postScriptName: "AppleColorEmoji",
+                        path: "/system/AppleColorEmoji.ttc",
+                        source: .system
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: \"PingFang SC\")\nHello 😀"]
+            },
+            preferredLanguagesProvider: { ["zh-Hans"] }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.families == ["PingFang SC"])
+        #expect(resolved.fallbackFamilies == ["Apple Color Emoji"])
+        #expect(resolved.sourcesByFamily["Apple Color Emoji"] == .system)
+        #expect(resolved.warnings.map(\.message).contains { $0.contains("Apple Color Emoji") })
+    }
+
+    @Test func compileFontResolverDoesNotAddLatinFallbackWhenRequestedFamilyCoversLatin() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "PingFang SC",
+                        faceName: "Regular",
+                        postScriptName: "PingFangSC-Regular",
+                        path: "/system/PingFangSC-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "Helvetica Neue",
+                        faceName: "Regular",
+                        postScriptName: "HelveticaNeue",
+                        path: "/system/HelveticaNeue.ttf",
+                        source: .system
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: \"PingFang SC\")\nHello 中文"]
+            },
+            preferredLanguagesProvider: { ["zh-Hans"] }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.families == ["PingFang SC"])
+        #expect(!resolved.fallbackFamilies.contains("Helvetica Neue"))
+        #expect(!resolved.fontPaths.contains("/system/HelveticaNeue.ttf"))
+        #expect(!resolved.warnings.map(\.message).contains { $0.contains("Helvetica Neue") })
+    }
+
+    @Test func compileFontResolverAddsLatinFallbackWhenRequestedFamilyDoesNotCoverLatin() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: {
+                [
+                    AvailableCompileFont(
+                        familyName: "Fake CJK Only",
+                        faceName: "Regular",
+                        postScriptName: "FakeCJKOnly-Regular",
+                        path: "/system/FakeCJKOnly-Regular.ttf",
+                        source: .system
+                    ),
+                    AvailableCompileFont(
+                        familyName: "Helvetica Neue",
+                        faceName: "Regular",
+                        postScriptName: "HelveticaNeue",
+                        path: "/system/HelveticaNeue.ttf",
+                        source: .system
+                    ),
+                ]
+            }),
+            projectFontProvider: { _ in [] },
+            appFontProvider: { _ in [] },
+            sourceReader: { _, _ in
+                ["main.typ": "#set text(font: \"Fake CJK Only\")\nHello"]
+            },
+            preferredLanguagesProvider: { ["zh-Hans"] }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.families == ["Fake CJK Only"])
+        #expect(resolved.fallbackFamilies == ["Helvetica Neue"])
+        #expect(resolved.fontPaths.contains { $0.contains("HelveticaNeue") })
+        #expect(resolved.warnings.map(\.message).contains { $0.contains("Helvetica Neue") })
+    }
+
+    @Test func typstBridgeCompilesChineseWithRealSystemFallbackFonts() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        defer {
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        let source = "= 标题\n没有指定字体也应该正常显示中文。"
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: source, for: doc)
+
+        let resolver = CompileFontResolver()
+        let resolved = try resolver.resolveFonts(for: doc)
+        let effectiveSource = CompileFontResolver.effectiveSource(for: source, resolvedFonts: resolved)
+        let result = TypstBridge.compile(
+            source: effectiveSource,
+            fontPaths: resolved.fontPaths,
+            rootDir: ProjectFileManager.projectDirectory(for: doc).path
+        )
+
+        switch result {
+        case .success(let data):
+            let pdf = try #require(PDFDocument(data: data))
+            #expect(pdf.pageCount > 0)
+            let text = pdf.string ?? ""
+            #expect(text.contains("标题"))
+            #expect(text.contains("中文"))
+        case .failure(let error):
+            Issue.record("Expected successful Chinese compile, got: \(error.localizedDescription)")
+        }
+    }
+
+    @Test func typstBridgeKeepsExplicitPingFangAheadOfBundledLatinFonts() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        defer {
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        let source = "#set text(font: \"PingFang SC\")\nHello 中文"
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: source, for: doc)
+
+        let resolver = CompileFontResolver(preferredLanguagesProvider: { ["zh-Hans"] })
+        let resolved = try resolver.resolveFonts(for: doc)
+        guard resolved.families.contains("PingFang SC") else {
+            Issue.record("PingFang SC is not available on this simulator")
+            return
+        }
+
+        let result = TypstBridge.compile(
+            source: source,
+            fontPaths: resolved.fontPaths,
+            rootDir: ProjectFileManager.projectDirectory(for: doc).path
+        )
+
+        switch result {
+        case .success(let data):
+            let pdf = try #require(PDFDocument(data: data))
+            #expect(pdf.pageCount > 0)
+            let rawPDF = String(data: data, encoding: .isoLatin1) ?? ""
+            #expect(rawPDF.localizedCaseInsensitiveContains("PingFang"))
+            #expect(!rawPDF.localizedCaseInsensitiveContains("Libertinus"))
+            #expect(!rawPDF.localizedCaseInsensitiveContains("Helvetica"))
+        case .failure(let error):
+            Issue.record("Expected successful PingFang compile, got: \(error.localizedDescription)")
+        }
+    }
+
+    @Test func typstBridgeRendersEmojiWithAppleColorEmojiFallback() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        defer {
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        let source = """
+        #set page(width: 120pt, height: 120pt, margin: 12pt)
+        #set text(size: 72pt)
+        😀
+        """
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: source, for: doc)
+
+        let resolver = CompileFontResolver()
+        let resolved = try resolver.resolveFonts(for: doc)
+        guard resolved.fallbackFamilies.contains("Apple Color Emoji") else {
+            Issue.record("Apple Color Emoji fallback is not available on this simulator")
+            return
+        }
+
+        let result = TypstBridge.compile(
+            source: source,
+            fontPaths: resolved.fontPaths,
+            rootDir: ProjectFileManager.projectDirectory(for: doc).path
+        )
+
+        switch result {
+        case .success(let data):
+            let pdf = try #require(PDFDocument(data: data))
+            #expect(pdf.pageCount > 0)
+            let rawPDF = String(data: data, encoding: .isoLatin1) ?? ""
+            #expect(
+                rawPDF.localizedCaseInsensitiveContains("AppleColorEmoji")
+                    || rawPDF.localizedCaseInsensitiveContains("Apple Color Emoji")
+            )
+            #expect(
+                rawPDF.contains("/Subtype /Image"),
+                "Apple Color Emoji sbix glyphs should be emitted as image XObjects, not invisible outline text"
+            )
+        case .failure(let error):
+            Issue.record("Expected successful emoji compile, got: \(error.localizedDescription)")
+        }
+    }
+
     @Test func completionEngineFontValuesRemainInsertable() {
         let engine = CompletionEngine()
-        engine.fontFamilies = ["Source Han Sans SC"]
+        engine.fontFamilies = ["PingFang SC"]
 
-        let result = engine.completions(for: "#text(font: So", cursorOffset: 14)
+        let text = "#text(font: Pi"
+        let result = engine.completions(for: text, cursorOffset: text.count)
 
         guard case .value(_, let isQuoted, let items)? = result else {
             Issue.record("Expected font value completion")
@@ -1000,14 +1429,14 @@ struct InkPondTests {
         }
 
         #expect(!isQuoted)
-        #expect(items.map(\.label) == ["Source Han Sans SC"])
+        #expect(items.map(\.label) == ["PingFang SC"])
         #expect(items.allSatisfy { $0.isInsertable })
     }
 
     @Test func completionEngineSupportsUtf16CursorOffsetsWhenEmojiPrecedesCursor() {
         let engine = CompletionEngine()
-        engine.fontFamilies = ["Source Han Sans SC"]
-        let text = "😀 #text(font: So"
+        engine.fontFamilies = ["PingFang SC"]
+        let text = "😀 #text(font: Pi"
         let cursorOffset = (text as NSString).length
 
         let result = engine.completions(for: text, cursorOffset: cursorOffset)
@@ -1018,7 +1447,7 @@ struct InkPondTests {
         }
 
         #expect(!isQuoted)
-        #expect(items.map(\.label) == ["Source Han Sans SC"])
+        #expect(items.map(\.label) == ["PingFang SC"])
     }
 
     @Test func completionEngineStaticValuesAreHintOnly() throws {
@@ -1643,9 +2072,8 @@ private final class CompileProbe: @unchecked Sendable {
     }
 
     func release(_ source: String) {
-        lock.withLock {
-            blockers.removeValue(forKey: source)?.signal()
-        }
+        let blocker = lock.withLock { blockers.removeValue(forKey: source) }
+        blocker?.signal()
     }
 
     func compile(source: String) -> Result<(Data, SourceMap?), TypstBridgeError> {
