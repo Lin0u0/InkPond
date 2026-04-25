@@ -3,6 +3,7 @@
 InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), with live preview and PDF export powered by a Rust FFI bridge.
 
 <p align="center">
+  <a href="https://apps.apple.com/us/app/inkpond/id6760032537"><img src="https://img.shields.io/badge/App%20Store-Download-0D96F6?logo=appstore&logoColor=white" alt="App Store"></a>
   <a href="https://testflight.apple.com/join/w5jmkR2T"><img src="https://img.shields.io/badge/TestFlight-Beta-0D96F6?logo=apple&logoColor=white" alt="TestFlight"></a>
   <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/中文文档-README.zh--CN-34A853" alt="Chinese README"></a>
 </p>
@@ -22,7 +23,8 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 
 | Action | Command / Link |
 |---|---|
-| Join beta | [testflight.apple.com/join/w5jmkR2T](https://testflight.apple.com/join/w5jmkR2T) |
+| Download | [App Store](https://apps.apple.com/us/app/inkpond/id6760032537) |
+| Join TestFlight beta | [testflight.apple.com/join/w5jmkR2T](https://testflight.apple.com/join/w5jmkR2T) |
 | Build Rust FFI | `cd rust-ffi && ./build-ios.sh` |
 | Simulator debug build | `xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Debug -destination 'generic/platform=iOS Simulator' build` |
 | Export options file | `release/ExportOptions.plist` |
@@ -30,38 +32,44 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 ## Features
 
 **Editor**
-- Syntax highlighting with 15 rules, rainbow bracket coloring, and bracket mismatch detection
+- Parser-backed Typst syntax highlighting with themed tokens, rainbow bracket coloring, and bracket mismatch detection
 - Auto-pairing for `{}[]()""$$` with smart type-over, auto-delete, and auto-indent
-- Code completion for Typst functions (~150), keywords, font families, labels, references, and image paths
+- Code completion for Typst functions (~150), keywords, `#import` package specs, font families, labels, references, and image paths
 - Snippets library with custom templates and `$0` cursor placeholders
 - Find and replace (system `UIFindInteraction`)
 - Line number gutter with error line highlighting
 - Keyboard accessory bar with quick-insert buttons
 
-**Preview**
+**Preview & Compile**
+- Typst `0.14.2` compilation through a Rust FFI bridge
 - Live PDF preview with debounced recompilation (350ms)
 - Bidirectional editor-to-preview sync via source maps
+- `@preview` package downloads cached on device, plus local package resolution
 - Document statistics (pages, words/tokens, characters; CJK-aware)
 - Error banner with source location links
 - Full-screen slideshow mode
-- Outline view for heading navigation
+- Parser-backed outline view for heading navigation
+- Compiled preview cache for faster reopen and rebuild cycles
 
 **Project Management**
 - Multi-file projects with customizable entry file
 - Project file browser with .typ, image, and font sections
 - Image import from Photos, clipboard (including HTML paste), and remote URLs
 - Per-project, app-wide, and system font resolution for explicit Typst font declarations
+- Optional iCloud project sync with separate app font, local package, and snippet sync controls
+- Local Typst package manager for folders and `.zip` / `.tar` / `.tar.gz` / `.tgz` archives
 - ZIP project import and export
 - PDF and source (.typ) export
 
 **UI/UX**
 - Adaptive layout: split view on iPad, tabbed on iPhone
-- Three editor themes: Mocha (dark), Latte (light), System (adaptive) — based on Catppuccin
+- Separate app appearance controls plus three editor themes: Mocha (dark), Latte (light), System (adaptive) — based on Catppuccin
 - Onboarding flow for new users
 - Editor position resumption across launches
 - Full VoiceOver and accessibility support
 - Localized in English, Simplified Chinese, Traditional Chinese (HK/TW)
-- iOS 26 enhancements where available, with iOS 17-compatible fallbacks
+- Settings for iCloud, app fonts, local packages, keyboard shortcuts, and compile/package/system-font caches
+- iOS 26 keyboard glass and visual enhancements where available, with iOS 17-compatible fallbacks
 
 ## Requirements
 
@@ -104,8 +112,12 @@ xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Debug -dest
 # Device release archive
 xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Release -destination 'generic/platform=iOS' archive
 
-# Tests
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+# Unit tests
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+
+# UI tests
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+
 # If your local simulator list differs, inspect available destinations first:
 # xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 ```
@@ -115,6 +127,7 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -destination 'platfor
 - `Frameworks/typst_ios.xcframework` is generated by `rust-ffi/build-ios.sh`.
 - `rust-ffi/build-ios.sh` removes `rust-ffi/target/` after packaging the xcframework to minimize local disk usage.
 - `Frameworks/typst_ios.xcframework/` is a local build artifact and is ignored by git.
+- The Swift bridge passes font paths, the project root, an `@preview` package cache, and the local package directory into Rust.
 - Re-run `rust-ffi/build-ios.sh` when:
   - updating Typst / Rust dependencies
   - changing `rust-ffi/src/lib.rs`
@@ -134,11 +147,13 @@ xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Release -de
 # 2) Export IPA (using your ExportOptions.plist)
 xcodebuild -exportArchive -archivePath /private/tmp/InkPond.xcarchive -exportPath /private/tmp/InkPond-export -exportOptionsPlist release/ExportOptions.plist
 
-# 3) Upload (example app id)
+# 3) Upload (InkPond app id)
 asc --profile default builds upload --app 6760032537 --ipa /private/tmp/InkPond-export/InkPond.ipa --output table
 ```
 
 After upload, wait for processing, then distribute build to TestFlight groups.
+
+Public App Store listing: [apps.apple.com/us/app/inkpond/id6760032537](https://apps.apple.com/us/app/inkpond/id6760032537)
 
 ## Project Layout
 
@@ -146,12 +161,13 @@ After upload, wait for processing, then distribute build to TestFlight groups.
 InkPond/
 ├── InkPond/
 │   ├── InkPondApp.swift                 # @main entry point, SwiftData ModelContainer
-│   ├── ContentView.swift               # NavigationSplitView shell, environment setup
+│   ├── ContentView.swift                # NavigationSplitView shell, environment setup
+│   ├── AppAppearanceManager.swift       # App-wide light/dark/system appearance
 │   ├── Models/
 │   │   └── InkPondDocument.swift        # @Model: document data + project config
 │   ├── Editor/
 │   │   ├── TypstTextView.swift         # UITextView subclass (TextKit 1)
-│   │   ├── SyntaxHighlighter.swift     # 15-rule highlighting + rainbow brackets
+│   │   ├── SyntaxHighlighter.swift     # Typst token styling + rainbow brackets
 │   │   ├── CompletionEngine.swift      # Context-aware code completion
 │   │   ├── AutoPairEngine.swift        # Bracket/quote auto-pairing
 │   │   ├── SyncCoordinator.swift       # Bidirectional editor↔preview sync
@@ -167,6 +183,12 @@ InkPond/
 │   │   ├── SourceMap.swift             # Line↔page bidirectional mapping
 │   │   ├── ProjectFileManager.swift    # Per-project file CRUD + validation
 │   │   ├── FontManager.swift           # Project/app font metadata + parsing helpers
+│   │   ├── CompileFontResolver.swift   # Font resolution and materialization planning
+│   │   ├── CoreTextFontMaterializer.swift
+│   │   │                              # System font materialization cache for Typst
+│   │   ├── LocalPackageStore.swift     # Local Typst package catalog and imports
+│   │   ├── PackageArchiveImporter.swift
+│   │   │                              # Package archive extraction
 │   │   ├── ExportManager.swift         # PDF/source/ZIP export (custom ZIP writer)
 │   │   ├── ExportController.swift      # Export UI state machine
 │   │   ├── ZipImporter.swift           # ZIP project import
@@ -183,11 +205,16 @@ InkPond/
 │   │   ├── SnippetBrowserSheet.swift   # Snippet library browser
 │   │   ├── ProjectFileBrowserSheet.swift
 │   │   ├── ProjectSettingsSheet.swift
-│   │   └── Settings/                   # App settings, fonts, cache, shortcuts
+│   │   └── Settings/                   # iCloud, packages, fonts, caches, shortcuts
 │   ├── Localization/                   # L10n.swift + .strings (en, zh-Hans, zh-Hant)
 │   ├── Storage/
+│   │   ├── StorageManager.swift        # Local/iCloud mode and migration
+│   │   ├── Cloud*.swift                # iCloud coordination, availability, sync monitor
 │   │   └── AppFontLibrary.swift        # App-wide font import tracking
 │   ├── Shared/UI/                      # UIKit/SwiftUI bridges, haptics, a11y
+│   ├── Support/
+│   │   ├── AppIdentity.swift           # Bundle/app group/iCloud identifiers
+│   │   └── InteractionSupport.swift    # Haptics and accessibility announcements
 │   └── Bridging/                       # typst_ffi.h bridging header
 ├── rust-ffi/
 │   ├── src/lib.rs                      # Rust Typst wrapper
@@ -210,6 +237,10 @@ InkPond/
   - Rebuild xcframework; the script generates `arm64 + x86_64` simulator slices.
 - TestFlight upload succeeded but not distributable yet:
   - Build is still processing in App Store Connect.
+- `@preview` package import fails:
+  - Check network access, then clear the package cache from Settings and recompile.
+- iCloud files appear missing or not downloaded:
+  - Open the Files app, go to iCloud Drive, and keep the InkPond folder downloaded before reopening the project.
 
 ## Acknowledgements
 
