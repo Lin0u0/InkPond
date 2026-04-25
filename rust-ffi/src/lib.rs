@@ -6,6 +6,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use syntect::easy::ScopeRangeIterator;
+use syntect::parsing::{ParseState, Scope, ScopeStack};
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
 use typst::foundations::{Bytes, CastInfo, Datetime, Repr, Value};
 use typst::layout::{Frame, FrameItem, PagedDocument, Point, Transform};
@@ -17,6 +19,7 @@ use typst::syntax::{
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
+use typst_library::text::RAW_SYNTAXES;
 use typst_pdf::{pdf, PdfOptions};
 
 const EXTRA_FONT_CACHE_LIMIT: usize = 16;
@@ -1022,11 +1025,145 @@ fn collect_highlight_tokens(
         if let Some(token) = highlight_token(range.start, range.end, tag, byte_to_utf16) {
             tokens.push(token);
         }
+
+        if tag == Tag::Raw {
+            collect_embedded_raw_tokens(tokens, node, byte_to_utf16);
+        }
     }
 
     for child in node.children() {
         collect_highlight_tokens(tokens, &child, byte_to_utf16);
     }
+}
+
+fn collect_embedded_raw_tokens(
+    tokens: &mut Vec<TypstHighlightToken>,
+    raw_node: &LinkedNode,
+    byte_to_utf16: &[usize],
+) {
+    let Some(language) = raw_node.children().find_map(|child| {
+        (child.kind() == SyntaxKind::RawLang).then(|| child.text().as_str().to_ascii_lowercase())
+    }) else {
+        return;
+    };
+
+    let syntax_set = &*RAW_SYNTAXES;
+    let Some(syntax) = syntax_set.find_syntax_by_token(&language) else {
+        return;
+    };
+
+    let mut parse_state = ParseState::new(syntax);
+    let mut scope_stack = ScopeStack::new();
+
+    for child in raw_node.children() {
+        if child.kind() != SyntaxKind::Text {
+            continue;
+        }
+
+        let line = child.text();
+        let Ok(ops) = parse_state.parse_line(line.as_str(), syntax_set) else {
+            return;
+        };
+
+        for (range, op) in ScopeRangeIterator::new(&ops, line.as_str()) {
+            if scope_stack.apply(op).is_err() {
+                return;
+            }
+            if range.is_empty() {
+                continue;
+            }
+
+            let Some(tag) = embedded_raw_tag(&scope_stack) else {
+                continue;
+            };
+            push_highlight_token(
+                tokens,
+                child.range().start + range.start,
+                child.range().start + range.end,
+                tag,
+                byte_to_utf16,
+            );
+        }
+    }
+}
+
+fn embedded_raw_tag(scope_stack: &ScopeStack) -> Option<Tag> {
+    for (scope, tag) in embedded_raw_scope_tags() {
+        if scope_stack
+            .as_slice()
+            .iter()
+            .any(|active| scope.is_prefix_of(*active))
+        {
+            return Some(*tag);
+        }
+    }
+
+    None
+}
+
+fn embedded_raw_scope_tags() -> &'static [(Scope, Tag)] {
+    static TAGS: OnceLock<Vec<(Scope, Tag)>> = OnceLock::new();
+
+    TAGS.get_or_init(|| {
+        [
+            ("invalid", Tag::Error),
+            ("comment", Tag::Comment),
+            ("string", Tag::String),
+            ("constant.character.escape", Tag::Escape),
+            ("constant.numeric", Tag::Number),
+            ("keyword.operator", Tag::Operator),
+            ("punctuation.definition.string", Tag::String),
+            ("punctuation.definition.comment", Tag::Comment),
+            ("storage", Tag::Keyword),
+            ("keyword", Tag::Keyword),
+            ("constant.language", Tag::Keyword),
+            ("variable.language", Tag::Keyword),
+            ("entity.name.function", Tag::Function),
+            ("variable.function", Tag::Function),
+            ("support.function", Tag::Function),
+            ("support.macro", Tag::Function),
+            ("entity.name.type", Tag::Function),
+            ("support.type", Tag::Function),
+            ("support.class", Tag::Function),
+            ("constant", Tag::Number),
+            ("entity.name.label", Tag::Label),
+            ("markup.heading", Tag::Heading),
+            ("markup.bold", Tag::Strong),
+            ("markup.italic", Tag::Emph),
+            ("markup.underline", Tag::Link),
+            ("punctuation", Tag::Punctuation),
+        ]
+        .into_iter()
+        .map(|(scope, tag)| {
+            (
+                Scope::new(scope).expect("embedded raw highlight scope should be valid"),
+                tag,
+            )
+        })
+        .collect()
+    })
+}
+
+fn push_highlight_token(
+    tokens: &mut Vec<TypstHighlightToken>,
+    byte_start: usize,
+    byte_end: usize,
+    tag: Tag,
+    byte_to_utf16: &[usize],
+) {
+    let Some(token) = highlight_token(byte_start, byte_end, tag, byte_to_utf16) else {
+        return;
+    };
+
+    if let Some(last) = tokens.last_mut() {
+        if last.tag == token.tag && last.utf16_location + last.utf16_length == token.utf16_location
+        {
+            last.utf16_length += token.utf16_length;
+            return;
+        }
+    }
+
+    tokens.push(token);
 }
 
 fn highlight_token(
@@ -2742,6 +2879,53 @@ mod tests {
                 && token.utf16_length == 1
                 && token.tag == highlight_tag_id(Tag::Keyword)),
             "highlight locations should be UTF-16 offsets, not UTF-8 byte offsets"
+        );
+    }
+
+    #[test]
+    fn highlight_tokens_embed_syntect_for_raw_block_language() {
+        let source = "```rust\nlet answer = 42\n// hi\n```";
+        let tokens = highlight_tokens_for_source(source);
+
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 8
+                && token.utf16_length == 3
+                && token.tag == highlight_tag_id(Tag::Keyword)),
+            "Rust keyword inside raw block should be highlighted"
+        );
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 21
+                && token.utf16_length == 2
+                && token.tag == highlight_tag_id(Tag::Number)),
+            "Rust numeric literal inside raw block should be highlighted"
+        );
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 24
+                && token.utf16_length == 5
+                && token.tag == highlight_tag_id(Tag::Comment)),
+            "Rust comment inside raw block should be highlighted"
+        );
+    }
+
+    #[test]
+    fn highlight_tokens_keep_unknown_raw_language_plain() {
+        let source = "```notalang\nlet answer = 42\n```";
+        let tokens = highlight_tokens_for_source(source);
+        let let_start = source.find("let").unwrap() as u32;
+
+        assert!(
+            tokens.iter().any(|token| token.utf16_location == 0
+                && token.utf16_length == source.len() as u32
+                && token.tag == highlight_tag_id(Tag::Raw)),
+            "raw block itself should still receive the raw token"
+        );
+        assert!(
+            tokens.iter().all(|token| {
+                !(token.utf16_location == let_start
+                    && token.utf16_length == 3
+                    && token.tag == highlight_tag_id(Tag::Keyword))
+            }),
+            "unknown raw languages should not receive embedded syntect tokens"
         );
     }
 
