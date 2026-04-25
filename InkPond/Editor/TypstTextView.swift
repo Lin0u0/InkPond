@@ -915,8 +915,8 @@ final class TypstTextView: UITextView {
         completionEngine.imageFiles = files
     }
 
-    /// Update BibTeX citation keys for reference completion.
-    func updateBibEntries(_ entries: [(key: String, type: String)]) {
+    /// Update bibliography citation keys for reference completion.
+    func updateBibEntries(_ entries: [TypstBibliographyEntry]) {
         completionEngine.bibEntries = entries
     }
 

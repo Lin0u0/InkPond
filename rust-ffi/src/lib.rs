@@ -1269,6 +1269,334 @@ pub unsafe extern "C" fn typst_free_outline_result(result: TypstOutlineResult) {
 }
 
 // ---------------------------------------------------------------------------
+// C FFI — label extraction
+// ---------------------------------------------------------------------------
+
+#[repr(C)]
+pub struct TypstLabelItem {
+    /// Null-terminated UTF-8 label name without angle brackets.
+    pub name: *mut c_char,
+    /// Null-terminated UTF-8 kind derived from the labelled syntax node.
+    pub kind: *mut c_char,
+}
+
+/// Result returned by `typst_labels`.
+#[repr(C)]
+pub struct TypstLabelResult {
+    pub items: *mut TypstLabelItem,
+    pub item_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+/// Parse Typst source and return label definitions from the syntax tree.
+///
+/// # Safety
+/// `source` must be a valid null-terminated UTF-8 C string.
+/// Free the result with `typst_free_label_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_labels(source: *const c_char) -> TypstLabelResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe { typst_labels_impl(source) })) {
+        Ok(result) => result,
+        Err(_) => error_label_result("Typst label parser panicked"),
+    }
+}
+
+unsafe fn typst_labels_impl(source: *const c_char) -> TypstLabelResult {
+    if source.is_null() {
+        return error_label_result("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_label_result("source is not valid UTF-8"),
+    };
+
+    let items = label_items_for_source(source_str);
+    let item_len = items.len();
+    let (items, item_len) = if item_len > 0 {
+        let mut boxed = items.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, item_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstLabelResult {
+        items,
+        item_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn label_items_for_source(source: &str) -> Vec<TypstLabelItem> {
+    let root = parse(source);
+    let mut items = Vec::new();
+    collect_label_items(&mut items, &LinkedNode::new(&root));
+    items
+}
+
+fn collect_label_items(items: &mut Vec<TypstLabelItem>, node: &LinkedNode) {
+    if let Some(label) = node.get().cast::<ast::Label>() {
+        if let Some(item) = label_item(node, label) {
+            items.push(item);
+        }
+    }
+
+    for child in node.children() {
+        collect_label_items(items, &child);
+    }
+}
+
+fn label_item(node: &LinkedNode, label: ast::Label) -> Option<TypstLabelItem> {
+    let parent = node.parent()?;
+    if parent.kind() != SyntaxKind::Markup {
+        return None;
+    }
+
+    let labelled = node.prev_sibling()?;
+    let name = label.get();
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(TypstLabelItem {
+        name: string_into_raw(name.to_string()),
+        kind: string_into_raw(label_kind_for_target(&labelled)),
+    })
+}
+
+fn label_kind_for_target(node: &LinkedNode) -> String {
+    if let Some(call) = node.get().cast::<ast::FuncCall>() {
+        if let Some(name) = function_name_for_expr(call.callee()) {
+            return name.to_ascii_lowercase();
+        }
+    }
+
+    match node.kind() {
+        SyntaxKind::Heading => "heading",
+        SyntaxKind::Equation => "equation",
+        SyntaxKind::ListItem => "list",
+        SyntaxKind::EnumItem => "enum",
+        SyntaxKind::TermItem => "term",
+        SyntaxKind::Raw => "raw",
+        SyntaxKind::Strong => "strong",
+        SyntaxKind::Emph => "emph",
+        SyntaxKind::Link => "link",
+        SyntaxKind::ContentBlock => "content",
+        _ => "label",
+    }
+    .to_string()
+}
+
+fn function_name_for_expr(expr: ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::Ident(ident) => Some(ident.as_str().to_string()),
+        ast::Expr::FieldAccess(access) => Some(access.field().as_str().to_string()),
+        ast::Expr::FuncCall(call) => function_name_for_expr(call.callee()),
+        _ => None,
+    }
+}
+
+/// Free a `TypstLabelResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_labels` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_label_result(result: TypstLabelResult) {
+    if !result.items.is_null() {
+        let slice = std::slice::from_raw_parts_mut(result.items, result.item_len);
+        for item in slice {
+            if !item.name.is_null() {
+                drop(CString::from_raw(item.name));
+            }
+            if !item.kind.is_null() {
+                drop(CString::from_raw(item.kind));
+            }
+        }
+
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.items, result.item_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// C FFI — bibliography extraction
+// ---------------------------------------------------------------------------
+
+#[repr(C)]
+pub struct TypstBibliographyItem {
+    /// Null-terminated UTF-8 cite key.
+    pub key: *mut c_char,
+    /// Null-terminated UTF-8 Hayagriva entry type.
+    pub entry_type: *mut c_char,
+    /// Optional null-terminated UTF-8 title.
+    pub title: *mut c_char,
+}
+
+/// Result returned by `typst_bibliography_entries`.
+#[repr(C)]
+pub struct TypstBibliographyResult {
+    pub entries: *mut TypstBibliographyItem,
+    pub entry_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+}
+
+/// Parse BibLaTeX or Hayagriva YAML content and return cite entries.
+///
+/// # Safety
+/// `source` must be a valid null-terminated UTF-8 C string. `file_name` may be
+/// null; when present, its extension selects the same parser Typst uses.
+/// Free the result with `typst_free_bibliography_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_bibliography_entries(
+    source: *const c_char,
+    file_name: *const c_char,
+) -> TypstBibliographyResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_bibliography_entries_impl(source, file_name)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_bibliography_result("Typst bibliography parser panicked"),
+    }
+}
+
+unsafe fn typst_bibliography_entries_impl(
+    source: *const c_char,
+    file_name: *const c_char,
+) -> TypstBibliographyResult {
+    if source.is_null() {
+        return error_bibliography_result("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_bibliography_result("source is not valid UTF-8"),
+    };
+    let file_name = if file_name.is_null() {
+        None
+    } else {
+        match CStr::from_ptr(file_name).to_str() {
+            Ok(s) => Some(s),
+            Err(_) => return error_bibliography_result("file name is not valid UTF-8"),
+        }
+    };
+
+    let entries = match bibliography_items_for_source(source_str, file_name) {
+        Ok(entries) => entries,
+        Err(message) => return error_bibliography_result(&message),
+    };
+    let entry_len = entries.len();
+    let (entries, entry_len) = if entry_len > 0 {
+        let mut boxed = entries.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, entry_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstBibliographyResult {
+        entries,
+        entry_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
+fn bibliography_items_for_source(
+    source: &str,
+    file_name: Option<&str>,
+) -> Result<Vec<TypstBibliographyItem>, String> {
+    let library = parse_bibliography_library(source, file_name)?;
+    Ok(library
+        .iter()
+        .map(|entry| TypstBibliographyItem {
+            key: string_into_raw(entry.key().to_string()),
+            entry_type: string_into_raw(format!("{:?}", entry.entry_type()).to_ascii_lowercase()),
+            title: string_option_into_raw(entry.title().map(|title| title.to_string())),
+        })
+        .collect())
+}
+
+fn parse_bibliography_library(
+    source: &str,
+    file_name: Option<&str>,
+) -> Result<hayagriva::Library, String> {
+    let extension = file_name
+        .and_then(|name| Path::new(name).extension())
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase);
+
+    match extension.as_deref() {
+        Some("yml" | "yaml") => hayagriva::io::from_yaml_str(source).map_err(|err| err.to_string()),
+        Some("bib") => hayagriva::io::from_biblatex_str(source).map_err(format_biblatex_errors),
+        _ => infer_bibliography_library(source),
+    }
+}
+
+fn infer_bibliography_library(source: &str) -> Result<hayagriva::Library, String> {
+    let yaml_error = match hayagriva::io::from_yaml_str(source) {
+        Ok(library) => return Ok(library),
+        Err(err) => err.to_string(),
+    };
+
+    match hayagriva::io::from_biblatex_str(source) {
+        Ok(library) if !library.is_empty() => Ok(library),
+        Ok(_) => Err(yaml_error),
+        Err(biblatex_errors) => {
+            let yaml_markers = source.chars().filter(|&ch| ch == ':').count();
+            let biblatex_markers = source.chars().filter(|&ch| ch == '{').count();
+            if biblatex_markers >= yaml_markers {
+                Err(format_biblatex_errors(biblatex_errors))
+            } else {
+                Err(yaml_error)
+            }
+        }
+    }
+}
+
+fn format_biblatex_errors(errors: Vec<hayagriva::io::BibLaTeXError>) -> String {
+    errors
+        .into_iter()
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Free a `TypstBibliographyResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_bibliography_entries` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_bibliography_result(result: TypstBibliographyResult) {
+    if !result.entries.is_null() {
+        let slice = std::slice::from_raw_parts_mut(result.entries, result.entry_len);
+        for entry in slice {
+            if !entry.key.is_null() {
+                drop(CString::from_raw(entry.key));
+            }
+            if !entry.entry_type.is_null() {
+                drop(CString::from_raw(entry.entry_type));
+            }
+            if !entry.title.is_null() {
+                drop(CString::from_raw(entry.title));
+            }
+        }
+
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.entries, result.entry_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // C FFI — semantic completion symbols and cursor context
 // ---------------------------------------------------------------------------
 
@@ -2082,6 +2410,26 @@ fn error_outline_result(msg: &str) -> TypstOutlineResult {
     }
 }
 
+fn error_label_result(msg: &str) -> TypstLabelResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstLabelResult {
+        items: std::ptr::null_mut(),
+        item_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
+fn error_bibliography_result(msg: &str) -> TypstBibliographyResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstBibliographyResult {
+        entries: std::ptr::null_mut(),
+        entry_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+    }
+}
+
 fn error_completion_symbol_result(msg: &str) -> TypstCompletionSymbolResult {
     let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
     TypstCompletionSymbolResult {
@@ -2156,6 +2504,78 @@ mod tests {
 
     fn free_outline_test_items(items: Vec<TypstOutlineItem>) {
         for item in items {
+            if !item.title.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.title));
+                }
+            }
+        }
+    }
+
+    fn label_item_pair(item: &TypstLabelItem) -> (String, String) {
+        let name = if item.name.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(item.name).to_string_lossy().into_owned() }
+        };
+        let kind = if item.kind.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(item.kind).to_string_lossy().into_owned() }
+        };
+        (name, kind)
+    }
+
+    fn free_label_test_items(items: Vec<TypstLabelItem>) {
+        for item in items {
+            if !item.name.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.name));
+                }
+            }
+            if !item.kind.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.kind));
+                }
+            }
+        }
+    }
+
+    fn bibliography_item_info(item: &TypstBibliographyItem) -> (String, String, Option<String>) {
+        let key = if item.key.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(item.key).to_string_lossy().into_owned() }
+        };
+        let entry_type = if item.entry_type.is_null() {
+            String::new()
+        } else {
+            unsafe {
+                CStr::from_ptr(item.entry_type)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        };
+        let title = if item.title.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(item.title).to_string_lossy().into_owned() })
+        };
+        (key, entry_type, title)
+    }
+
+    fn free_bibliography_test_items(items: Vec<TypstBibliographyItem>) {
+        for item in items {
+            if !item.key.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.key));
+                }
+            }
+            if !item.entry_type.is_null() {
+                unsafe {
+                    drop(CString::from_raw(item.entry_type));
+                }
+            }
             if !item.title.is_null() {
                 unsafe {
                     drop(CString::from_raw(item.title));
@@ -2424,6 +2844,82 @@ mod tests {
         assert_eq!(outline_item_title(&items[0]), "标题");
 
         free_outline_test_items(items);
+    }
+
+    #[test]
+    fn label_items_use_typst_syntax_tree() {
+        let items = label_items_for_source(
+            r#"= Real <intro>
+
+```typ
+= Not a heading <fake-heading>
+#figure("not real") <fake-figure>
+```
+
+#let literal = <not-a-definition>
+
+#figure(table(columns: 1, [Nested])) <fig>
+#table(columns: 1, [Cell]) <tbl>
+$x + y$ <eq>
+"#,
+        );
+
+        let pairs: Vec<_> = items.iter().map(label_item_pair).collect();
+
+        assert_eq!(
+            pairs,
+            vec![
+                ("intro".to_string(), "heading".to_string()),
+                ("fig".to_string(), "figure".to_string()),
+                ("tbl".to_string(), "table".to_string()),
+                ("eq".to_string(), "equation".to_string()),
+            ]
+        );
+
+        free_label_test_items(items);
+    }
+
+    #[test]
+    fn bibliography_items_use_hayagriva_for_biblatex_and_yaml() {
+        let biblatex = r#"
+@string{journal_name = {Journal of Tests}}
+@article{smith2020,
+  title = {Nested {Brace} Title},
+  journaltitle = journal_name
+}
+"#;
+        let bib_items = bibliography_items_for_source(biblatex, Some("refs.bib")).unwrap();
+        let bib_info: Vec<_> = bib_items.iter().map(bibliography_item_info).collect();
+
+        assert_eq!(
+            bib_info,
+            vec![(
+                "smith2020".to_string(),
+                "article".to_string(),
+                Some("Nested Brace Title".to_string())
+            )]
+        );
+
+        free_bibliography_test_items(bib_items);
+
+        let yaml = r#"
+yaml-key:
+  type: Book
+  title: Hayagriva YAML Works
+"#;
+        let yaml_items = bibliography_items_for_source(yaml, Some("refs.yaml")).unwrap();
+        let yaml_info: Vec<_> = yaml_items.iter().map(bibliography_item_info).collect();
+
+        assert_eq!(
+            yaml_info,
+            vec![(
+                "yaml-key".to_string(),
+                "book".to_string(),
+                Some("Hayagriva YAML Works".to_string())
+            )]
+        );
+
+        free_bibliography_test_items(yaml_items);
     }
 
     #[test]

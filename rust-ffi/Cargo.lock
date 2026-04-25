@@ -2334,6 +2334,7 @@ name = "typst-ios"
 version = "0.14.2"
 dependencies = [
  "flate2",
+ "hayagriva",
  "tar",
  "typst",
  "typst-assets",

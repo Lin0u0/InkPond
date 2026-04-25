@@ -509,15 +509,15 @@ extension DocumentEditorView {
 
     func refreshReferenceCompletions() {
         let projectDir = ProjectFileManager.projectDirectory(for: document)
-        let fm = FileManager.default
 
-        var bibEntries: [(key: String, type: String)] = []
-        if let items = try? fm.contentsOfDirectory(atPath: projectDir.path) {
-            for item in items where item.hasSuffix(".bib") {
-                let url = projectDir.appendingPathComponent(item)
-                if let content = try? String(contentsOf: url, encoding: .utf8) {
-                    bibEntries.append(contentsOf: CompletionEngine.parseBibTeX(content))
-                }
+        var bibEntries: [TypstBibliographyEntry] = []
+        let bibliographyFiles = ProjectFileManager.listAllFiles(in: projectDir)
+            .filter { isBibliographyFile($0) }
+        for file in bibliographyFiles {
+            let url = projectDir.appendingPathComponent(file)
+            if let content = try? String(contentsOf: url, encoding: .utf8),
+               let entries = TypstBridge.bibliographyEntries(source: content, fileName: file) {
+                bibEntries.append(contentsOf: entries)
             }
         }
         cachedBibEntries = bibEntries
@@ -534,6 +534,13 @@ extension DocumentEditorView {
 
         refreshImageFiles()
         refreshPackageSpecs()
+    }
+
+    private func isBibliographyFile(_ path: String) -> Bool {
+        let lowercased = path.lowercased()
+        return lowercased.hasSuffix(".bib")
+            || lowercased.hasSuffix(".yaml")
+            || lowercased.hasSuffix(".yml")
     }
 
     func refreshPackageSpecs() {

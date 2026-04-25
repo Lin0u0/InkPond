@@ -50,8 +50,8 @@ final class CompletionEngine {
     /// Available font family names for value completion.
     var fontFamilies: [String] = []
 
-    /// BibTeX citation keys with their entry type (e.g. "article", "book").
-    var bibEntries: [(key: String, type: String)] = []
+    /// Bibliography citation keys parsed by Hayagriva.
+    var bibEntries: [TypstBibliographyEntry] = []
 
     /// Labels defined in other project files (not the current editor text).
     var externalLabels: [(name: String, kind: String)] = []
@@ -786,7 +786,7 @@ final class CompletionEngine {
                 let candidates: [CompletionItem]
                 if funcName == "cite" {
                     candidates = bibEntries.map {
-                        CompletionItem(label: $0.key, insertText: $0.key, kind: .reference, detail: $0.type)
+                        CompletionItem(label: $0.key, insertText: $0.key, kind: .reference, detail: $0.completionDetail)
                     }
                 } else {
                     candidates = allReferenceItems(for: text)
@@ -821,9 +821,9 @@ final class CompletionEngine {
             items.append(CompletionItem(label: name, insertText: name, kind: .reference, detail: kind))
         }
 
-        // BibTeX keys
+        // Bibliography keys
         for entry in bibEntries {
-            items.append(CompletionItem(label: entry.key, insertText: entry.key, kind: .reference, detail: entry.type))
+            items.append(CompletionItem(label: entry.key, insertText: entry.key, kind: .reference, detail: entry.completionDetail))
         }
 
         return items
@@ -831,75 +831,8 @@ final class CompletionEngine {
 
     // MARK: - Label Scanning
 
-    /// Scans text for `<label-name>` definitions and infers their kind from context.
+    /// Parses Typst source for `<label-name>` definitions and their attached syntax kind.
     func scanLabels(in text: String) -> [(name: String, kind: String)] {
-        // Pattern: `<identifier>` where identifier is [a-zA-Z0-9_\-.:]+
-        // Must not be preceded by another `<` (to skip `<<`) or inside code.
-        guard let regex = try? NSRegularExpression(pattern: #"(?<![<\\])<([a-zA-Z][a-zA-Z0-9_\-.:]*?)>"#) else {
-            return []
-        }
-        let nsText = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
-
-        var results: [(String, String)] = []
-        for match in matches {
-            guard match.numberOfRanges >= 2 else { continue }
-            let nameRange = match.range(at: 1)
-            guard nameRange.location != NSNotFound else { continue }
-            let name = nsText.substring(with: nameRange)
-
-            // Infer kind by looking at context before the label
-            let kind = inferLabelKind(in: nsText, beforeLocation: match.range.location)
-            results.append((name, kind))
-        }
-        return results
-    }
-
-    private func inferLabelKind(in text: NSString, beforeLocation loc: Int) -> String {
-        // Look at up to 200 chars before the label for context clues
-        let searchStart = max(0, loc - 200)
-        let searchLen = loc - searchStart
-        guard searchLen > 0 else { return "label" }
-        let context = text.substring(with: NSRange(location: searchStart, length: searchLen))
-        let lower = context.lowercased()
-
-        // Check from most specific to least
-        if lower.contains("#figure") || lower.contains("figure(") { return "figure" }
-        if lower.contains("#table") || lower.contains("table(") { return "table" }
-        if lower.contains("#equation") || lower.hasSuffix("$") || lower.contains("$ ") { return "equation" }
-        // Headings: lines starting with `=`
-        if let lastNewline = context.lastIndex(of: "\n") {
-            let lineStart = context[context.index(after: lastNewline)...]
-            let trimmed = lineStart.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("=") { return "heading" }
-        } else {
-            let trimmed = context.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("=") { return "heading" }
-        }
-        return "label"
-    }
-
-    // MARK: - BibTeX Parsing
-
-    /// Parses BibTeX content and extracts (key, entryType) pairs.
-    static func parseBibTeX(_ content: String) -> [(key: String, type: String)] {
-        // Match @type{key, patterns
-        guard let regex = try? NSRegularExpression(pattern: #"@(\w+)\s*\{\s*([^,\s]+)"#) else {
-            return []
-        }
-        let nsContent = content as NSString
-        let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
-
-        return matches.compactMap { match in
-            guard match.numberOfRanges >= 3 else { return nil }
-            let typeRange = match.range(at: 1)
-            let keyRange = match.range(at: 2)
-            guard typeRange.location != NSNotFound, keyRange.location != NSNotFound else { return nil }
-            let type = nsContent.substring(with: typeRange).lowercased()
-            let key = nsContent.substring(with: keyRange)
-            // Skip @comment, @string, @preamble
-            guard type != "comment", type != "string", type != "preamble" else { return nil }
-            return (key: key, type: type)
-        }
+        TypstBridge.labels(source: text)?.map { (name: $0.name, kind: $0.kind) } ?? []
     }
 }

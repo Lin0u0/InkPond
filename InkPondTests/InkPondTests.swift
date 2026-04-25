@@ -641,6 +641,58 @@ struct InkPondTests {
         #expect(first.location == 3)
         #expect(first.title == "标题")
     }
+
+    @Test func labelParserUsesTypstParserContext() throws {
+        let source = """
+        = Real <intro>
+
+        ```typ
+        = Not a heading <fake-heading>
+        #figure("not real") <fake-figure>
+        ```
+
+        #let literal = <not-a-definition>
+
+        #figure(table(columns: 1, [Nested])) <fig>
+        #table(columns: 1, [Cell]) <tbl>
+        $x + y$ <eq>
+        """
+
+        let labels = try #require(TypstBridge.labels(source: source))
+
+        #expect(labels == [
+            TypstLabelEntry(name: "intro", kind: "heading"),
+            TypstLabelEntry(name: "fig", kind: "figure"),
+            TypstLabelEntry(name: "tbl", kind: "table"),
+            TypstLabelEntry(name: "eq", kind: "equation")
+        ])
+    }
+
+    @Test func bibliographyParserUsesHayagrivaForBiblatexAndYaml() throws {
+        let biblatex = """
+        @string{journal_name = {Journal of Tests}}
+        @article{smith2020,
+          title = {Nested {Brace} Title},
+          journaltitle = journal_name
+        }
+        """
+
+        let bibEntries = try #require(TypstBridge.bibliographyEntries(source: biblatex, fileName: "refs.bib"))
+        #expect(bibEntries == [
+            TypstBibliographyEntry(key: "smith2020", type: "article", title: "Nested Brace Title")
+        ])
+
+        let yaml = """
+        yaml-key:
+          type: Book
+          title: Hayagriva YAML Works
+        """
+
+        let yamlEntries = try #require(TypstBridge.bibliographyEntries(source: yaml, fileName: "refs.yaml"))
+        #expect(yamlEntries == [
+            TypstBibliographyEntry(key: "yaml-key", type: "book", title: "Hayagriva YAML Works")
+        ])
+    }
 #endif
 
     @MainActor
@@ -1520,7 +1572,7 @@ struct InkPondTests {
         #expect(items.map(\.label) == ["PingFang SC"])
     }
 
-    @Test func completionEngineStaticValuesAreHintOnly() throws {
+    @Test func completionEngineSemanticValuesRemainInsertable() throws {
         let engine = CompletionEngine()
 
         let result = engine.completions(for: "#text(weight: bo", cursorOffset: 16)
@@ -1531,8 +1583,8 @@ struct InkPondTests {
         }
 
         let bold = try #require(items.first(where: { $0.label == "bold" }))
-        #expect(!bold.isInsertable)
-        #expect(bold.insertText == nil)
+        #expect(bold.isInsertable)
+        #expect(bold.insertText == "\"bold\"")
     }
 
     @Test func completionEngineBibliographyStyleUsesBibliographyHints() {

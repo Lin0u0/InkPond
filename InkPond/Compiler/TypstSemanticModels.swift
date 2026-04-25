@@ -42,6 +42,22 @@ struct TypstCompletionSymbolInfo: Equatable, Sendable {
     let params: [TypstCompletionParamInfo]
 }
 
+struct TypstLabelEntry: Equatable, Sendable {
+    let name: String
+    let kind: String
+}
+
+struct TypstBibliographyEntry: Equatable, Sendable {
+    let key: String
+    let type: String
+    let title: String?
+
+    var completionDetail: String {
+        guard let title, !title.isEmpty else { return type }
+        return "\(type): \(title)"
+    }
+}
+
 struct TypstContextNodeInfo: Equatable, Sendable {
     let kind: String
     let location: Int
