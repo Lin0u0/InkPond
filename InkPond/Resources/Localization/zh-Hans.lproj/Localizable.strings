@@ -24,6 +24,7 @@
 "doc.list.empty.action" = "新建文档";
 "doc.list.action.new" = "新建文档";
 "doc.list.action.link_external" = "链接外部文件夹";
+"settings.import_link.section" = "导入与链接";
 
 "action.find_replace" = "查找与替换";
 "action.insert_image" = "插入图片";
@@ -372,15 +373,17 @@
 "a11y.keyboard.snippet.label" = "插入代码片段";
 "a11y.keyboard.snippet.hint" = "浏览并插入代码片段。";
 
-"onboarding.welcome.title" = "欢迎使用墨池";
-"onboarding.welcome.subtitle" = "一款原生的 Typst 编辑器。\n在你的设备上轻松编写精美排版的文档。";
-"onboarding.editor.title" = "强大的编辑器";
-"onboarding.editor.subtitle" = "语法高亮、自动补全和 Typst 语法工具栏，\n让写作得心应手。";
-"onboarding.preview.title" = "实时预览";
-"onboarding.preview.subtitle" = "实时查看文档效果。\n一边编辑，一边预览排版结果。";
-"onboarding.projects.title" = "多文件项目";
-"onboarding.projects.subtitle" = "在独立的项目目录中管理源文件、图片和字体。\n支持 ZIP 导入导出。";
+"onboarding.welcome.title" = "墨池";
+"onboarding.welcome.subtitle" = "一处专注的 Typst 工作台，在 iPad 和 iPhone 上写作、编译和管理排版文档。";
+"onboarding.editor.title" = "用 Typst 写作";
+"onboarding.editor.subtitle" = "语法高亮、自动补全、代码片段和 Typst 键盘始终贴近文本。";
+"onboarding.preview.title" = "边写边预览";
+"onboarding.preview.subtitle" = "编译后的 PDF 与源码并排显示，点击即可在两侧同步跳转。";
+"onboarding.projects.title" = "完整管理项目";
+"onboarding.projects.subtitle" = "源文件、图片、字体和 ZIP 导出都随每个文档放在一起。";
 "onboarding.action.get_started" = "开始使用";
+"onboarding.action.get_started.hint" = "打开文档列表。";
+"onboarding.continue.hint" = "显示下一页介绍。";
 
 "network.status.connected" = "已连接";
 "network.status.disconnected" = "无网络连接";

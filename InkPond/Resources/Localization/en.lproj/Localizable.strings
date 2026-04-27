@@ -24,6 +24,7 @@
 "doc.list.empty.action" = "New Document";
 "doc.list.action.new" = "New Document";
 "doc.list.action.link_external" = "Link External Folder";
+"settings.import_link.section" = "Import & Link";
 
 "action.find_replace" = "Find & Replace";
 "action.insert_image" = "Insert Image";
@@ -412,15 +413,17 @@
 "a11y.keyboard.snippet.label" = "Insert snippet";
 "a11y.keyboard.snippet.hint" = "Browse and insert code snippets.";
 
-"onboarding.welcome.title" = "Welcome to InkPond";
-"onboarding.welcome.subtitle" = "A native Typst editor for iPad and iPhone.\nWrite beautifully typeset documents,\nright from your device.";
-"onboarding.editor.title" = "Powerful Editor";
-"onboarding.editor.subtitle" = "Syntax highlighting, auto-completion,\nand a Typst-optimized keyboard bar make writing effortless.";
-"onboarding.preview.title" = "Live Preview";
-"onboarding.preview.subtitle" = "See your document come to life in real time.\nEdit on one side, preview the result on the other.";
-"onboarding.projects.title" = "Multi-File Projects";
-"onboarding.projects.subtitle" = "Organize source files, images, and fonts in per-project directories.\nImport and export as ZIP.";
+"onboarding.welcome.title" = "InkPond";
+"onboarding.welcome.subtitle" = "A focused Typst workspace for writing, compiling, and managing polished documents on iPad and iPhone.";
+"onboarding.editor.title" = "Write with Typst";
+"onboarding.editor.subtitle" = "Syntax highlighting, completions, snippets, and a Typst keyboard stay close to the text.";
+"onboarding.preview.title" = "Preview as you edit";
+"onboarding.preview.subtitle" = "Compiled PDF and source stay side by side with tap-to-jump sync.";
+"onboarding.projects.title" = "Keep projects whole";
+"onboarding.projects.subtitle" = "Source files, images, fonts, and ZIP export live together per document.";
 "onboarding.action.get_started" = "Get Started";
+"onboarding.action.get_started.hint" = "Open the document library.";
+"onboarding.continue.hint" = "Show the next introduction page.";
 
 "network.status.connected" = "Connected";
 "network.status.disconnected" = "No network connection";
