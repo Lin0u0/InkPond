@@ -13,11 +13,10 @@ import os.log
 /// Marked nonisolated to allow usage from any actor context (MainActor,
 /// BackgroundDocumentFileWriter, Task.detached, etc.).
 nonisolated enum CloudFileCoordinator {
-    private static let coordinator = NSFileCoordinator()
-
     // MARK: - Read
 
     static func readData(from url: URL) throws -> Data {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var readData: Data?
         var readError: Error?
@@ -49,6 +48,7 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Write
 
     static func writeData(_ data: Data, to url: URL, atomically: Bool = true) throws {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var writeError: Error?
 
@@ -74,6 +74,7 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Copy
 
     static func copyItem(from sourceURL: URL, to destinationURL: URL) throws {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var copyError: Error?
 
@@ -120,6 +121,7 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Move
 
     static func moveItem(from sourceURL: URL, to destinationURL: URL) throws {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var moveError: Error?
 
@@ -146,6 +148,7 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Delete
 
     static func removeItem(at url: URL) throws {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var deleteError: Error?
 
@@ -164,6 +167,7 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Directory
 
     static func createDirectory(at url: URL, withIntermediateDirectories: Bool = true) throws {
+        let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var createError: Error?
 

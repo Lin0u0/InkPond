@@ -78,8 +78,16 @@ enum ExportManager {
     /// Zip the entire project directory and return a temporary URL.
     /// The zip file is named after the document title.
     static func zipProject(for document: InkPondDocument) throws -> URL {
-        let projectDir = ProjectFileManager.projectDirectory(for: document)
-        let sanitized = document.title.replacingOccurrences(of: "/", with: "-")
+        try zipProject(
+            sourceDir: ProjectFileManager.projectDirectory(for: document),
+            title: document.title
+        )
+    }
+
+    /// Zip a project directory from Sendable values that can safely cross into
+    /// detached export work.
+    nonisolated static func zipProject(sourceDir projectDir: URL, title: String) throws -> URL {
+        let sanitized = title.replacingOccurrences(of: "/", with: "-")
         let zipURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(sanitized).zip")
 
