@@ -67,6 +67,7 @@ struct ContentView: View {
     @Environment(StorageManager.self) private var storageManager
     @State private var selectedDocument: InkPondDocument?
     @State private var themeManager = ThemeManager()
+    @State private var editorFontSettings = EditorFontSettings()
     @State private var appAppearanceManager = AppAppearanceManager()
     @State private var appFontLibrary = AppFontLibrary()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -122,6 +123,7 @@ struct ContentView: View {
         .background(SceneTitleSetter(title: selectedDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
         .environment(themeManager)
+        .environment(editorFontSettings)
         .environment(appFontLibrary)
         .task {
             appFontLibrary.reload()

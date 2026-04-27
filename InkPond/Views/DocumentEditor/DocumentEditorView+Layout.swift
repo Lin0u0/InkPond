@@ -89,6 +89,7 @@ extension DocumentEditorView {
             sourceMap: isSyncEnabled && isEditingEntryFile ? compiler.sourceMap : nil,
             syncCoordinator: isSyncEnabled ? syncCoordinator : nil,
             theme: themeManager.currentTheme,
+            editorFont: editorFontSettings.uiFont,
             errorLines: compilationErrorLines,
             onPhotoTapped: { showingPhotoPicker = true },
             onSnippetTapped: { showingSnippetBrowser = true },

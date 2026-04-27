@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 struct EditorViewState: Equatable {
     var selectedLocation: Int = 0
@@ -31,6 +32,7 @@ struct EditorView: UIViewRepresentable {
     var sourceMap: SourceMap?
     var syncCoordinator: SyncCoordinator?
     var theme: EditorTheme = .system
+    var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
     var onPhotoTapped: () -> Void = {}
     var onSnippetTapped: () -> Void = {}
@@ -51,6 +53,7 @@ struct EditorView: UIViewRepresentable {
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
+        textView.applyEditorFont(editorFont)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.accessibilityLabel = L10n.a11yEditorLabel
@@ -64,6 +67,7 @@ struct EditorView: UIViewRepresentable {
     func updateUIView(_ textView: TypstTextView, context: Context) {
         context.coordinator.parent = self
         focusCoordinator?.register(textView)
+        textView.applyEditorFont(editorFont)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.setErrorLines(errorLines)

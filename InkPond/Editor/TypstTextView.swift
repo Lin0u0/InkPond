@@ -46,12 +46,13 @@ final class TypstTextView: UITextView {
         case imageRemoteURL(URL, suggestedFileName: String?)
     }
 
-    private let highlighter = SyntaxHighlighter()
+    private let highlighter = SyntaxHighlighter(font: EditorFontSettings.defaultUIFont)
     private lazy var highlightScheduler = HighlightScheduler { [weak self] in
         self?.applyHighlightingNow()
     }
     private(set) var gutterView: LineNumberGutterView!
     private var storedTheme: EditorTheme = .system
+    private var editorFont: UIFont = EditorFontSettings.defaultUIFont
     private var appearanceRegistration: (any UITraitChangeRegistration)?
     private var jumpHighlightDisplayLink: CADisplayLink?
     private var jumpHighlightAnimationStartTime: CFTimeInterval?
@@ -87,6 +88,14 @@ final class TypstTextView: UITextView {
     var onImagePasted: ((Data, NSRange) -> Void)?
     var onRichPaste: (([PasteFragment], NSRange) -> Void)?
     private let pasteImageTypes: [UTType] = [.png, .jpeg, .heic, .heif, .tiff, .gif, .webP]
+
+    private var editorTypingAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: editorFont,
+            .foregroundColor: storedTheme.text,
+            .paragraphStyle: EditorFontSettings.paragraphStyle(for: editorFont),
+        ]
+    }
 
     // MARK: - Init (Force TextKit 1)
 
@@ -131,7 +140,8 @@ final class TypstTextView: UITextView {
     // MARK: - Configuration
 
     private func configureAppearance() {
-        font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        font = editorFont
+        typingAttributes = editorTypingAttributes
         autocorrectionType = .no
         autocapitalizationType = .none
         smartDashesType = .no
@@ -385,13 +395,21 @@ final class TypstTextView: UITextView {
         storedTheme = theme
         backgroundColor = theme.background
         textColor = theme.text
-        typingAttributes = [
-            .font: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular),
-            .foregroundColor: theme.text,
-        ]
+        typingAttributes = editorTypingAttributes
         highlighter.updateTheme(theme)
         gutterView.applyTheme(theme)
         scheduleHighlighting(.immediate)
+    }
+
+    func applyEditorFont(_ font: UIFont) {
+        guard font.fontName != editorFont.fontName || abs(font.pointSize - editorFont.pointSize) > 0.1 else { return }
+        editorFont = font
+        self.font = font
+        typingAttributes = editorTypingAttributes
+        highlighter.updateFont(font)
+        gutterView.applyEditorFont(font)
+        updateGutterLayout()
+        scheduleHighlighting(.immediate, textChanged: true)
     }
 
     // MARK: - Error Lines

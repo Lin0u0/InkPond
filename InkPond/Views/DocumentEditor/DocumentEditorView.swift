@@ -33,6 +33,7 @@ struct DocumentEditorView: View {
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.modelContext) var modelContext
     @Environment(ThemeManager.self) var themeManager
+    @Environment(EditorFontSettings.self) var editorFontSettings
 
     @State var compiler = TypstCompiler()
 

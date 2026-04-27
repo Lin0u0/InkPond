@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(AppAppearanceManager.self) var appAppearanceManager
     @Environment(ThemeManager.self) var themeManager
+    @Environment(EditorFontSettings.self) var editorFontSettings
     @Environment(StorageManager.self) var storageManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
@@ -114,12 +115,9 @@ extension SettingsView {
 
     @ViewBuilder
     var appIconView: some View {
-        ZStack {
-            Color("LaunchBackground")
-            Image("LaunchIcon")
-                .resizable()
-                .scaledToFit()
-        }
+        Image("AppIconDisplay")
+            .resizable()
+            .scaledToFit()
     }
 
     var iCloudSection: some View {
@@ -147,7 +145,8 @@ extension SettingsView {
     var appearanceSection: some View {
         SettingsAppearanceSection(
             appAppearanceManager: appAppearanceManager,
-            themeManager: themeManager
+            themeManager: themeManager,
+            editorFontSettings: editorFontSettings
         )
     }
 
@@ -268,6 +267,7 @@ extension SettingsView {
 private struct SettingsAppearanceSection: View {
     @Bindable var appAppearanceManager: AppAppearanceManager
     @Bindable var themeManager: ThemeManager
+    @Bindable var editorFontSettings: EditorFontSettings
 
     var body: some View {
         Section(L10n.tr("Appearance")) {
@@ -286,6 +286,19 @@ private struct SettingsAppearanceSection: View {
             } label: {
                 Label(L10n.tr("Editor Theme"), systemImage: "paintpalette")
             }
+
+            NavigationLink {
+                EditorFontSettingsView(editorFontSettings: editorFontSettings)
+            } label: {
+                HStack {
+                    Label(L10n.tr("Editor Font"), systemImage: "textformat.size")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(editorFontSettings.fontDisplayName)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("settings.editor-font")
         }
         .transaction { transaction in
             transaction.animation = nil

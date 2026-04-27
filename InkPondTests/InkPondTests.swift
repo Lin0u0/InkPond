@@ -17,6 +17,8 @@ import UIKit
 struct InkPondTests {
     private let appAppearanceDefaultsKey = "appAppearanceMode"
     private let editorThemeDefaultsKey = "editorThemeID"
+    private let editorFontIDDefaultsKey = "editorFontID"
+    private let editorFontSizeDefaultsKey = "editorFontSize"
 
     @Test func zipImporterRejectsParentTraversalPath() throws {
         let zip = makeStoredZip(entries: [
@@ -438,6 +440,57 @@ struct InkPondTests {
         #expect(manager.currentTheme.id == "system")
     }
 
+    @Test func editorFontSettingsPersistsFontAndSizeSelection() {
+        let (suiteName, defaults) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let alternateFontID = EditorFontSettings.availableFontOptions
+            .first { $0.id != EditorFontSettings.systemMonospacedFontID }?
+            .id ?? EditorFontSettings.systemMonospacedFontID
+
+        let initialSettings = EditorFontSettings(defaults: defaults)
+        initialSettings.fontID = alternateFontID
+        initialSettings.fontSize = 21
+
+        let reloadedSettings = EditorFontSettings(defaults: defaults)
+        #expect(reloadedSettings.fontID == alternateFontID)
+        #expect(reloadedSettings.fontSize == 21)
+        #expect(abs(reloadedSettings.uiFont.pointSize - 21) < 0.1)
+    }
+
+    @Test func editorFontSettingsClampsPersistedSizeAndFallsBackForUnknownFont() {
+        let (suiteName, defaults) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("MissingEditorFontName", forKey: editorFontIDDefaultsKey)
+        defaults.set(EditorFontSettings.maximumFontSize + 20, forKey: editorFontSizeDefaultsKey)
+
+        let settings = EditorFontSettings(defaults: defaults)
+
+        #expect(settings.fontID == "MissingEditorFontName")
+        #expect(settings.fontSize == EditorFontSettings.maximumFontSize)
+        #expect(settings.uiFont.fontName == EditorFontSettings.defaultUIFont.fontName)
+    }
+
+    @Test func editorFontSettingsGroupsFacesByFamily() {
+        let families = EditorFontSettings.availableFontFamilies
+        let familyIDs = families.map(\.id)
+        let flattenedFaces = families.flatMap(\.faces)
+
+        #expect(families.first?.id == EditorFontSettings.systemMonospacedFontID)
+        #expect(Set(familyIDs).count == familyIDs.count)
+        #expect(families.allSatisfy { !$0.faces.isEmpty })
+        #expect(EditorFontSettings.availableFontOptions.count == flattenedFaces.count)
+    }
+
+    @Test func editorFontSettingsScalesLineSpacingAndLineNumberFont() {
+        let smallFont = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let largeFont = UIFont.monospacedSystemFont(ofSize: 24, weight: .regular)
+
+        #expect(EditorFontSettings.lineSpacing(for: largeFont) > EditorFontSettings.lineSpacing(for: smallFont))
+        #expect(EditorFontSettings.lineNumberFont(for: largeFont).pointSize > EditorFontSettings.lineNumberFont(for: smallFont).pointSize)
+    }
+
     @Test func appAppearanceManagerPersistsAppearanceSelection() {
         let (suiteName, defaults) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -592,6 +645,17 @@ struct InkPondTests {
         ) as? UIColor
 
         #expect(color?.isEqual(theme.text) == true)
+    }
+
+    @Test func syntaxHighlighterPreservesEditorParagraphStyle() {
+        let font = UIFont.monospacedSystemFont(ofSize: 24, weight: .regular)
+        let textStorage = NSTextStorage(string: "first\nsecond")
+        let highlighter = SyntaxHighlighter(font: font, tokenProvider: { _ in [] })
+
+        highlighter.highlight(textStorage)
+
+        let paragraphStyle = textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(abs((paragraphStyle?.lineSpacing ?? 0) - EditorFontSettings.lineSpacing(for: font)) < 0.001)
     }
 
     @Test func syntaxHighlighterAppliesTypstTokensWithUTF16Offsets() {
