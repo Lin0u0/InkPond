@@ -198,17 +198,10 @@ extension DocumentListView {
             sortMenu
         }
         ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button(action: addDocument) {
-                    Label(L10n.docListNewDocument, systemImage: "doc.badge.plus")
-                }
-                Button {
-                    showingFolderImporter = true
-                } label: {
-                    Label(L10n.docListLinkExternalFolder, systemImage: "link.badge.plus")
-                }
+            Button {
+                addDocument()
             } label: {
-                Image(systemName: "folder.badge.plus")
+                Image(systemName: "doc.badge.plus")
                     .scaleEffect(0.8)
             }
             .accessibilityLabel(L10n.a11yDocumentListAddLabel)
@@ -242,17 +235,10 @@ extension DocumentListView {
             ToolbarSpacer(.flexible, placement: .bottomBar)
         }
         ToolbarItem(placement: .bottomBar) {
-            Menu {
-                Button(action: addDocument) {
-                    Label(L10n.docListNewDocument, systemImage: "doc.badge.plus")
-                }
-                Button {
-                    showingFolderImporter = true
-                } label: {
-                    Label(L10n.docListLinkExternalFolder, systemImage: "link")
-                }
+            Button {
+                addDocument()
             } label: {
-                Image(systemName: "folder.badge.plus")
+                Image(systemName: "doc.badge.plus")
             }
             .accessibilityLabel(L10n.a11yDocumentListAddLabel)
             .accessibilityHint(L10n.a11yDocumentListAddHint)
@@ -261,94 +247,66 @@ extension DocumentListView {
     }
 
     var sortMenu: some View {
-        Button {
-            InteractionFeedback.impact(.light)
-            showingSortPopover = true
+        Menu {
+            Section {
+                ForEach(SortField.allCases) { field in
+                    Button {
+                        selectSortField(field)
+                    } label: {
+                        sortMenuRow(title: field.label, isSelected: field == sortField)
+                    }
+                }
+            } header: {
+                Text(L10n.tr("sort.menu.sort_by"))
+            }
+
+            Section {
+                ForEach(SortDirection.allCases) { direction in
+                    Button {
+                        selectSortDirection(direction)
+                    } label: {
+                        sortMenuRow(title: direction.label, isSelected: direction == sortDirection)
+                    }
+                }
+            } header: {
+                Text(L10n.tr("sort.menu.order"))
+            }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
-                .scaleEffect(0.8)
+                .imageScale(.medium)
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(L10n.tr("sort.menu.button"))
         .accessibilityValue(L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label))
         .accessibilityIdentifier("document-list.sort")
-        .popover(
-            isPresented: $showingSortPopover,
-            attachmentAnchor: .point(.bottom),
-            arrowEdge: .top
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                sortSection(title: L10n.tr("sort.menu.sort_by")) {
-                    ForEach(SortField.allCases) { field in
-                        sortSelectionRow(
-                            title: field.label,
-                            isSelected: field == sortField
-                        ) {
-                            sortField = field
-                        }
-                    }
-                }
-
-                Divider()
-
-                sortSection(title: L10n.tr("sort.menu.order")) {
-                    ForEach(SortDirection.allCases) { direction in
-                        sortSelectionRow(
-                            title: direction.label,
-                            isSelected: direction == sortDirection
-                        ) {
-                            sortDirection = direction
-                        }
-                    }
-                }
-            }
-            .padding(12)
-            .frame(width: 240)
-            .systemFloatingSurface(cornerRadius: 16)
-            .presentationCompactAdaptation(.popover)
-        }
     }
 
     @ViewBuilder
-    func sortSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    func sortMenuRow(title: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label(title, systemImage: "checkmark")
+        } else {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            content()
         }
     }
 
-    func sortSelectionRow(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            showingSortPopover = false
-            InteractionFeedback.selection()
-            AccessibilitySupport.announce(
-                L10n.a11ySortChanged(
-                    L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label)
-                )
+    func selectSortField(_ field: SortField) {
+        guard field != sortField else { return }
+        sortField = field
+        announceSortChange()
+    }
+
+    func selectSortDirection(_ direction: SortDirection) {
+        guard direction != sortDirection else { return }
+        sortDirection = direction
+        announceSortChange()
+    }
+
+    func announceSortChange() {
+        InteractionFeedback.selection()
+        AccessibilitySupport.announce(
+            L10n.a11ySortChanged(
+                L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label)
             )
-        } label: {
-            HStack(spacing: 12) {
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.primary)
-
-                Spacer(minLength: 12)
-
-                Image(systemName: "checkmark")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.primary)
-                    .opacity(isSelected ? 1 : 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
+        )
     }
 }

@@ -27,6 +27,41 @@ private struct SceneTitleSetter: UIViewRepresentable {
     }
 }
 
+private final class WindowUserInterfaceStyleSetterView: UIView {
+    var style: UIUserInterfaceStyle = .unspecified {
+        didSet { applyStyle() }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyStyle()
+    }
+
+    private func applyStyle() {
+        guard let window else { return }
+        if let scene = window.windowScene {
+            scene.windows.forEach { $0.overrideUserInterfaceStyle = style }
+        } else {
+            window.overrideUserInterfaceStyle = style
+        }
+    }
+}
+
+private struct WindowUserInterfaceStyleSetter: UIViewRepresentable {
+    let style: UIUserInterfaceStyle
+
+    func makeUIView(context: Context) -> WindowUserInterfaceStyleSetterView {
+        let view = WindowUserInterfaceStyleSetterView()
+        view.isHidden = true
+        view.style = style
+        return view
+    }
+
+    func updateUIView(_ uiView: WindowUserInterfaceStyleSetterView, context: Context) {
+        uiView.style = style
+    }
+}
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(StorageManager.self) private var storageManager
@@ -40,15 +75,21 @@ struct ContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
-        if hasCompletedOnboarding || shouldSkipOnboardingForUITests {
-            mainContent
-        } else {
-            OnboardingView {
-                withAnimation { hasCompletedOnboarding = true }
+        Group {
+            if hasCompletedOnboarding || shouldSkipOnboardingForUITests {
+                mainContent
+            } else {
+                onboardingContent
             }
-            .preferredColorScheme(appAppearanceManager.colorScheme)
-            .environment(appAppearanceManager)
         }
+        .background(WindowUserInterfaceStyleSetter(style: appAppearanceManager.userInterfaceStyle))
+    }
+
+    private var onboardingContent: some View {
+        OnboardingView {
+            withAnimation { hasCompletedOnboarding = true }
+        }
+        .environment(appAppearanceManager)
     }
 
     private var shouldSkipOnboardingForUITests: Bool {
@@ -79,7 +120,6 @@ struct ContentView: View {
             }
         }
         .background(SceneTitleSetter(title: selectedDocument?.title ?? L10n.appName))
-        .preferredColorScheme(appAppearanceManager.colorScheme)
         .environment(appAppearanceManager)
         .environment(themeManager)
         .environment(appFontLibrary)

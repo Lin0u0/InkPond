@@ -69,7 +69,6 @@ struct DocumentListView: View {
     @State var needsFilesystemSync = false
     @State var sortField: SortField = .modifiedAt
     @State var sortDirection: SortDirection = .descending
-    @State var showingSortPopover = false
     @State var showingFolderImporter = false
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
@@ -126,8 +125,12 @@ struct DocumentListView: View {
 
     private var baseContent: some View {
         documentList
-            .searchable(text: $searchText, prompt: "Search")
             .navigationTitle(L10n.appName)
+            .searchable(
+                text: $searchText,
+                placement: isIPad ? .automatic : .toolbar,
+                prompt: Text(L10n.tr("Search"))
+            )
             .toolbar { if isIPad { iPadToolbar } else { iPhoneToolbar } }
             .overlay {
                 if exporter.isExporting {
@@ -290,7 +293,16 @@ private struct DocumentListAlertsModifier: ViewModifier {
                 projectErrorAlertMessage
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(onImport: { url in importZip(url) })
+                SettingsView(
+                    onImport: { url in importZip(url) },
+                    onLinkExternalFolder: {
+                        showingSettings = false
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            showingFolderImporter = true
+                        }
+                    }
+                )
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { scheduleFilesystemSync(.milliseconds(100)) }

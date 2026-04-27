@@ -448,6 +448,7 @@ struct InkPondTests {
         #expect(initialManager.mode == AppAppearanceMode.light.rawValue)
         #expect(initialManager.currentMode == .light)
         #expect(initialManager.colorScheme == .light)
+        #expect(initialManager.userInterfaceStyle == .light)
 
         initialManager.mode = AppAppearanceMode.dark.rawValue
 
@@ -455,6 +456,7 @@ struct InkPondTests {
         #expect(reloadedManager.mode == AppAppearanceMode.dark.rawValue)
         #expect(reloadedManager.currentMode == .dark)
         #expect(reloadedManager.colorScheme == .dark)
+        #expect(reloadedManager.userInterfaceStyle == .dark)
     }
 
     @Test func appAppearanceManagerFallsBackToSystemForUnknownValue() {
@@ -467,6 +469,7 @@ struct InkPondTests {
         #expect(manager.mode == "sepia")
         #expect(manager.currentMode == .system)
         #expect(manager.colorScheme == nil)
+        #expect(manager.userInterfaceStyle == .unspecified)
     }
 
     @Test func typstCompilerUsesLowerQoSForPreviewThanExplicitCompile() {
