@@ -165,17 +165,12 @@ extension DocumentEditorView {
     func resolveConflictKeepLocal() {
         showingConflictWarning = false
         let content = editorText
-        let fileURL = ProjectFileManager.typFileURL(named: currentFileName, for: document)
 
         // Resolve all conflict versions in favor of current, then overwrite.
         conflictMonitor.resolveKeepingCurrent()
 
         do {
-            if ProjectFileManager.useCoordination {
-                try CloudFileCoordinator.writeString(content, to: fileURL)
-            } else {
-                try content.write(to: fileURL, atomically: true, encoding: .utf8)
-            }
+            try ProjectFileManager.writeTypFile(named: currentFileName, content: content, for: document)
             lastPersistedText = content
             document.modifiedAt = Date()
         } catch {
@@ -213,14 +208,9 @@ extension DocumentEditorView {
         guard content != lastPersistedText else { return true }
 
         let shouldRefreshPreviewAfterSave = currentFileName != document.entryFileName
-        let fileURL = ProjectFileManager.typFileURL(named: currentFileName, for: document)
 
         do {
-            if ProjectFileManager.useCoordination {
-                try CloudFileCoordinator.writeString(content, to: fileURL)
-            } else {
-                try content.write(to: fileURL, atomically: true, encoding: .utf8)
-            }
+            try ProjectFileManager.writeTypFile(named: currentFileName, content: content, for: document)
             lastPersistedText = content
             document.modifiedAt = Date()
             if shouldRefreshPreviewAfterSave {
@@ -312,11 +302,7 @@ extension DocumentEditorView {
         guard let sourceMap = compiler.sourceMap, !sourceMap.isEmpty else { return }
         guard syncCoordinator.beginSync(.editorToPreview) else { return }
 
-        let text = editorText as NSString
-        let prefix = cursorLocation <= text.length
-            ? text.substring(to: cursorLocation)
-            : editorText
-        let line = prefix.components(separatedBy: "\n").count
+        let line = lineNumber(atUTF16Offset: cursorLocation, in: editorText)
 
         if let target = sourceMap.pdfPosition(forLine: line) {
             syncCoordinator.previewScrollTarget = PreviewScrollTarget(
@@ -353,10 +339,7 @@ extension DocumentEditorView {
     private func syncPreviewToOffset(_ offset: Int) {
         guard let sourceMap = compiler.sourceMap, !sourceMap.isEmpty else { return }
 
-        let text = editorText as NSString
-        let safeOffset = min(max(0, offset), text.length)
-        let prefix = text.substring(to: safeOffset)
-        let line = prefix.components(separatedBy: "\n").count
+        let line = lineNumber(atUTF16Offset: offset, in: editorText)
 
         if let target = sourceMap.pdfPosition(forLine: line) {
             syncCoordinator.previewScrollTarget = PreviewScrollTarget(
@@ -638,5 +621,22 @@ extension DocumentEditorView {
             offset += min(max(column - 1, 0), (lines[line - 1] as NSString).length)
         }
         return offset
+    }
+
+    private func lineNumber(atUTF16Offset offset: Int, in text: String) -> Int {
+        let nsString = text as NSString
+        let safeOffset = min(max(0, offset), nsString.length)
+        var line = 1
+        var searchStart = 0
+
+        while searchStart < safeOffset {
+            let searchRange = NSRange(location: searchStart, length: safeOffset - searchStart)
+            let newlineRange = nsString.range(of: "\n", options: [], range: searchRange)
+            guard newlineRange.location != NSNotFound else { break }
+            line += 1
+            searchStart = newlineRange.location + newlineRange.length
+        }
+
+        return line
     }
 }

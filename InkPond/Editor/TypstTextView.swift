@@ -121,9 +121,11 @@ final class TypstTextView: UITextView {
     }
 
     deinit {
-        jumpHighlightDisplayLink?.invalidate()
-        completionPopup?.removeFromSuperview()
-        NotificationCenter.default.removeObserver(self)
+        MainActor.assumeIsolated {
+            jumpHighlightDisplayLink?.invalidate()
+            completionPopup?.removeFromSuperview()
+            NotificationCenter.default.removeObserver(self)
+        }
     }
 
     // MARK: - Configuration
@@ -440,6 +442,37 @@ final class TypstTextView: UITextView {
     /// so the cursor never sits right at the keyboard edge.
     private static let keyboardBottomPadding: CGFloat = 80
 
+    private static func keyboardAnimationOptions(from userInfo: [AnyHashable: Any]) -> UIView.AnimationOptions {
+        let rawCurve: Int?
+        if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int {
+            rawCurve = raw
+        } else if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt {
+            rawCurve = Int(raw)
+        } else if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber {
+            rawCurve = raw.intValue
+        } else {
+            rawCurve = nil
+        }
+
+        guard let rawCurve,
+              let curve = UIView.AnimationCurve(rawValue: rawCurve) else {
+            return .curveEaseInOut
+        }
+
+        switch curve {
+        case .easeInOut:
+            return .curveEaseInOut
+        case .easeIn:
+            return .curveEaseIn
+        case .easeOut:
+            return .curveEaseOut
+        case .linear:
+            return .curveLinear
+        @unknown default:
+            return .curveEaseInOut
+        }
+    }
+
     @objc private func keyboardFrameWillChange(_ notification: Notification) {
         guard window != nil,
               let userInfo = notification.userInfo,
@@ -453,11 +486,11 @@ final class TypstTextView: UITextView {
         let totalInset = overlap > 0 ? overlap + Self.keyboardBottomPadding : 0
 
         let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
-        let curveRaw = (userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt) ?? 7
+        let animationOptions = Self.keyboardAnimationOptions(from: userInfo)
 
         UIView.animate(
             withDuration: duration, delay: 0,
-            options: [.beginFromCurrentState, UIView.AnimationOptions(rawValue: curveRaw << 16)]
+            options: [.beginFromCurrentState, animationOptions]
         ) {
             self.contentInset.bottom = totalInset
             self.verticalScrollIndicatorInsets.bottom = overlap

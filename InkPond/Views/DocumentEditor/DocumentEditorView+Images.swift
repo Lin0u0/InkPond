@@ -8,6 +8,20 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
+private enum ImageImportError: LocalizedError {
+    case loadDataFailed
+    case processFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .loadDataFailed:
+            return L10n.tr("error.image.load_data_failed")
+        case .processFailed:
+            return L10n.tr("error.image.process_failed")
+        }
+    }
+}
+
 extension DocumentEditorView {
     func handleImageDrop(providers: [NSItemProvider]) -> Bool {
         let anchorRange = currentInsertionRange()
@@ -20,16 +34,19 @@ extension DocumentEditorView {
         }
 
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            let suggestedName = provider.suggestedName
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                 guard let data else {
                     Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
                     return
                 }
-                importImage(
-                    from: .rawData(data, suggestedFileName: provider.suggestedName),
-                    anchorRange: anchorRange,
-                    targetFileName: targetFileName
-                )
+                Task { @MainActor in
+                    importImage(
+                        from: .rawData(data, suggestedFileName: suggestedName),
+                        anchorRange: anchorRange,
+                        targetFileName: targetFileName
+                    )
+                }
             }
             return true
         }
@@ -50,7 +67,9 @@ extension DocumentEditorView {
                 Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
                 return
             }
-            importImage(from: .fileURL(fileURL), anchorRange: anchorRange, targetFileName: targetFileName)
+            Task { @MainActor in
+                importImage(from: .fileURL(fileURL), anchorRange: anchorRange, targetFileName: targetFileName)
+            }
         }
         return true
     }
@@ -160,24 +179,24 @@ extension DocumentEditorView {
             return data
         case .photoItem(let item):
             guard let data = try? await item.loadTransferable(type: Data.self) else {
-                throw NSError(domain: "InkPond.ImageImport", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.load_data_failed")])
+                throw ImageImportError.loadDataFailed
             }
             return data
         case .fileURL(let url):
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             guard let data = try? Data(contentsOf: url) else {
-                throw NSError(domain: "InkPond.ImageImport", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.load_data_failed")])
+                throw ImageImportError.loadDataFailed
             }
             return data
         case .remoteURL(let url, _):
             let (data, response) = try await URLSession.shared.data(from: url)
             if let http = response as? HTTPURLResponse,
                !(200...299).contains(http.statusCode) {
-                throw NSError(domain: "InkPond.ImageImport", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.load_data_failed")])
+                throw ImageImportError.loadDataFailed
             }
             guard !data.isEmpty else {
-                throw NSError(domain: "InkPond.ImageImport", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.load_data_failed")])
+                throw ImageImportError.loadDataFailed
             }
             return data
         }
@@ -186,7 +205,7 @@ extension DocumentEditorView {
     func normalizeImageData(_ data: Data) throws -> (data: Data, fileExtension: String) {
         guard let uiImage = UIImage(data: data),
               let cgImage = uiImage.cgImage else {
-            throw NSError(domain: "InkPond.ImageImport", code: 2, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.process_failed")])
+            throw ImageImportError.processFailed
         }
 
         let hasAlpha: Bool = {
@@ -200,13 +219,13 @@ extension DocumentEditorView {
 
         if hasAlpha {
             guard let pngData = uiImage.pngData() else {
-                throw NSError(domain: "InkPond.ImageImport", code: 2, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.process_failed")])
+                throw ImageImportError.processFailed
             }
             return (pngData, "png")
         }
 
         guard let jpegData = uiImage.jpegData(compressionQuality: 0.85) else {
-            throw NSError(domain: "InkPond.ImageImport", code: 2, userInfo: [NSLocalizedDescriptionKey: L10n.tr("error.image.process_failed")])
+            throw ImageImportError.processFailed
         }
         return (jpegData, "jpg")
     }

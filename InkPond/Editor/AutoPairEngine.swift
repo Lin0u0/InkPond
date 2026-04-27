@@ -190,13 +190,13 @@ struct AutoPairEngine {
 
         switch text {
         case "$":
-            return context.contains("Markup") && !context.contains("Equation") && !context.contains("Math")
+            return context.contains(.markup) && !context.contains(.equation) && !context.contains(.math)
         case "\"":
-            return context.contains("Code")
-                || context.contains("Args")
-                || context.contains("Named")
-                || context.contains("ModuleImport")
-                || context.contains("ModuleInclude")
+            return context.contains(.code)
+                || context.contains(.args)
+                || context.contains(.named)
+                || context.contains(.moduleImport)
+                || context.contains(.moduleInclude)
         default:
             return true
         }
@@ -207,27 +207,27 @@ struct AutoPairEngine {
 
         switch opener {
         case "{":
-            return context.contains("Code")
-                || context.contains("CodeBlock")
-                || context.contains("Conditional")
-                || context.contains("WhileLoop")
-                || context.contains("ForLoop")
+            return context.contains(.code)
+                || context.contains(.codeBlock)
+                || context.contains(.conditional)
+                || context.contains(.whileLoop)
+                || context.contains(.forLoop)
         case "[":
-            return context.contains("ContentBlock")
-                || context.contains("Markup")
-                || context.contains("Args")
-                || context.contains("FuncCall")
+            return context.contains(.contentBlock)
+                || context.contains(.markup)
+                || context.contains(.args)
+                || context.contains(.funcCall)
         default:
             return false
         }
     }
 
     private static func isSuppressedPairingContext(_ context: TypstCursorContext) -> Bool {
-        context.contains("Raw")
-            || context.contains("RawLang")
-            || context.contains("RawDelim")
-            || context.contains("LineComment")
-            || context.contains("BlockComment")
-            || context.contains("Str")
+        context.contains(.raw)
+            || context.contains(.rawLang)
+            || context.contains(.rawDelim)
+            || context.contains(.lineComment)
+            || context.contains(.blockComment)
+            || context.contains(.str)
     }
 }

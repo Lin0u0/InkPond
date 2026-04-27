@@ -427,6 +427,31 @@ extension DocumentEditorView {
         }
     }
 
+    @ToolbarContentBuilder
+    private var compactTopBarTrailingItems: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarTrailing) {
+                systemCompactModePicker
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+            ToolbarItem(placement: .topBarTrailing) {
+                compactToolbarTrailingControl
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                systemCompactModePicker
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                compactToolbarTrailingControl
+            }
+        }
+    }
+
     var regularEditorChrome: some View {
         contentLayout
             .navigationTitle(usesSystemCompactToolbar ? "" : document.title)
@@ -577,31 +602,7 @@ extension DocumentEditorView {
                         .accessibilityIdentifier("editor.more-menu")
                     }
                 } else {
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            systemCompactModePicker
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            systemCompactModePicker
-                        }
-                    }
-
-                    if #available(iOS 26.0, *) {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
-
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            compactToolbarTrailingControl
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            compactToolbarTrailingControl
-                        }
-                    }
+                    compactTopBarTrailingItems
                 }
             }
     }
