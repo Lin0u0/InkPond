@@ -108,6 +108,12 @@ final class PDFContainerView: UIView {
 
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateScrollInsetsIfNeeded()
+        alignShortDocumentToTopIfNeeded()
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -136,6 +142,7 @@ final class PDFContainerView: UIView {
                 self.layoutIfNeeded()
                 self.pdfView.layoutIfNeeded()
                 self.updateScrollInsetsIfNeeded(forcePinnedTop: true)
+                self.alignShortDocumentToTopIfNeeded()
                 DispatchQueue.main.async { [weak self, weak focusCoordinator] in
                     guard let self, self.pdfView.document === document else { return }
                     focusCoordinator?.setResignSuppressed(false)
@@ -169,6 +176,7 @@ final class PDFContainerView: UIView {
                 }
             }
             self.updateScrollInsetsIfNeeded()
+            self.alignShortDocumentToTopIfNeeded()
             self.suppressScrollRestoration = false
 
             focusCoordinator?.setResignSuppressed(false)
@@ -225,6 +233,36 @@ final class PDFContainerView: UIView {
                 animated: false
             )
         }
+    }
+
+    private func alignShortDocumentToTopIfNeeded() {
+        guard let scrollView = findScrollView(in: pdfView),
+              let documentView = pdfView.documentView,
+              documentView.superview != nil else {
+            return
+        }
+
+        scrollView.layoutIfNeeded()
+        documentView.layoutIfNeeded()
+
+        let visibleHeight = scrollView.bounds.height
+            - scrollView.adjustedContentInset.top
+            - scrollView.adjustedContentInset.bottom
+        let documentRectInPDFView = documentView.convert(documentView.bounds, to: pdfView)
+        guard visibleHeight > 0,
+              documentRectInPDFView.height > 0,
+              documentRectInPDFView.height < visibleHeight else {
+            return
+        }
+
+        let documentTopInPDFView = documentRectInPDFView.minY
+        let targetTopInPDFView = pdfView.bounds.minY + scrollView.adjustedContentInset.top
+        let verticalDelta = targetTopInPDFView - documentTopInPDFView
+        guard abs(verticalDelta) > 0.5 else { return }
+
+        var frame = documentView.frame
+        frame.origin.y += verticalDelta
+        documentView.frame = frame
     }
 
     private func clampedContentOffset(_ contentOffset: CGPoint, in scrollView: UIScrollView) -> CGPoint {

@@ -12205,29 +12205,6 @@
         }
       }
     },
-    "System Monospaced" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系统等宽"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系統等寬"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系統等寬"
-          }
-        }
-      }
-    },
     "Thanks to everyone at Donut for support and inspiration." : {
       "localizations" : {
         "zh-Hans" : {

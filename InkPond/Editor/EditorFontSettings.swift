@@ -31,6 +31,7 @@ struct EditorFontFamilyOption: Identifiable, Hashable {
 @Observable
 final class EditorFontSettings {
     static let systemMonospacedFontID = "system.monospaced"
+    static let systemMonospacedDisplayName = "System Monospaced"
     static let defaultFontSize: Double = 15
     static let minimumFontSize: Double = 11
     static let maximumFontSize: Double = 28
@@ -70,7 +71,7 @@ final class EditorFontSettings {
     }
 
     var familyDisplayName: String {
-        Self.familyOption(containing: fontID)?.displayName ?? L10n.tr("System Monospaced")
+        Self.familyOption(containing: fontID)?.displayName ?? Self.systemMonospacedDisplayName
     }
 
     var selectedFamily: EditorFontFamilyOption {
@@ -120,7 +121,7 @@ final class EditorFontSettings {
 
     static func displayName(for fontID: String) -> String {
         if fontID == systemMonospacedFontID {
-            return L10n.tr("System Monospaced")
+            return systemMonospacedDisplayName
         }
 
         if let font = UIFont(name: fontID, size: CGFloat(defaultFontSize)) {
@@ -136,7 +137,7 @@ final class EditorFontSettings {
             return "\(familyName) \(font.fontName)"
         }
 
-        return L10n.tr("System Monospaced")
+        return systemMonospacedDisplayName
     }
 
     static func faceDisplayName(for fontID: String) -> String {
@@ -200,7 +201,7 @@ final class EditorFontSettings {
     private static var systemFamilyOption: EditorFontFamilyOption {
         EditorFontFamilyOption(
             id: systemMonospacedFontID,
-            displayName: L10n.tr("System Monospaced"),
+            displayName: systemMonospacedDisplayName,
             faces: [
                 EditorFontFaceOption(
                     id: systemMonospacedFontID,

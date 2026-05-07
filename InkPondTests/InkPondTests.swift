@@ -483,6 +483,17 @@ struct InkPondTests {
         #expect(EditorFontSettings.availableFontOptions.count == flattenedFaces.count)
     }
 
+    @Test func editorFontSettingsKeepsSystemMonospacedNameVerbatim() {
+        let (suiteName, defaults) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = EditorFontSettings(defaults: defaults)
+
+        #expect(settings.fontDisplayName == EditorFontSettings.systemMonospacedDisplayName)
+        #expect(settings.familyDisplayName == EditorFontSettings.systemMonospacedDisplayName)
+        #expect(EditorFontSettings.availableFontFamilies.first?.displayName == EditorFontSettings.systemMonospacedDisplayName)
+    }
+
     @Test func editorFontSettingsScalesLineSpacingAndLineNumberFont() {
         let smallFont = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         let largeFont = UIFont.monospacedSystemFont(ofSize: 24, weight: .regular)
