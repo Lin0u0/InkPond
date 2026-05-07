@@ -768,8 +768,10 @@ struct InkPondTests {
         let (window, textView) = makeHostedTextView()
         defer { window.isHidden = true }
         coordinator.register(textView)
+        #expect(!coordinator.isEditorFocused)
         _ = textView.becomeFirstResponder()
         await waitUntil { textView.isFirstResponder }
+        #expect(coordinator.isEditorFocused)
 
         coordinator.setResignSuppressed(true)
         #expect(textView.suppressResignFirstResponder)
@@ -782,6 +784,40 @@ struct InkPondTests {
 
         #expect(textView.isFirstResponder)
         #expect(!textView.suppressResignFirstResponder)
+    }
+
+    @MainActor
+    @Test func editorCoordinatorIgnoresSelectionChangesDuringProgrammaticTextUpdate() {
+        var text = "First line\nSecond line"
+        var insertionRequest: EditorInsertionRequest?
+        var findRequested = false
+        var viewState = EditorViewState()
+        var cursorJumpOffset: Int?
+        let parent = EditorView(
+            text: Binding(get: { text }, set: { text = $0 }),
+            insertionRequest: Binding(get: { insertionRequest }, set: { insertionRequest = $0 }),
+            findRequested: Binding(get: { findRequested }, set: { findRequested = $0 }),
+            viewState: Binding(get: { viewState }, set: { viewState = $0 }),
+            cursorJumpOffset: Binding(get: { cursorJumpOffset }, set: { cursorJumpOffset = $0 })
+        )
+        let coordinator = EditorView.Coordinator(parent)
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.delegate = coordinator
+        coordinator.textView = textView
+
+        coordinator.performProgrammaticUpdate {
+            textView.text = text
+            textView.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+            coordinator.textViewDidChangeSelection(textView)
+        }
+
+        #expect(viewState.selectedLocation == 0)
+
+        textView.selectedRange = NSRange(location: 2, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        #expect(viewState.selectedLocation == 2)
     }
 
     @MainActor

@@ -75,6 +75,7 @@ struct DocumentEditorView: View {
     @State var showingImportConfiguration = false
     @State var showingZipExportWarning = false
     @State var focusCoordinator = EditorFocusCoordinator()
+    @State var shouldRestoreEditorFocusAfterPreview = false
     @State var syncCoordinator = SyncCoordinator()
     @State var editorViewState = EditorViewState()
     @State var fileLoadToken = UUID()

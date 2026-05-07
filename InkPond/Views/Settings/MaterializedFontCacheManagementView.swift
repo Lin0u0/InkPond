@@ -56,7 +56,7 @@ struct MaterializedFontCacheManagementView: View {
             HStack {
                 Label("Cached Fonts", systemImage: "textformat")
                 Spacer()
-                Text("\(snapshot.entries.count)")
+                Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
             }
 

@@ -161,7 +161,7 @@ struct SlideshowView: View {
 
                 Spacer()
 
-                Text("\(currentPage + 1) / \(pageCount)")
+                Text(verbatim: "\(currentPage + 1) / \(pageCount)")
                     .foregroundStyle(.white)
                     .font(.subheadline.monospacedDigit().bold())
                     .padding(.horizontal, 12)

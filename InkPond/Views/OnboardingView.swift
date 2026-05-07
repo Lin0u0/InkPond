@@ -313,11 +313,11 @@ private struct InkEditorIllustration: View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("#let")
+                    Text(verbatim: "#let")
                         .font(.notoSerif(size: 18 * scale, weight: .bold))
                         .foregroundStyle(InkPalette.ink)
                     Spacer()
-                    Text("typst")
+                    Text(verbatim: "typst")
                         .font(.notoSerif(size: 11 * scale, weight: .regular))
                         .foregroundStyle(InkPalette.faintInk)
                 }
@@ -395,7 +395,7 @@ private struct InkPreviewIllustration: View {
                 .frame(width: 190 * scale, height: 250 * scale)
                 .overlay(
                     VStack(spacing: 9 * scale) {
-                        Text("InkPond")
+                        Text(verbatim: "InkPond")
                             .font(.notoSerif(size: 21 * scale, weight: .bold))
                             .foregroundStyle(InkPalette.ink)
 
@@ -454,7 +454,7 @@ private struct InkProjectsIllustration: View {
         ZStack {
             VStack(alignment: .leading, spacing: 12 * scale) {
                 HStack {
-                    Text("my-thesis")
+                    Text(verbatim: "my-thesis")
                         .font(.notoSerif(size: 17 * scale, weight: .bold))
                         .foregroundStyle(InkPalette.ink)
                     Spacer()

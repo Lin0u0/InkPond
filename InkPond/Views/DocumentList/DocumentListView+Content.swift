@@ -57,8 +57,8 @@ extension DocumentListView {
                         .lineLimit(1)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(L10n.tr("doc.time.created")): \(document.createdAt.formatted(rowDateFormat))")
-                    Text("\(L10n.tr("doc.time.modified")): \(document.modifiedAt.formatted(rowDateFormat))")
+                    Text(L10n.format("doc.time.created_value", document.createdAt.formatted(rowDateFormat)))
+                    Text(L10n.format("doc.time.modified_value", document.modifiedAt.formatted(rowDateFormat)))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

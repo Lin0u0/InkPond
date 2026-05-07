@@ -60,7 +60,7 @@ struct CompiledPreviewCacheManagementView: View {
             HStack {
                 Label("Cached Documents", systemImage: "doc.richtext")
                 Spacer()
-                Text("\(snapshot.entries.count)")
+                Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
             }
         }

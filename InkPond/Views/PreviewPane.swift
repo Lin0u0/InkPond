@@ -522,7 +522,7 @@ struct PreviewPane: View {
                 PDFKitView(
                     document: pdf,
                     focusCoordinator: focusCoordinator,
-                    topViewportInset: topViewportInset,
+                    topViewportInset: 0,
                     scrollTarget: syncCoordinator?.previewScrollTarget,
                     onTapLocation: { page, yPoints in
                         guard let syncCoordinator,
@@ -538,6 +538,7 @@ struct PreviewPane: View {
                         )
                     }
                 )
+                .padding(.top, topViewportInset)
                 .ignoresSafeArea(.container, edges: .bottom)
                 .modifier(SoftScrollEdgeEffect())
                 .accessibilityLabel(L10n.a11yPreviewLabel)
@@ -874,7 +875,13 @@ struct PreviewPane: View {
         .compilationErrorSurface(cornerRadius: 18)
         .shadow(color: Color.black.opacity(0.12), radius: 16, y: 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(L10n.tr("Compilation Error")). \(presentation.summary)")
+        .accessibilityLabel(
+            L10n.format(
+                "a11y.preview.error.label_format",
+                L10n.tr("Compilation Error"),
+                presentation.summary
+            )
+        )
         .accessibilityValue(presentation.location ?? "")
     }
 

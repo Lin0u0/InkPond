@@ -76,6 +76,19 @@ extension DocumentEditorView {
         sizeClass != .regular
     }
 
+    private var compactTabSelection: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    selectedTab = newValue
+                }
+            }
+        )
+    }
+
     func editorPane(topViewportInset: CGFloat = 0) -> some View {
         EditorView(
             text: $editorText,
@@ -241,9 +254,11 @@ extension DocumentEditorView {
                         previewPane(topViewportInset: topInset)
                             .ignoresSafeArea(edges: .top)
                             .modifier(SoftScrollEdgeEffectModifier())
+                            .transition(.identity)
                             .accessibilityHidden(false)
                     }
                 }
+                .animation(nil, value: selectedTab)
             }
         }
     }
@@ -382,13 +397,16 @@ extension DocumentEditorView {
     }
 
     private var systemCompactModePicker: some View {
-        Picker("", selection: $selectedTab) {
+        Picker(L10n.tr("Mode"), selection: compactTabSelection) {
             Image(systemName: "text.quote").tag(editorTab)
             Image(systemName: "document").tag(previewTab)
         }
         .labelsHidden()
         .pickerStyle(.segmented)
         .frame(width: 100)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
         .accessibilityIdentifier("editor.mode-picker")
     }
 
@@ -731,8 +749,13 @@ extension DocumentEditorView {
             .onChange(of: selectedTab) { _, newTab in
                 InteractionFeedback.selection()
                 if newTab == editorTab {
-                    focusCoordinator.activateKeyboard()
+                    let shouldRestoreFocus = shouldRestoreEditorFocusAfterPreview
+                    shouldRestoreEditorFocusAfterPreview = false
+                    if shouldRestoreFocus {
+                        focusCoordinator.activateKeyboard()
+                    }
                 } else {
+                    shouldRestoreEditorFocusAfterPreview = focusCoordinator.isEditorFocused
                     focusCoordinator.dismissKeyboard()
                 }
             }

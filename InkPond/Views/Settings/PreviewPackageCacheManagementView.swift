@@ -58,7 +58,7 @@ struct PreviewPackageCacheManagementView: View {
             HStack {
                 Label("Cached Packages", systemImage: "shippingbox")
                 Spacer()
-                Text("\(snapshot.entries.count)")
+                Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
             }
         }

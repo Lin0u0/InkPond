@@ -8,6 +8,10 @@ final class EditorFocusCoordinator {
     private var shouldRestoreFocus = false
     private var restoreTask: Task<Void, Never>?
 
+    var isEditorFocused: Bool {
+        textView?.isFirstResponder == true
+    }
+
     func register(_ textView: TypstTextView) {
         self.textView = textView
         textView.suppressResignFirstResponder = suppressionCount > 0
