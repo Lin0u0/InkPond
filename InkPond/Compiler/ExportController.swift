@@ -52,9 +52,11 @@ final class ExportController {
         isExporting = true
         Task { @MainActor [weak self] in
             guard let self else { return }
+            let projectDir = ProjectFileManager.projectDirectory(for: document)
+            let title = document.title
             do {
                 exportURL = try await Task.detached {
-                    try await ExportManager.zipProject(for: document)
+                    try ExportManager.zipProject(sourceDir: projectDir, title: title)
                 }.value
             } catch {
                 exportError = error.localizedDescription

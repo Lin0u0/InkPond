@@ -83,32 +83,43 @@ enum ProjectFileManager {
         set { _storageManagerLock.withLock { $0 = newValue } }
     }
 
-    static var documentsURL: URL {
-        if let manager = storageManager {
-            return manager.activeDocumentsURL
-        }
-        // Fallback to local Documents if StorageManager not yet initialized
+    private nonisolated static var localDocumentsURL: URL {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             fatalError("DocumentDirectory unavailable — this should never happen in a sandboxed app")
         }
         return docs
     }
 
-    static var syncDocumentsURL: URL? {
-        if let manager = storageManager {
-            return manager.syncDocumentsURL
-        }
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    private nonisolated static var ubiquityDocumentsURL: URL? {
+        FileManager.default
+            .url(forUbiquityContainerIdentifier: AppIdentity.iCloudContainerIdentifier)?
+            .appendingPathComponent("Documents", isDirectory: true)
     }
 
-    static func projectDirectory(for document: InkPondDocument) -> URL {
+    nonisolated static var documentsURL: URL {
+        if storageManager?.isUsingiCloud == true, let ubiquityDocumentsURL {
+            return ubiquityDocumentsURL
+        }
+        // Fallback to local Documents if StorageManager is not initialized or
+        // iCloud is unavailable.
+        return localDocumentsURL
+    }
+
+    nonisolated static var syncDocumentsURL: URL? {
+        if storageManager?.isUsingiCloud == true {
+            return ubiquityDocumentsURL
+        }
+        return localDocumentsURL
+    }
+
+    nonisolated static func projectDirectory(for document: InkPondDocument) -> URL {
         if let bookmarkURL = BookmarkManager.loadBookmark(projectID: document.projectID) {
             return bookmarkURL
         }
         return documentsURL.appendingPathComponent(document.projectID, isDirectory: true)
     }
 
-    static func projectDirectory(folderName: String) -> URL {
+    nonisolated static func projectDirectory(folderName: String) -> URL {
         if let bookmarkURL = BookmarkManager.loadBookmark(projectID: folderName) {
             return bookmarkURL
         }
@@ -160,7 +171,7 @@ enum ProjectFileManager {
         return newFolderName
     }
 
-    static func imagesDirectory(for document: InkPondDocument) -> URL {
+    nonisolated static func imagesDirectory(for document: InkPondDocument) -> URL {
         let imageDirName = safeImageDirectoryName(from: document.imageDirectoryName)
         if imageDirName.isEmpty {
             return projectDirectory(for: document)
@@ -169,7 +180,7 @@ enum ProjectFileManager {
             .appendingPathComponent(imageDirName, isDirectory: true)
     }
 
-    static func fontsDirectory(for document: InkPondDocument) -> URL {
+    nonisolated static func fontsDirectory(for document: InkPondDocument) -> URL {
         projectDirectory(for: document)
             .appendingPathComponent("fonts", isDirectory: true)
     }
@@ -311,7 +322,7 @@ enum ProjectFileManager {
         return target
     }
 
-    static func safeImageDirectoryName(from raw: String) -> String {
+    nonisolated static func safeImageDirectoryName(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "" }
         guard !trimmed.contains("/"),
@@ -438,16 +449,17 @@ enum ProjectFileManager {
         let ext = (relativePath as NSString).pathExtension.lowercased()
         if ext == "typ" { return .typ }
         if referenceFileExtensions.contains(ext) { return .reference }
+
+        // The dedicated fonts directory is owned by font imports; classify its
+        // contents as fonts before falling back to extension-based detection.
         if relativePath.hasPrefix("fonts/") { return .font }
         if !imageDirectoryName.isEmpty, relativePath.hasPrefix(imageDirectoryName + "/") { return .image }
         if supportedImageFileExtensions.contains(ext) {
             return .image
         }
-        switch ext {
-        case "otf", "ttf", "woff", "woff2":
+        if fontFileExtensions.contains(ext) {
             return .font
-        default:
-            return .other
         }
+        return .other
     }
 }

@@ -5,7 +5,6 @@
 
 import SwiftUI
 import SwiftData
-import UIKit
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
@@ -14,6 +13,7 @@ struct SettingsView: View {
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(AppAppearanceManager.self) var appAppearanceManager
     @Environment(ThemeManager.self) var themeManager
+    @Environment(EditorFontSettings.self) var editorFontSettings
     @Environment(StorageManager.self) var storageManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State var zipImportError: String?
 
     var onImport: (URL) -> Void
+    var onLinkExternalFolder: () -> Void
 
     var versionString: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
@@ -114,19 +115,9 @@ extension SettingsView {
 
     @ViewBuilder
     var appIconView: some View {
-        if let icon = Bundle.main.appIcon {
-            Image(uiImage: icon)
-                .resizable()
-                .scaledToFit()
-        } else {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.accentColor)
-                .overlay(
-                    Image(systemName: "doc.text.fill")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.white)
-                )
-        }
+        Image("AppIconDisplay")
+            .resizable()
+            .scaledToFit()
     }
 
     var iCloudSection: some View {
@@ -152,37 +143,11 @@ extension SettingsView {
     }
 
     var appearanceSection: some View {
-        Section(L10n.tr("Appearance")) {
-            Picker(selection: Binding(
-                get: { appAppearanceManager.mode },
-                set: { newMode in
-                    withTransaction(Transaction(animation: nil)) {
-                        appAppearanceManager.mode = newMode
-                    }
-                }
-            )) {
-                Text(L10n.tr("Follow System")).tag(AppAppearanceMode.system.rawValue)
-                Text(L10n.tr("Light")).tag(AppAppearanceMode.light.rawValue)
-                Text(L10n.tr("Dark")).tag(AppAppearanceMode.dark.rawValue)
-            } label: {
-                Label(L10n.tr("App Appearance"), systemImage: "circle.lefthalf.filled")
-            }
-
-            Picker(selection: Binding(
-                get: { themeManager.themeID },
-                set: { newID in
-                    withTransaction(Transaction(animation: nil)) {
-                        themeManager.themeID = newID
-                    }
-                }
-            )) {
-                Text(L10n.tr("Auto")).tag("system")
-                Text(L10n.tr("Mocha · Dark")).tag("mocha")
-                Text(L10n.tr("Latte · Light")).tag("latte")
-            } label: {
-                Label(L10n.tr("Editor Theme"), systemImage: "paintpalette")
-            }
-        }
+        SettingsAppearanceSection(
+            appAppearanceManager: appAppearanceManager,
+            themeManager: themeManager,
+            editorFontSettings: editorFontSettings
+        )
     }
 
     var keyboardShortcutsSection: some View {
@@ -198,7 +163,7 @@ extension SettingsView {
     }
 
     var projectsSection: some View {
-        Section(L10n.tr("Projects")) {
+        Section(L10n.tr("settings.import_link.section")) {
             Button {
                 showingZipImporter = true
             } label: {
@@ -206,6 +171,15 @@ extension SettingsView {
                     .foregroundStyle(.primary)
             }
             .accessibilityIdentifier("settings.import-zip")
+
+            Button {
+                onLinkExternalFolder()
+                dismiss()
+            } label: {
+                Label(L10n.docListLinkExternalFolder, systemImage: "link")
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityIdentifier("settings.link-external-folder")
         }
     }
 
@@ -290,14 +264,44 @@ extension SettingsView {
     }
 }
 
-private extension Bundle {
-    var appIcon: UIImage? {
-        if let icons = infoDictionary?["CFBundleIcons"] as? [String: Any],
-           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
-           let files = primary["CFBundleIconFiles"] as? [String],
-           let name = files.last {
-            return UIImage(named: name)
+private struct SettingsAppearanceSection: View {
+    @Bindable var appAppearanceManager: AppAppearanceManager
+    @Bindable var themeManager: ThemeManager
+    @Bindable var editorFontSettings: EditorFontSettings
+
+    var body: some View {
+        Section(L10n.tr("Appearance")) {
+            Picker(selection: $appAppearanceManager.mode) {
+                Text(L10n.tr("Follow System")).tag(AppAppearanceMode.system.rawValue)
+                Text(L10n.tr("Light")).tag(AppAppearanceMode.light.rawValue)
+                Text(L10n.tr("Dark")).tag(AppAppearanceMode.dark.rawValue)
+            } label: {
+                Label(L10n.tr("App Appearance"), systemImage: "circle.lefthalf.filled")
+            }
+
+            Picker(selection: $themeManager.themeID) {
+                Text(L10n.tr("Auto")).tag("system")
+                Text(L10n.tr("Mocha · Dark")).tag("mocha")
+                Text(L10n.tr("Latte · Light")).tag("latte")
+            } label: {
+                Label(L10n.tr("Editor Theme"), systemImage: "paintpalette")
+            }
+
+            NavigationLink {
+                EditorFontSettingsView(editorFontSettings: editorFontSettings)
+            } label: {
+                HStack {
+                    Label(L10n.tr("Editor Font"), systemImage: "textformat.size")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(editorFontSettings.fontDisplayName)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("settings.editor-font")
         }
-        return UIImage(named: "AppIcon")
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 }

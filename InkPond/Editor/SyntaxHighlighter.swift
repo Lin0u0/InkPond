@@ -6,15 +6,19 @@
 import UIKit
 
 final class SyntaxHighlighter {
-    private let baseFont: UIFont
+    private var baseFont: UIFont
     private let tokenProvider: (String) -> [TypstSyntaxToken]?
     private var theme: EditorTheme
 
-    private lazy var boldFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .semibold)
-    private lazy var italicFont: UIFont = {
+    private var boldFont: UIFont {
+        let descriptor = baseFont.fontDescriptor.withSymbolicTraits(.traitBold)
+        return descriptor.map { UIFont(descriptor: $0, size: baseFont.pointSize) } ?? baseFont
+    }
+
+    private var italicFont: UIFont {
         let descriptor = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
         return descriptor.map { UIFont(descriptor: $0, size: baseFont.pointSize) } ?? baseFont
-    }()
+    }
 
     /// Lines (1-based) with compilation errors — set externally.
     var errorLines: Set<Int> = []
@@ -35,6 +39,10 @@ final class SyntaxHighlighter {
         self.theme = theme
     }
 
+    func updateFont(_ font: UIFont) {
+        baseFont = font
+    }
+
     // MARK: - Highlight
 
     func highlight(_ textStorage: NSTextStorage) {
@@ -46,6 +54,7 @@ final class SyntaxHighlighter {
         textStorage.setAttributes([
             .font: baseFont,
             .foregroundColor: theme.text,
+            .paragraphStyle: EditorFontSettings.paragraphStyle(for: baseFont),
         ], range: fullRange)
 
         let excludedOffsets: IndexSet

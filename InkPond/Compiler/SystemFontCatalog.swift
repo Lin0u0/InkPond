@@ -5,14 +5,14 @@
 
 import CoreText
 import Foundation
+import os
 
 struct SystemFontCatalog {
-    typealias Loader = () -> [AvailableCompileFont]
+    typealias Loader = @Sendable () -> [AvailableCompileFont]
 
-    private static let cacheLock = NSLock()
-    private static var cachedFonts: [AvailableCompileFont]?
+    private nonisolated static let cachedFontsLock = OSAllocatedUnfairLock<[AvailableCompileFont]?>(initialState: nil)
 
-    private let loader: Loader
+    private nonisolated let loader: Loader
 
     nonisolated init(loader: @escaping Loader = Self.liveFonts) {
         self.loader = loader
@@ -27,9 +27,7 @@ struct SystemFontCatalog {
     }
 
     nonisolated static func invalidateCache() {
-        cacheLock.lock()
-        cachedFonts = nil
-        cacheLock.unlock()
+        cachedFontsLock.withLock { $0 = nil }
     }
 
     nonisolated static func familyNames(from fonts: [AvailableCompileFont]) -> [String] {
@@ -45,19 +43,19 @@ struct SystemFontCatalog {
     }
 
     nonisolated private static func liveFonts() -> [AvailableCompileFont] {
-        cacheLock.lock()
-        if let cachedFonts {
-            cacheLock.unlock()
+        if let cachedFonts = cachedFontsLock.withLock({ $0 }) {
             return cachedFonts
         }
-        cacheLock.unlock()
 
-        let fonts = loadAvailableFonts()
+        let loadedFonts = loadAvailableFonts()
 
-        cacheLock.lock()
-        cachedFonts = fonts
-        cacheLock.unlock()
-        return fonts
+        return cachedFontsLock.withLock { cache in
+            if let cache {
+                return cache
+            }
+            cache = loadedFonts
+            return loadedFonts
+        }
     }
 
     nonisolated private static func loadAvailableFonts() -> [AvailableCompileFont] {

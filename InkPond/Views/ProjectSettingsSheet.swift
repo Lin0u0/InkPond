@@ -61,8 +61,8 @@ struct ProjectSettingsSheet: View {
                 // MARK: Image
                 Section("Image Insertion") {
                     Picker("Format", selection: $document.imageInsertMode) {
-                        Text("#image(\"path\")").tag("image")
-                        Text("#figure(image(\"path\"), caption: [...])").tag("figure")
+                        Text(verbatim: "#image(\"path\")").tag("image")
+                        Text(verbatim: "#figure(image(\"path\"), caption: [...])").tag("figure")
                     }
                 }
 

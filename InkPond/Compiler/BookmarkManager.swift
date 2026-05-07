@@ -2,15 +2,15 @@ import Foundation
 import os
 
 enum BookmarkManager {
-    private static let bookmarksDirectory: URL = {
+    private nonisolated static let bookmarksDirectory: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("Bookmarks", isDirectory: true)
     }()
 
     /// Tracks resolved URLs and their access reference counts.
-    private static let _lock = OSAllocatedUnfairLock<[String: (url: URL, refCount: Int)]>(initialState: [:])
+    private nonisolated static let _lock = OSAllocatedUnfairLock<[String: (url: URL, refCount: Int)]>(initialState: [:])
 
-    static func hasBookmark(projectID: String) -> Bool {
+    nonisolated static func hasBookmark(projectID: String) -> Bool {
         if _lock.withLock({ $0[projectID] }) != nil { return true }
         let fileURL = bookmarksDirectory.appendingPathComponent("\(projectID).bookmark")
         return FileManager.default.fileExists(atPath: fileURL.path)
@@ -29,7 +29,7 @@ enum BookmarkManager {
 
     /// Resolves and starts security-scoped access for a bookmark.
     /// Each call increments a reference count — callers must balance with `stopAccessing(_:)`.
-    static func loadBookmark(projectID: String) -> URL? {
+    nonisolated static func loadBookmark(projectID: String) -> URL? {
         // If already resolved, increment ref count and return cached URL.
         if let entry = _lock.withLock({ state -> (url: URL, refCount: Int)? in
             guard var entry = state[projectID] else { return nil }

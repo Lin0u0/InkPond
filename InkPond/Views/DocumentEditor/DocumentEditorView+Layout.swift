@@ -76,6 +76,19 @@ extension DocumentEditorView {
         sizeClass != .regular
     }
 
+    private var compactTabSelection: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    selectedTab = newValue
+                }
+            }
+        )
+    }
+
     func editorPane(topViewportInset: CGFloat = 0) -> some View {
         EditorView(
             text: $editorText,
@@ -89,6 +102,7 @@ extension DocumentEditorView {
             sourceMap: isSyncEnabled && isEditingEntryFile ? compiler.sourceMap : nil,
             syncCoordinator: isSyncEnabled ? syncCoordinator : nil,
             theme: themeManager.currentTheme,
+            editorFont: editorFontSettings.uiFont,
             errorLines: compilationErrorLines,
             onPhotoTapped: { showingPhotoPicker = true },
             onSnippetTapped: { showingSnippetBrowser = true },
@@ -240,9 +254,11 @@ extension DocumentEditorView {
                         previewPane(topViewportInset: topInset)
                             .ignoresSafeArea(edges: .top)
                             .modifier(SoftScrollEdgeEffectModifier())
+                            .transition(.identity)
                             .accessibilityHidden(false)
                     }
                 }
+                .animation(nil, value: selectedTab)
             }
         }
     }
@@ -381,13 +397,16 @@ extension DocumentEditorView {
     }
 
     private var systemCompactModePicker: some View {
-        Picker("", selection: $selectedTab) {
+        Picker(L10n.tr("Mode"), selection: compactTabSelection) {
             Image(systemName: "text.quote").tag(editorTab)
             Image(systemName: "document").tag(previewTab)
         }
         .labelsHidden()
         .pickerStyle(.segmented)
         .frame(width: 100)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
         .accessibilityIdentifier("editor.mode-picker")
     }
 
@@ -423,6 +442,31 @@ extension DocumentEditorView {
                     .buttonStyle(.plain)
                     .disabled(!compiler.compiledOnce)
                 }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var compactTopBarTrailingItems: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarTrailing) {
+                systemCompactModePicker
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+            ToolbarItem(placement: .topBarTrailing) {
+                compactToolbarTrailingControl
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                systemCompactModePicker
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                compactToolbarTrailingControl
             }
         }
     }
@@ -577,31 +621,7 @@ extension DocumentEditorView {
                         .accessibilityIdentifier("editor.more-menu")
                     }
                 } else {
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            systemCompactModePicker
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            systemCompactModePicker
-                        }
-                    }
-
-                    if #available(iOS 26.0, *) {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
-
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            compactToolbarTrailingControl
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            compactToolbarTrailingControl
-                        }
-                    }
+                    compactTopBarTrailingItems
                 }
             }
     }
@@ -729,8 +749,13 @@ extension DocumentEditorView {
             .onChange(of: selectedTab) { _, newTab in
                 InteractionFeedback.selection()
                 if newTab == editorTab {
-                    focusCoordinator.activateKeyboard()
+                    let shouldRestoreFocus = shouldRestoreEditorFocusAfterPreview
+                    shouldRestoreEditorFocusAfterPreview = false
+                    if shouldRestoreFocus {
+                        focusCoordinator.activateKeyboard()
+                    }
                 } else {
+                    shouldRestoreEditorFocusAfterPreview = focusCoordinator.isEditorFocused
                     focusCoordinator.dismissKeyboard()
                 }
             }

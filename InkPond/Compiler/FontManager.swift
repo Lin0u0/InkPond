@@ -7,10 +7,11 @@ import Foundation
 import CoreGraphics
 import CoreText
 import UIKit
+import os
 import os.log
 
 enum FontManager {
-    private struct FontNameRecord {
+    private struct FontNameRecord: Sendable {
         let platformID: UInt16
         let encodingID: UInt16
         let nameID: UInt16
@@ -18,7 +19,7 @@ enum FontManager {
     }
 
     /// Cache parsed font name records to avoid re-reading OTF binaries on every call.
-    private static var fontNameRecordCache: [String: [FontNameRecord]] = [:]
+    private nonisolated static let fontNameRecordCacheLock = OSAllocatedUnfairLock<[String: [FontNameRecord]]>(initialState: [:])
 
     private static var registeredPreviewFontPaths: Set<String> = []
 
@@ -52,7 +53,7 @@ enum FontManager {
     }
 
     nonisolated private static func fontNameRecords(forFontAtPath path: String) -> [FontNameRecord] {
-        if let cached = fontNameRecordCache[path] { return cached }
+        if let cached = fontNameRecordCacheLock.withLock({ $0[path] }) { return cached }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               data.count > 12 else { return [] }
         // Read sfnt offset table to find the 'name' table.
@@ -87,8 +88,10 @@ enum FontManager {
             guard let value = String(bytes: strData, encoding: .utf16BigEndian) else { continue }
             records.append(FontNameRecord(platformID: pid, encodingID: enc, nameID: nid, value: value))
         }
-        fontNameRecordCache[path] = records
-        return records
+        let cacheKey = path
+        let parsedRecords = records
+        fontNameRecordCacheLock.withLock { $0[cacheKey] = parsedRecords }
+        return parsedRecords
     }
 
     private static func registerPreviewFontIfNeeded(at path: String) {

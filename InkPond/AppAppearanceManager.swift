@@ -6,6 +6,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 
 enum AppAppearanceMode: String, CaseIterable {
     case system
@@ -16,6 +17,17 @@ enum AppAppearanceMode: String, CaseIterable {
         switch self {
         case .system:
             nil
+        case .light:
+            .light
+        case .dark:
+            .dark
+        }
+    }
+
+    var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system:
+            .unspecified
         case .light:
             .light
         case .dark:
@@ -43,4 +55,5 @@ final class AppAppearanceManager {
     }
 
     var colorScheme: ColorScheme? { currentMode.colorScheme }
+    var userInterfaceStyle: UIUserInterfaceStyle { currentMode.userInterfaceStyle }
 }

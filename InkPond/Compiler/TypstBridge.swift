@@ -85,53 +85,16 @@ struct TypstBridge {
     /// crossing the MainActor boundary (SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor).
     nonisolated static func compile(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<Data, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
-        let effectiveFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: fontPaths)
-        os_log(.debug, "TypstBridge: passing %d font paths to Rust", effectiveFontPaths.count)
-        for (i, p) in effectiveFontPaths.prefix(5).enumerated() {
-            os_log(.debug, "TypstBridge: font[%d] = %{public}@", i, p as NSString)
-        }
+        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir, logsFontPaths: true) { cSource, opts in
+            let result = typst_compile(cSource, &opts)
+            defer { typst_free_result(result) }
 
-        // App caches directory for @preview package downloads.
-        let cacheDir = packageCacheDirectoryURL?.path
-        if let localPackagesDirectoryURL {
-            let store = LocalPackageStore(rootURL: localPackagesDirectoryURL)
-            try? store.ensureRootDirectory()
-            _ = try? store.snapshot()
-        }
-        let localPkgDir = localPackagesDirectoryURL?.path
-
-        // Hold C strings alive for the duration of the FFI call.
-        return source.withCString { cSource in
-            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = effectiveFontPaths.map { strdup($0) }
-            defer { mutablePtrs.forEach { free($0) } }
-
-            return mutablePtrs.withUnsafeBufferPointer { buf in
-                let constBuf = UnsafeRawBufferPointer(buf)
-                    .bindMemory(to: UnsafePointer<CChar>?.self)
-
-                return (cacheDir ?? "").withCString { cCacheDir in
-                  return (rootDir ?? "").withCString { cRootDir in
-                    return (localPkgDir ?? "").withCString { cLocalPkgDir in
-                      var opts = TypstOptions(
-                          font_paths: constBuf.baseAddress,
-                          font_path_count: buf.count,
-                          cache_dir: cCacheDir,
-                          root_dir: rootDir != nil ? cRootDir : nil,
-                          local_packages_dir: localPkgDir != nil ? cLocalPkgDir : nil
-                      )
-                      let result = typst_compile(cSource, &opts)
-                      defer { typst_free_result(result) }
-
-                      if result.success, let ptr = result.pdf_data {
-                          return .success(Data(bytes: ptr, count: Int(result.pdf_len)))
-                      } else if let errPtr = result.error_message {
-                          return .failure(.compilationFailed(String(cString: errPtr)))
-                      } else {
-                          return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
-                      }
-                    }
-                  }
-                }
+            if result.success, let ptr = result.pdf_data {
+                return .success(Data(bytes: ptr, count: Int(result.pdf_len)))
+            } else if let errPtr = result.error_message {
+                return .failure(.compilationFailed(String(cString: errPtr)))
+            } else {
+                return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
             }
         }
 #else
@@ -143,48 +106,18 @@ struct TypstBridge {
     /// bidirectional editor ↔ preview sync.
     nonisolated static func compileWithSourceMap(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<(Data, SourceMap), TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
-        let effectiveFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: fontPaths)
-        let cacheDir = packageCacheDirectoryURL?.path
-        if let localPackagesDirectoryURL {
-            let store = LocalPackageStore(rootURL: localPackagesDirectoryURL)
-            try? store.ensureRootDirectory()
-            _ = try? store.snapshot()
-        }
-        let localPkgDir = localPackagesDirectoryURL?.path
+        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir) { cSource, opts in
+            let result = typst_compile_with_source_map(cSource, &opts)
+            defer { typst_free_result_with_map(result) }
 
-        return source.withCString { cSource in
-            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = effectiveFontPaths.map { strdup($0) }
-            defer { mutablePtrs.forEach { free($0) } }
-
-            return mutablePtrs.withUnsafeBufferPointer { buf in
-                let constBuf = UnsafeRawBufferPointer(buf)
-                    .bindMemory(to: UnsafePointer<CChar>?.self)
-
-                return (cacheDir ?? "").withCString { cCacheDir in
-                  return (rootDir ?? "").withCString { cRootDir in
-                    return (localPkgDir ?? "").withCString { cLocalPkgDir in
-                      var opts = TypstOptions(
-                          font_paths: constBuf.baseAddress,
-                          font_path_count: buf.count,
-                          cache_dir: cCacheDir,
-                          root_dir: rootDir != nil ? cRootDir : nil,
-                          local_packages_dir: localPkgDir != nil ? cLocalPkgDir : nil
-                      )
-                      let result = typst_compile_with_source_map(cSource, &opts)
-                      defer { typst_free_result_with_map(result) }
-
-                      if result.success, let pdfPtr = result.pdf_data {
-                          let pdfData = Data(bytes: pdfPtr, count: Int(result.pdf_len))
-                          let sourceMap = Self.parseSourceMap(result)
-                          return .success((pdfData, sourceMap))
-                      } else if let errPtr = result.error_message {
-                          return .failure(.compilationFailed(String(cString: errPtr)))
-                      } else {
-                          return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
-                      }
-                    }
-                  }
-                }
+            if result.success, let pdfPtr = result.pdf_data {
+                let pdfData = Data(bytes: pdfPtr, count: Int(result.pdf_len))
+                let sourceMap = Self.parseSourceMap(result)
+                return .success((pdfData, sourceMap))
+            } else if let errPtr = result.error_message {
+                return .failure(.compilationFailed(String(cString: errPtr)))
+            } else {
+                return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
             }
         }
 #else
@@ -430,6 +363,57 @@ struct TypstBridge {
     }
 
 #if TYPST_FFI_AVAILABLE
+    nonisolated private static func withTypstOptions<Result>(
+        source: String,
+        fontPaths: [String],
+        rootDir: String?,
+        logsFontPaths: Bool = false,
+        body: (UnsafePointer<CChar>, inout TypstOptions) -> Result
+    ) -> Result {
+        let effectiveFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: fontPaths)
+        if logsFontPaths {
+            os_log(.debug, "TypstBridge: passing %d font paths to Rust", effectiveFontPaths.count)
+            for (i, p) in effectiveFontPaths.prefix(5).enumerated() {
+                os_log(.debug, "TypstBridge: font[%d] = %{public}@", i, p as NSString)
+            }
+        }
+
+        // App caches directory for @preview package downloads.
+        let cacheDir = packageCacheDirectoryURL?.path
+        if let localPackagesDirectoryURL {
+            let store = LocalPackageStore(rootURL: localPackagesDirectoryURL)
+            try? store.ensureRootDirectory()
+            _ = try? store.snapshot()
+        }
+        let localPkgDir = localPackagesDirectoryURL?.path
+
+        // Hold C strings alive for the duration of the FFI call.
+        return source.withCString { cSource in
+            let mutablePtrs: [UnsafeMutablePointer<CChar>?] = effectiveFontPaths.map { strdup($0) }
+            defer { mutablePtrs.forEach { free($0) } }
+
+            return mutablePtrs.withUnsafeBufferPointer { buf in
+                let constBuf = UnsafeRawBufferPointer(buf)
+                    .bindMemory(to: UnsafePointer<CChar>?.self)
+
+                return (cacheDir ?? "").withCString { cCacheDir in
+                    return (rootDir ?? "").withCString { cRootDir in
+                        return (localPkgDir ?? "").withCString { cLocalPkgDir in
+                            var opts = TypstOptions(
+                                font_paths: constBuf.baseAddress,
+                                font_path_count: buf.count,
+                                cache_dir: cCacheDir,
+                                root_dir: rootDir != nil ? cRootDir : nil,
+                                local_packages_dir: localPkgDir != nil ? cLocalPkgDir : nil
+                            )
+                            return body(cSource, &opts)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     nonisolated private static func nonEmptyCString(_ ptr: UnsafeMutablePointer<CChar>?) -> String? {
         guard let ptr else { return nil }
         let value = String(cString: ptr)

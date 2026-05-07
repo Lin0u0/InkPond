@@ -7,12 +7,12 @@ import UIKit
 
 final class LineNumberGutterView: UIView {
 
-    private static let gutterFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     private static let minGutterWidth: CGFloat = 36
 
     private weak var textView: UITextView?
     private var gutterBgColor: UIColor = .secondarySystemBackground
     private var gutterFgColor: UIColor = .secondaryLabel
+    private var gutterFont = EditorFontSettings.lineNumberFont(for: EditorFontSettings.defaultUIFont)
     private var lineStartOffsets: [Int] = [0]
     private var cachedGutterWidth: CGFloat = LineNumberGutterView.minGutterWidth
     private var needsLineMetricsRefresh = true
@@ -29,6 +29,14 @@ final class LineNumberGutterView: UIView {
     func applyTheme(_ theme: EditorTheme) {
         gutterBgColor = theme.gutterBackground
         gutterFgColor = theme.gutterForeground
+        setNeedsDisplay()
+    }
+
+    func applyEditorFont(_ font: UIFont) {
+        let nextGutterFont = EditorFontSettings.lineNumberFont(for: font)
+        guard abs(nextGutterFont.pointSize - gutterFont.pointSize) > 0.1 else { return }
+        gutterFont = nextGutterFont
+        needsLineMetricsRefresh = true
         setNeedsDisplay()
     }
 
@@ -74,7 +82,7 @@ final class LineNumberGutterView: UIView {
         context?.fill(CGRect(x: 0, y: 0, width: gutterWidth, height: bounds.height))
 
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: Self.gutterFont,
+            .font: gutterFont,
             .foregroundColor: resolvedFg,
         ]
 
@@ -111,7 +119,7 @@ final class LineNumberGutterView: UIView {
                     x: 4,
                     y: startCaretRect.minY + 1,
                     width: gutterWidth - 8,
-                    height: max(startCaretRect.height - 2, Self.gutterFont.lineHeight + 2)
+                    height: max(startCaretRect.height - 2, gutterFont.lineHeight + 2)
                 )
                 let path = UIBezierPath(roundedRect: highlightRect, cornerRadius: 8)
                 jumpFill.setFill()
@@ -131,14 +139,14 @@ final class LineNumberGutterView: UIView {
             let numberString = "\(lineIndex + 1)" as NSString
             let effectiveAttributes: [NSAttributedString.Key: Any] = jumpHighlightLine == lineIndex + 1
                 ? [
-                    .font: Self.gutterFont,
+                    .font: gutterFont,
                     .foregroundColor: highlightedNumberColor,
                 ]
                 : attributes
             let stringSize = numberString.size(withAttributes: effectiveAttributes)
             let drawPoint = CGPoint(
                 x: gutterWidth - stringSize.width - 8,
-                y: startCaretRect.minY + (max(startCaretRect.height, Self.gutterFont.lineHeight) - stringSize.height) / 2
+                y: startCaretRect.minY + (max(startCaretRect.height, gutterFont.lineHeight) - stringSize.height) / 2
             )
             numberString.draw(at: drawPoint, withAttributes: effectiveAttributes)
 
@@ -171,7 +179,7 @@ final class LineNumberGutterView: UIView {
 
         let digits = String(max(starts.count, 1)).count
         let sampleString = String(repeating: "8", count: max(digits, 2)) as NSString
-        let size = sampleString.size(withAttributes: [.font: Self.gutterFont])
+        let size = sampleString.size(withAttributes: [.font: gutterFont])
         cachedGutterWidth = max(ceil(size.width) + 16, Self.minGutterWidth)
         needsLineMetricsRefresh = false
     }

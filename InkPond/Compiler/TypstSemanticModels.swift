@@ -64,6 +64,30 @@ struct TypstContextNodeInfo: Equatable, Sendable {
     let length: Int
 }
 
+/// Raw values mirror Rust `SyntaxKind` debug names returned by `typst_context_at`.
+enum TypstContextKind: String, Sendable {
+    case args = "Args"
+    case blockComment = "BlockComment"
+    case code = "Code"
+    case codeBlock = "CodeBlock"
+    case conditional = "Conditional"
+    case contentBlock = "ContentBlock"
+    case equation = "Equation"
+    case forLoop = "ForLoop"
+    case funcCall = "FuncCall"
+    case lineComment = "LineComment"
+    case markup = "Markup"
+    case math = "Math"
+    case moduleImport = "ModuleImport"
+    case moduleInclude = "ModuleInclude"
+    case named = "Named"
+    case raw = "Raw"
+    case rawDelim = "RawDelim"
+    case rawLang = "RawLang"
+    case str = "Str"
+    case whileLoop = "WhileLoop"
+}
+
 struct TypstCursorContext: Equatable, Sendable {
     let nodes: [TypstContextNodeInfo]
     let functionName: String?
@@ -74,5 +98,9 @@ struct TypstCursorContext: Equatable, Sendable {
 
     func contains(_ kind: String) -> Bool {
         kindPath.contains(kind)
+    }
+
+    func contains(_ kind: TypstContextKind) -> Bool {
+        contains(kind.rawValue)
     }
 }

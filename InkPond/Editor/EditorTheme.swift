@@ -120,7 +120,7 @@ struct EditorTheme {
 // MARK: - UIColor hex initializer
 
 extension UIColor {
-    convenience init(hex: String) {
+    nonisolated convenience init(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         s = s.hasPrefix("#") ? String(s.dropFirst()) : s
         var rgb: UInt64 = 0

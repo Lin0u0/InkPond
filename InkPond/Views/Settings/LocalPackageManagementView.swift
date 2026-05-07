@@ -111,7 +111,7 @@ struct LocalPackageManagementView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 12) {
-                    Text("@")
+                    Text(verbatim: "@")
                         .font(.subheadline.monospaced().weight(.semibold))
                         .foregroundStyle(Color.accentColor)
                         .padding(.horizontal, 10)
@@ -119,7 +119,11 @@ struct LocalPackageManagementView: View {
                         .background(Color.accentColor.opacity(0.14), in: Capsule())
                         .accessibilityHidden(true)
 
-                    TextField("local", text: $defaultNamespace)
+                    TextField(
+                        L10n.tr("local_packages.namespace"),
+                        text: $defaultNamespace,
+                        prompt: Text(verbatim: "local")
+                    )
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())

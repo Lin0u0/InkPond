@@ -17,6 +17,8 @@ import UIKit
 struct InkPondTests {
     private let appAppearanceDefaultsKey = "appAppearanceMode"
     private let editorThemeDefaultsKey = "editorThemeID"
+    private let editorFontIDDefaultsKey = "editorFontID"
+    private let editorFontSizeDefaultsKey = "editorFontSize"
 
     @Test func zipImporterRejectsParentTraversalPath() throws {
         let zip = makeStoredZip(entries: [
@@ -438,6 +440,57 @@ struct InkPondTests {
         #expect(manager.currentTheme.id == "system")
     }
 
+    @Test func editorFontSettingsPersistsFontAndSizeSelection() {
+        let (suiteName, defaults) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let alternateFontID = EditorFontSettings.availableFontOptions
+            .first { $0.id != EditorFontSettings.systemMonospacedFontID }?
+            .id ?? EditorFontSettings.systemMonospacedFontID
+
+        let initialSettings = EditorFontSettings(defaults: defaults)
+        initialSettings.fontID = alternateFontID
+        initialSettings.fontSize = 21
+
+        let reloadedSettings = EditorFontSettings(defaults: defaults)
+        #expect(reloadedSettings.fontID == alternateFontID)
+        #expect(reloadedSettings.fontSize == 21)
+        #expect(abs(reloadedSettings.uiFont.pointSize - 21) < 0.1)
+    }
+
+    @Test func editorFontSettingsClampsPersistedSizeAndFallsBackForUnknownFont() {
+        let (suiteName, defaults) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("MissingEditorFontName", forKey: editorFontIDDefaultsKey)
+        defaults.set(EditorFontSettings.maximumFontSize + 20, forKey: editorFontSizeDefaultsKey)
+
+        let settings = EditorFontSettings(defaults: defaults)
+
+        #expect(settings.fontID == "MissingEditorFontName")
+        #expect(settings.fontSize == EditorFontSettings.maximumFontSize)
+        #expect(settings.uiFont.fontName == EditorFontSettings.defaultUIFont.fontName)
+    }
+
+    @Test func editorFontSettingsGroupsFacesByFamily() {
+        let families = EditorFontSettings.availableFontFamilies
+        let familyIDs = families.map(\.id)
+        let flattenedFaces = families.flatMap(\.faces)
+
+        #expect(families.first?.id == EditorFontSettings.systemMonospacedFontID)
+        #expect(Set(familyIDs).count == familyIDs.count)
+        #expect(families.allSatisfy { !$0.faces.isEmpty })
+        #expect(EditorFontSettings.availableFontOptions.count == flattenedFaces.count)
+    }
+
+    @Test func editorFontSettingsScalesLineSpacingAndLineNumberFont() {
+        let smallFont = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let largeFont = UIFont.monospacedSystemFont(ofSize: 24, weight: .regular)
+
+        #expect(EditorFontSettings.lineSpacing(for: largeFont) > EditorFontSettings.lineSpacing(for: smallFont))
+        #expect(EditorFontSettings.lineNumberFont(for: largeFont).pointSize > EditorFontSettings.lineNumberFont(for: smallFont).pointSize)
+    }
+
     @Test func appAppearanceManagerPersistsAppearanceSelection() {
         let (suiteName, defaults) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -448,6 +501,7 @@ struct InkPondTests {
         #expect(initialManager.mode == AppAppearanceMode.light.rawValue)
         #expect(initialManager.currentMode == .light)
         #expect(initialManager.colorScheme == .light)
+        #expect(initialManager.userInterfaceStyle == .light)
 
         initialManager.mode = AppAppearanceMode.dark.rawValue
 
@@ -455,6 +509,7 @@ struct InkPondTests {
         #expect(reloadedManager.mode == AppAppearanceMode.dark.rawValue)
         #expect(reloadedManager.currentMode == .dark)
         #expect(reloadedManager.colorScheme == .dark)
+        #expect(reloadedManager.userInterfaceStyle == .dark)
     }
 
     @Test func appAppearanceManagerFallsBackToSystemForUnknownValue() {
@@ -467,6 +522,7 @@ struct InkPondTests {
         #expect(manager.mode == "sepia")
         #expect(manager.currentMode == .system)
         #expect(manager.colorScheme == nil)
+        #expect(manager.userInterfaceStyle == .unspecified)
     }
 
     @Test func typstCompilerUsesLowerQoSForPreviewThanExplicitCompile() {
@@ -591,6 +647,17 @@ struct InkPondTests {
         #expect(color?.isEqual(theme.text) == true)
     }
 
+    @Test func syntaxHighlighterPreservesEditorParagraphStyle() {
+        let font = UIFont.monospacedSystemFont(ofSize: 24, weight: .regular)
+        let textStorage = NSTextStorage(string: "first\nsecond")
+        let highlighter = SyntaxHighlighter(font: font, tokenProvider: { _ in [] })
+
+        highlighter.highlight(textStorage)
+
+        let paragraphStyle = textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(abs((paragraphStyle?.lineSpacing ?? 0) - EditorFontSettings.lineSpacing(for: font)) < 0.001)
+    }
+
     @Test func syntaxHighlighterAppliesTypstTokensWithUTF16Offsets() {
         let textStorage = NSTextStorage(string: "你好 #let x = 1")
         let theme = EditorTheme.latte
@@ -701,8 +768,10 @@ struct InkPondTests {
         let (window, textView) = makeHostedTextView()
         defer { window.isHidden = true }
         coordinator.register(textView)
+        #expect(!coordinator.isEditorFocused)
         _ = textView.becomeFirstResponder()
         await waitUntil { textView.isFirstResponder }
+        #expect(coordinator.isEditorFocused)
 
         coordinator.setResignSuppressed(true)
         #expect(textView.suppressResignFirstResponder)
@@ -715,6 +784,40 @@ struct InkPondTests {
 
         #expect(textView.isFirstResponder)
         #expect(!textView.suppressResignFirstResponder)
+    }
+
+    @MainActor
+    @Test func editorCoordinatorIgnoresSelectionChangesDuringProgrammaticTextUpdate() {
+        var text = "First line\nSecond line"
+        var insertionRequest: EditorInsertionRequest?
+        var findRequested = false
+        var viewState = EditorViewState()
+        var cursorJumpOffset: Int?
+        let parent = EditorView(
+            text: Binding(get: { text }, set: { text = $0 }),
+            insertionRequest: Binding(get: { insertionRequest }, set: { insertionRequest = $0 }),
+            findRequested: Binding(get: { findRequested }, set: { findRequested = $0 }),
+            viewState: Binding(get: { viewState }, set: { viewState = $0 }),
+            cursorJumpOffset: Binding(get: { cursorJumpOffset }, set: { cursorJumpOffset = $0 })
+        )
+        let coordinator = EditorView.Coordinator(parent)
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.delegate = coordinator
+        coordinator.textView = textView
+
+        coordinator.performProgrammaticUpdate {
+            textView.text = text
+            textView.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+            coordinator.textViewDidChangeSelection(textView)
+        }
+
+        #expect(viewState.selectedLocation == 0)
+
+        textView.selectedRange = NSRange(location: 2, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        #expect(viewState.selectedLocation == 2)
     }
 
     @MainActor

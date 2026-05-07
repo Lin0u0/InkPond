@@ -33,6 +33,7 @@ struct DocumentEditorView: View {
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.modelContext) var modelContext
     @Environment(ThemeManager.self) var themeManager
+    @Environment(EditorFontSettings.self) var editorFontSettings
 
     @State var compiler = TypstCompiler()
 
@@ -74,6 +75,7 @@ struct DocumentEditorView: View {
     @State var showingImportConfiguration = false
     @State var showingZipExportWarning = false
     @State var focusCoordinator = EditorFocusCoordinator()
+    @State var shouldRestoreEditorFocusAfterPreview = false
     @State var syncCoordinator = SyncCoordinator()
     @State var editorViewState = EditorViewState()
     @State var fileLoadToken = UUID()

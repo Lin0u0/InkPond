@@ -46,12 +46,13 @@ final class TypstTextView: UITextView {
         case imageRemoteURL(URL, suggestedFileName: String?)
     }
 
-    private let highlighter = SyntaxHighlighter()
+    private let highlighter = SyntaxHighlighter(font: EditorFontSettings.defaultUIFont)
     private lazy var highlightScheduler = HighlightScheduler { [weak self] in
         self?.applyHighlightingNow()
     }
     private(set) var gutterView: LineNumberGutterView!
     private var storedTheme: EditorTheme = .system
+    private var editorFont: UIFont = EditorFontSettings.defaultUIFont
     private var appearanceRegistration: (any UITraitChangeRegistration)?
     private var jumpHighlightDisplayLink: CADisplayLink?
     private var jumpHighlightAnimationStartTime: CFTimeInterval?
@@ -88,6 +89,14 @@ final class TypstTextView: UITextView {
     var onRichPaste: (([PasteFragment], NSRange) -> Void)?
     private let pasteImageTypes: [UTType] = [.png, .jpeg, .heic, .heif, .tiff, .gif, .webP]
 
+    private var editorTypingAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: editorFont,
+            .foregroundColor: storedTheme.text,
+            .paragraphStyle: EditorFontSettings.paragraphStyle(for: editorFont),
+        ]
+    }
+
     // MARK: - Init (Force TextKit 1)
 
     init() {
@@ -121,15 +130,18 @@ final class TypstTextView: UITextView {
     }
 
     deinit {
-        jumpHighlightDisplayLink?.invalidate()
-        completionPopup?.removeFromSuperview()
-        NotificationCenter.default.removeObserver(self)
+        MainActor.assumeIsolated {
+            jumpHighlightDisplayLink?.invalidate()
+            completionPopup?.removeFromSuperview()
+            NotificationCenter.default.removeObserver(self)
+        }
     }
 
     // MARK: - Configuration
 
     private func configureAppearance() {
-        font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        font = editorFont
+        typingAttributes = editorTypingAttributes
         autocorrectionType = .no
         autocapitalizationType = .none
         smartDashesType = .no
@@ -383,13 +395,21 @@ final class TypstTextView: UITextView {
         storedTheme = theme
         backgroundColor = theme.background
         textColor = theme.text
-        typingAttributes = [
-            .font: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular),
-            .foregroundColor: theme.text,
-        ]
+        typingAttributes = editorTypingAttributes
         highlighter.updateTheme(theme)
         gutterView.applyTheme(theme)
         scheduleHighlighting(.immediate)
+    }
+
+    func applyEditorFont(_ font: UIFont) {
+        guard font.fontName != editorFont.fontName || abs(font.pointSize - editorFont.pointSize) > 0.1 else { return }
+        editorFont = font
+        self.font = font
+        typingAttributes = editorTypingAttributes
+        highlighter.updateFont(font)
+        gutterView.applyEditorFont(font)
+        updateGutterLayout()
+        scheduleHighlighting(.immediate, textChanged: true)
     }
 
     // MARK: - Error Lines
@@ -440,6 +460,37 @@ final class TypstTextView: UITextView {
     /// so the cursor never sits right at the keyboard edge.
     private static let keyboardBottomPadding: CGFloat = 80
 
+    private static func keyboardAnimationOptions(from userInfo: [AnyHashable: Any]) -> UIView.AnimationOptions {
+        let rawCurve: Int?
+        if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int {
+            rawCurve = raw
+        } else if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt {
+            rawCurve = Int(raw)
+        } else if let raw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber {
+            rawCurve = raw.intValue
+        } else {
+            rawCurve = nil
+        }
+
+        guard let rawCurve,
+              let curve = UIView.AnimationCurve(rawValue: rawCurve) else {
+            return .curveEaseInOut
+        }
+
+        switch curve {
+        case .easeInOut:
+            return .curveEaseInOut
+        case .easeIn:
+            return .curveEaseIn
+        case .easeOut:
+            return .curveEaseOut
+        case .linear:
+            return .curveLinear
+        @unknown default:
+            return .curveEaseInOut
+        }
+    }
+
     @objc private func keyboardFrameWillChange(_ notification: Notification) {
         guard window != nil,
               let userInfo = notification.userInfo,
@@ -453,11 +504,11 @@ final class TypstTextView: UITextView {
         let totalInset = overlap > 0 ? overlap + Self.keyboardBottomPadding : 0
 
         let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
-        let curveRaw = (userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt) ?? 7
+        let animationOptions = Self.keyboardAnimationOptions(from: userInfo)
 
         UIView.animate(
             withDuration: duration, delay: 0,
-            options: [.beginFromCurrentState, UIView.AnimationOptions(rawValue: curveRaw << 16)]
+            options: [.beginFromCurrentState, animationOptions]
         ) {
             self.contentInset.bottom = totalInset
             self.verticalScrollIndicatorInsets.bottom = overlap

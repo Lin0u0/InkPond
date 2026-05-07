@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 struct EditorViewState: Equatable {
     var selectedLocation: Int = 0
@@ -31,6 +32,7 @@ struct EditorView: UIViewRepresentable {
     var sourceMap: SourceMap?
     var syncCoordinator: SyncCoordinator?
     var theme: EditorTheme = .system
+    var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
     var onPhotoTapped: () -> Void = {}
     var onSnippetTapped: () -> Void = {}
@@ -51,6 +53,7 @@ struct EditorView: UIViewRepresentable {
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
+        textView.applyEditorFont(editorFont)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.accessibilityLabel = L10n.a11yEditorLabel
@@ -64,6 +67,7 @@ struct EditorView: UIViewRepresentable {
     func updateUIView(_ textView: TypstTextView, context: Context) {
         context.coordinator.parent = self
         focusCoordinator?.register(textView)
+        textView.applyEditorFont(editorFont)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.setErrorLines(errorLines)
@@ -137,9 +141,11 @@ struct EditorView: UIViewRepresentable {
             guard !textView.isFirstResponder else { return }
         }
         guard textView.text != text else { return }
-        textView.text = text
-        textView.scheduleHighlighting(.immediate, textChanged: true)
-        context.coordinator.restoreViewStateIfNeeded(in: textView)
+        context.coordinator.performProgrammaticUpdate {
+            textView.text = text
+            textView.scheduleHighlighting(.immediate, textChanged: true)
+            context.coordinator.restoreViewStateIfNeeded(in: textView)
+        }
     }
 
     static func dismantleUIView(_ textView: TypstTextView, coordinator: Coordinator) {
@@ -159,11 +165,18 @@ struct EditorView: UIViewRepresentable {
         /// Set during `textViewDidChange` so the subsequent `textViewDidChangeSelection` knows
         /// the cursor moved because of typing, not a deliberate navigation.
         private var isProcessingTextChange = false
+        private var isApplyingProgrammaticUpdate = false
         /// Track previous text length to detect deletion.
         var previousTextLength: Int = 0
 
         init(_ parent: EditorView) {
             self.parent = parent
+        }
+
+        func performProgrammaticUpdate(_ update: () -> Void) {
+            isApplyingProgrammaticUpdate = true
+            defer { isApplyingProgrammaticUpdate = false }
+            update()
         }
 
         func insertText(_ request: EditorInsertionRequest) {
@@ -197,6 +210,10 @@ struct EditorView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             guard let typstTextView = textView as? TypstTextView else { return }
+            if isApplyingProgrammaticUpdate {
+                previousTextLength = textView.text.utf16.count
+                return
+            }
             isProcessingTextChange = true
             defer { isProcessingTextChange = false }
             let newLength = textView.text.utf16.count
@@ -209,6 +226,7 @@ struct EditorView: UIViewRepresentable {
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard let typstTextView = textView as? TypstTextView else { return }
+            guard !isApplyingProgrammaticUpdate else { return }
             captureViewState(from: typstTextView)
             // After a tap-to-dismiss, skip re-triggering completion for this selection change
             if typstTextView.consumeSelectionSuppression() { return }

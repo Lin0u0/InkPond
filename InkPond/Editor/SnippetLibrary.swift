@@ -9,8 +9,8 @@ enum SnippetLibrary {
     static let builtIn: [Snippet] = [
         // MARK: - Document Setup
         Snippet(
-            title: "Basic Document",
-            category: "Document Setup",
+            title: BuiltInSnippetText.basicDocument,
+            category: BuiltInSnippetText.documentSetup,
             body: """
             #set page(paper: "a4")
             #set text(font: "New Computer Modern", size: 11pt)
@@ -21,8 +21,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Article Template",
-            category: "Document Setup",
+            title: BuiltInSnippetText.articleTemplate,
+            category: BuiltInSnippetText.documentSetup,
             body: """
             #set page(paper: "a4", margin: 2.5cm)
             #set text(font: "New Computer Modern", size: 11pt)
@@ -48,8 +48,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Letter Template",
-            category: "Document Setup",
+            title: BuiltInSnippetText.letterTemplate,
+            category: BuiltInSnippetText.documentSetup,
             body: """
             #set page(paper: "a4", margin: 2.5cm)
             #set text(size: 11pt)
@@ -79,8 +79,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Presentation Slide",
-            category: "Document Setup",
+            title: BuiltInSnippetText.presentationSlide,
+            category: BuiltInSnippetText.documentSetup,
             body: """
             #set page(width: 25.4cm, height: 14.29cm, margin: 2cm)
             #set text(size: 20pt)
@@ -95,22 +95,22 @@ enum SnippetLibrary {
 
         // MARK: - Layout
         Snippet(
-            title: "Two Columns",
-            category: "Layout",
+            title: BuiltInSnippetText.twoColumns,
+            category: BuiltInSnippetText.layout,
             body: "#columns(2)[$0]",
             keywords: ["columns", "layout", "two"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Centered Block",
-            category: "Layout",
+            title: BuiltInSnippetText.centeredBlock,
+            category: BuiltInSnippetText.layout,
             body: "#align(center)[$0]",
             keywords: ["center", "align", "middle"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Page Break",
-            category: "Layout",
+            title: BuiltInSnippetText.pageBreak,
+            category: BuiltInSnippetText.layout,
             body: "#pagebreak()\n$0",
             keywords: ["page", "break", "newpage"],
             isBuiltIn: true
@@ -118,8 +118,8 @@ enum SnippetLibrary {
 
         // MARK: - Figure & Table
         Snippet(
-            title: "Figure with Caption",
-            category: "Figure & Table",
+            title: BuiltInSnippetText.figureWithCaption,
+            category: BuiltInSnippetText.figureAndTable,
             body: """
             #figure(
               image("$0"),
@@ -130,8 +130,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Table (2 Columns)",
-            category: "Figure & Table",
+            title: BuiltInSnippetText.tableTwoColumns,
+            category: BuiltInSnippetText.figureAndTable,
             body: """
             #figure(
               table(
@@ -146,8 +146,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Table (3 Columns)",
-            category: "Figure & Table",
+            title: BuiltInSnippetText.tableThreeColumns,
+            category: BuiltInSnippetText.figureAndTable,
             body: """
             #figure(
               table(
@@ -162,8 +162,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Code Block with Caption",
-            category: "Figure & Table",
+            title: BuiltInSnippetText.codeBlockWithCaption,
+            category: BuiltInSnippetText.figureAndTable,
             body: """
             #figure(
               ```$0
@@ -178,22 +178,22 @@ enum SnippetLibrary {
 
         // MARK: - Math
         Snippet(
-            title: "Inline Math",
-            category: "Math",
+            title: BuiltInSnippetText.inlineMath,
+            category: BuiltInSnippetText.math,
             body: "$$$0$",
             keywords: ["math", "inline", "equation"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Display Math",
-            category: "Math",
+            title: BuiltInSnippetText.displayMath,
+            category: BuiltInSnippetText.math,
             body: "$ $0 $",
             keywords: ["math", "display", "equation", "block"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Aligned Equations",
-            category: "Math",
+            title: BuiltInSnippetText.alignedEquations,
+            category: BuiltInSnippetText.math,
             body: """
             $ $0 &= a \\\\ &= b $
             """,
@@ -201,8 +201,8 @@ enum SnippetLibrary {
             isBuiltIn: true
         ),
         Snippet(
-            title: "Matrix",
-            category: "Math",
+            title: BuiltInSnippetText.matrix,
+            category: BuiltInSnippetText.math,
             body: """
             $ mat(
               $0, 0;
@@ -215,15 +215,15 @@ enum SnippetLibrary {
 
         // MARK: - Bibliography
         Snippet(
-            title: "Bibliography Setup",
-            category: "Bibliography",
+            title: BuiltInSnippetText.bibliographySetup,
+            category: BuiltInSnippetText.bibliography,
             body: "#bibliography(\"$0.bib\")",
             keywords: ["bibliography", "references", "bib"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Citation",
-            category: "Bibliography",
+            title: BuiltInSnippetText.citation,
+            category: BuiltInSnippetText.bibliography,
             body: "@$0",
             keywords: ["cite", "citation", "reference"],
             isBuiltIn: true
@@ -231,15 +231,15 @@ enum SnippetLibrary {
 
         // MARK: - Code
         Snippet(
-            title: "Code Block",
-            category: "Code",
+            title: BuiltInSnippetText.codeBlock,
+            category: BuiltInSnippetText.code,
             body: "```$0\ncode\n```",
             keywords: ["code", "block", "listing", "raw"],
             isBuiltIn: true
         ),
         Snippet(
-            title: "Inline Code",
-            category: "Code",
+            title: BuiltInSnippetText.inlineCode,
+            category: BuiltInSnippetText.code,
             body: "`$0`",
             keywords: ["code", "inline", "raw", "monospace"],
             isBuiltIn: true
@@ -247,6 +247,42 @@ enum SnippetLibrary {
     ]
 
     static var categoryOrder: [String] {
-        ["Document Setup", "Layout", "Figure & Table", "Math", "Bibliography", "Code"]
+        [
+            BuiltInSnippetText.documentSetup,
+            BuiltInSnippetText.layout,
+            BuiltInSnippetText.figureAndTable,
+            BuiltInSnippetText.math,
+            BuiltInSnippetText.bibliography,
+            BuiltInSnippetText.code,
+        ]
     }
+}
+
+private enum BuiltInSnippetText {
+    static var documentSetup: String { L10n.tr("snippet.builtin.category.document_setup") }
+    static var layout: String { L10n.tr("snippet.builtin.category.layout") }
+    static var figureAndTable: String { L10n.tr("snippet.builtin.category.figure_table") }
+    static var math: String { L10n.tr("snippet.builtin.category.math") }
+    static var bibliography: String { L10n.tr("snippet.builtin.category.bibliography") }
+    static var code: String { L10n.tr("snippet.builtin.category.code") }
+
+    static var basicDocument: String { L10n.tr("snippet.builtin.title.basic_document") }
+    static var articleTemplate: String { L10n.tr("snippet.builtin.title.article_template") }
+    static var letterTemplate: String { L10n.tr("snippet.builtin.title.letter_template") }
+    static var presentationSlide: String { L10n.tr("snippet.builtin.title.presentation_slide") }
+    static var twoColumns: String { L10n.tr("snippet.builtin.title.two_columns") }
+    static var centeredBlock: String { L10n.tr("snippet.builtin.title.centered_block") }
+    static var pageBreak: String { L10n.tr("snippet.builtin.title.page_break") }
+    static var figureWithCaption: String { L10n.tr("snippet.builtin.title.figure_with_caption") }
+    static var tableTwoColumns: String { L10n.tr("snippet.builtin.title.table_two_columns") }
+    static var tableThreeColumns: String { L10n.tr("snippet.builtin.title.table_three_columns") }
+    static var codeBlockWithCaption: String { L10n.tr("snippet.builtin.title.code_block_with_caption") }
+    static var inlineMath: String { L10n.tr("snippet.builtin.title.inline_math") }
+    static var displayMath: String { L10n.tr("snippet.builtin.title.display_math") }
+    static var alignedEquations: String { L10n.tr("snippet.builtin.title.aligned_equations") }
+    static var matrix: String { L10n.tr("snippet.builtin.title.matrix") }
+    static var bibliographySetup: String { L10n.tr("snippet.builtin.title.bibliography_setup") }
+    static var citation: String { L10n.tr("snippet.builtin.title.citation") }
+    static var codeBlock: String { L10n.tr("snippet.builtin.title.code_block") }
+    static var inlineCode: String { L10n.tr("snippet.builtin.title.inline_code") }
 }

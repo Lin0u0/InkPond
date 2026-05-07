@@ -38,7 +38,11 @@ final class TypstCompiler {
     }
 
     private struct PDFDocumentBox: @unchecked Sendable {
-        let document: PDFDocument
+        nonisolated(unsafe) let document: PDFDocument
+
+        nonisolated init(document: PDFDocument) {
+            self.document = document
+        }
     }
 
     private enum WorkerResult: Sendable {
@@ -148,14 +152,7 @@ final class TypstCompiler {
 
     /// Clear current preview content and cancel any in-flight compilation.
     func clearPreview() {
-        debounceTask?.cancel()
-        debounceTask = nil
-        activeTask?.cancel()
-        activeTask = nil
-        scheduledRequest = nil
-        pendingRequest = nil
-        compileGeneration &+= 1
-        isCompiling = false
+        cancelAllWork()
         pdfDocument = nil
         pdfData = nil
         errorMessage = nil
@@ -164,20 +161,17 @@ final class TypstCompiler {
     }
 
     func presentPreflightError(_ message: String) {
-        debounceTask?.cancel()
-        debounceTask = nil
-        activeTask?.cancel()
-        activeTask = nil
-        scheduledRequest = nil
-        pendingRequest = nil
-        compileGeneration &+= 1
-        isCompiling = false
+        cancelAllWork()
         sourceMap = nil
         errorMessage = message
     }
 
     /// Cancel any in-flight compilation (e.g. when document is closed).
     func cancel() {
+        cancelAllWork()
+    }
+
+    private func cancelAllWork() {
         debounceTask?.cancel()
         debounceTask = nil
         activeTask?.cancel()

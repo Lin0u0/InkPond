@@ -6,7 +6,19 @@
 import UIKit
 import GameController
 
-final class KeyboardAccessoryView: UIInputView {
+final class KeyboardAccessoryView: UIView {
+    private final class NotificationObserverToken: @unchecked Sendable {
+        nonisolated(unsafe) let token: NSObjectProtocol
+
+        init(_ token: NSObjectProtocol) {
+            self.token = token
+        }
+
+        nonisolated func remove() {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
     private struct SymbolItem {
         let label: String
         let insert: String
@@ -39,7 +51,8 @@ final class KeyboardAccessoryView: UIInputView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
-    private var hardwareKeyboardObservers: [NSObjectProtocol] = []
+    private var hardwareKeyboardObservers: [NotificationObserverToken] = []
+    private static let barHeight: CGFloat = 60
 
     private let symbols: [SymbolItem] = [
         SymbolItem(label: "⇥", insert: "  "),
@@ -62,8 +75,8 @@ final class KeyboardAccessoryView: UIInputView {
 
     init(textView: UITextView) {
         self.textView = textView
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 60), inputViewStyle: .keyboard)
-        allowsSelfSizing = true
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.barHeight))
+        autoresizingMask = [.flexibleWidth]
         configureActionButtons()
         setupViews()
         startObservingHardwareKeyboard()
@@ -76,8 +89,16 @@ final class KeyboardAccessoryView: UIInputView {
 
     deinit {
         for observer in hardwareKeyboardObservers {
-            NotificationCenter.default.removeObserver(observer)
+            observer.remove()
         }
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        CGSize(width: size.width, height: Self.barHeight)
     }
 
     private var isPad: Bool {
@@ -106,20 +127,24 @@ final class KeyboardAccessoryView: UIInputView {
         guard isPad else { return }
 
         hardwareKeyboardObservers = [
-            NotificationCenter.default.addObserver(
+            NotificationObserverToken(NotificationCenter.default.addObserver(
                 forName: Notification.Name.GCKeyboardDidConnect,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.updateActionButtonsVisibility()
-            },
-            NotificationCenter.default.addObserver(
+                MainActor.assumeIsolated {
+                    self?.updateActionButtonsVisibility()
+                }
+            }),
+            NotificationObserverToken(NotificationCenter.default.addObserver(
                 forName: Notification.Name.GCKeyboardDidDisconnect,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.updateActionButtonsVisibility()
-            }
+                MainActor.assumeIsolated {
+                    self?.updateActionButtonsVisibility()
+                }
+            })
         ]
     }
 
