@@ -673,10 +673,11 @@ extension DocumentEditorView {
                     selectedTab = previewTab
                 }
                 prepareDocumentForEditing()
+                let handledExternalOpen = handleExternalOpenRequestIfNeeded(externalOpenRequest)
                 refreshResolvedFonts(includeAvailableFamilies: false)
                 scheduleAvailableFontFamilyRefresh()
                 refreshReferenceCompletions()
-                if hasSavedPosition() {
+                if !handledExternalOpen && hasSavedPosition() {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         showingPositionRestore = true
                     }
@@ -711,6 +712,9 @@ extension DocumentEditorView {
             }
             .onChange(of: compileToken) { _, _ in
                 refreshReferenceCompletions()
+            }
+            .onChange(of: externalOpenRequest?.id) { _, _ in
+                _ = handleExternalOpenRequestIfNeeded(externalOpenRequest)
             }
             .onChange(of: syncCoordinator.editorScrollTarget) { _, target in
                 guard let target else { return }

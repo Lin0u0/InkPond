@@ -6,8 +6,33 @@
 import Foundation
 
 enum ExternalTypFileImporter {
+    struct ManagedProjectLocation: Equatable {
+        let projectID: String
+        let relativeFileName: String
+    }
+
     static func canImport(_ url: URL) -> Bool {
         url.isFileURL && url.pathExtension.caseInsensitiveCompare("typ") == .orderedSame
+    }
+
+    static func managedProjectLocation(for url: URL) -> ManagedProjectLocation? {
+        guard canImport(url) else { return nil }
+
+        let rootURL = ProjectFileManager.documentsURL.standardizedFileURL
+        let fileURL = url.standardizedFileURL
+        let rootComponents = rootURL.pathComponents
+        let fileComponents = fileURL.pathComponents
+
+        guard fileComponents.count >= rootComponents.count + 2,
+              fileComponents.starts(with: rootComponents) else { return nil }
+
+        let relativeComponents = Array(fileComponents[rootComponents.count...])
+
+        let projectID = relativeComponents[0]
+        let relativeFileName = relativeComponents.dropFirst().joined(separator: "/")
+        guard !projectID.isEmpty, !relativeFileName.isEmpty else { return nil }
+
+        return ManagedProjectLocation(projectID: projectID, relativeFileName: relativeFileName)
     }
 
     static func importFile(from url: URL) throws -> InkPondDocument {

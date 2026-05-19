@@ -62,6 +62,12 @@ private struct WindowUserInterfaceStyleSetter: UIViewRepresentable {
     }
 }
 
+struct ExternalTypFileOpenRequest: Equatable {
+    let id = UUID()
+    let projectID: String
+    let fileName: String
+}
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(StorageManager.self) private var storageManager
@@ -74,6 +80,7 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var didSeedUITestDocument = false
     @State private var externalOpenError: String?
+    @State private var externalOpenRequest: ExternalTypFileOpenRequest?
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
@@ -117,7 +124,8 @@ struct ContentView: View {
             if let document = selectedDocument {
                 DocumentEditorView(
                     document: document,
-                    isSidebarVisible: columnVisibility != .detailOnly
+                    isSidebarVisible: columnVisibility != .detailOnly,
+                    externalOpenRequest: externalOpenRequest
                 )
                     .id(document.persistentModelID)
             } else {
@@ -180,8 +188,23 @@ struct ContentView: View {
         guard ExternalTypFileImporter.canImport(url) else { return }
 
         do {
-            let document = try ExternalTypFileImporter.importFile(from: url)
-            modelContext.insert(document)
+            let document: InkPondDocument
+            if let location = ExternalTypFileImporter.managedProjectLocation(for: url) {
+                document = try existingOrCreateManagedProjectDocument(for: location)
+                document.lastEditedFileName = location.relativeFileName
+                document.lastCursorLocation = 0
+                externalOpenRequest = ExternalTypFileOpenRequest(
+                    projectID: location.projectID,
+                    fileName: location.relativeFileName
+                )
+            } else {
+                document = try ExternalTypFileImporter.importFile(from: url)
+                modelContext.insert(document)
+                externalOpenRequest = ExternalTypFileOpenRequest(
+                    projectID: document.projectID,
+                    fileName: document.entryFileName
+                )
+            }
             hasCompletedOnboarding = true
             selectedDocument = document
             InteractionFeedback.notify(.success)
@@ -192,6 +215,37 @@ struct ContentView: View {
             InteractionFeedback.notify(.error)
             AccessibilitySupport.announce(message)
         }
+    }
+
+    @MainActor
+    private func existingOrCreateManagedProjectDocument(
+        for location: ExternalTypFileImporter.ManagedProjectLocation
+    ) throws -> InkPondDocument {
+        let projectID = location.projectID
+        let descriptor = FetchDescriptor<InkPondDocument>(
+            predicate: #Predicate { $0.projectID == projectID }
+        )
+        if let existingDocument = try modelContext.fetch(descriptor).first {
+            return existingDocument
+        }
+
+        let document = InkPondDocument(title: projectID, content: "")
+        document.projectID = projectID
+
+        let typFiles = ProjectFileManager.listAllTypFiles(for: document)
+        if typFiles.contains(location.relativeFileName) {
+            document.entryFileName = location.relativeFileName
+        } else if let entryFileName = ProjectFileManager.resolveImportedEntryFile(from: typFiles).entryFileName {
+            document.entryFileName = entryFileName
+        }
+
+        document.requiresInitialEntrySelection = false
+        document.requiresImportConfiguration = false
+        document.importEntryFileOptions = []
+        document.importImageDirectoryOptions = []
+        document.importFontDirectoryOptions = []
+        modelContext.insert(document)
+        return document
     }
 
     @MainActor

@@ -28,6 +28,7 @@ struct DocumentEditorView: View {
 
     @Bindable var document: InkPondDocument
     var isSidebarVisible: Bool = false
+    var externalOpenRequest: ExternalTypFileOpenRequest?
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(\.horizontalSizeClass) var sizeClass
@@ -112,10 +113,12 @@ struct DocumentEditorView: View {
 
     init(
         document: InkPondDocument,
-        isSidebarVisible: Bool = false
+        isSidebarVisible: Bool = false,
+        externalOpenRequest: ExternalTypFileOpenRequest? = nil
     ) {
         self.document = document
         self.isSidebarVisible = isSidebarVisible
+        self.externalOpenRequest = externalOpenRequest
     }
 
     var body: some View {

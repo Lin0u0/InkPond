@@ -267,6 +267,31 @@ struct InkPondTests {
         #expect(FileManager.default.fileExists(atPath: ProjectFileManager.fontsDirectory(for: document).path))
     }
 
+    @Test func externalTypFileImporterResolvesManagedProjectLocation() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        ProjectFileManager.ensureProjectStructure(for: doc)
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: doc) }
+
+        try ProjectFileManager.writeTypFile(named: "main.typ", content: "= Main", for: doc)
+        let chapterDir = ProjectFileManager.projectDirectory(for: doc)
+            .appendingPathComponent("chapters", isDirectory: true)
+        try FileManager.default.createDirectory(at: chapterDir, withIntermediateDirectories: true)
+        try ProjectFileManager.writeTypFile(named: "chapters/intro.typ", content: "= Intro", for: doc)
+
+        let managedURL = ProjectFileManager.projectDirectory(for: doc)
+            .appendingPathComponent("chapters/intro.typ")
+        let location = try #require(ExternalTypFileImporter.managedProjectLocation(for: managedURL))
+        #expect(location.projectID == doc.projectID)
+        #expect(location.relativeFileName == "chapters/intro.typ")
+
+        let externalDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: externalDir) }
+        let externalURL = externalDir.appendingPathComponent("draft.typ")
+        try Data("= Draft".utf8).write(to: externalURL)
+
+        #expect(ExternalTypFileImporter.managedProjectLocation(for: externalURL) == nil)
+    }
+
     @Test func projectFileManagerImportFilePreservesExistingDestinationWhenReplacementCopyFails() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         ProjectFileManager.ensureProjectStructure(for: doc)

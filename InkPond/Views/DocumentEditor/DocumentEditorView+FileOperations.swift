@@ -297,6 +297,21 @@ extension DocumentEditorView {
         }
     }
 
+    @discardableResult
+    func handleExternalOpenRequestIfNeeded(_ request: ExternalTypFileOpenRequest?) -> Bool {
+        guard let request, request.projectID == document.projectID else { return false }
+        let typFiles = ProjectFileManager.listAllTypFiles(for: document)
+        guard typFiles.contains(request.fileName) else { return false }
+
+        if currentFileName != request.fileName {
+            guard openFileIfPossible(named: request.fileName) else { return false }
+        }
+
+        selectedTab = editorTab
+        pendingCursorJump = 0
+        return true
+    }
+
     /// Immediately sync the preview to a known cursor location.
     func syncCursorToPreview(at cursorLocation: Int) {
         guard let sourceMap = compiler.sourceMap, !sourceMap.isEmpty else { return }
