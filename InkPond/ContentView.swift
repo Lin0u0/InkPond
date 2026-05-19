@@ -73,6 +73,7 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var searchText: String = ""
     @State private var didSeedUITestDocument = false
+    @State private var externalOpenError: String?
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
@@ -84,6 +85,15 @@ struct ContentView: View {
             }
         }
         .background(WindowUserInterfaceStyleSetter(style: appAppearanceManager.userInterfaceStyle))
+        .onOpenURL(perform: handleExternalOpenURL)
+        .alert(L10n.tr("Import Error"), isPresented: Binding(
+            get: { externalOpenError != nil },
+            set: { if !$0 { externalOpenError = nil } }
+        )) {
+            Button(L10n.tr("OK")) { externalOpenError = nil }
+        } message: {
+            Text(externalOpenError ?? "")
+        }
     }
 
     private var onboardingContent: some View {
@@ -163,6 +173,25 @@ struct ContentView: View {
             return override
         }
         return "= \(L10n.uiTestSampleDocumentTitle)\n\nHello, InkPond UI tests."
+    }
+
+    @MainActor
+    private func handleExternalOpenURL(_ url: URL) {
+        guard ExternalTypFileImporter.canImport(url) else { return }
+
+        do {
+            let document = try ExternalTypFileImporter.importFile(from: url)
+            modelContext.insert(document)
+            hasCompletedOnboarding = true
+            selectedDocument = document
+            InteractionFeedback.notify(.success)
+            AccessibilitySupport.announce(L10n.a11yDocumentImported(document.title))
+        } catch {
+            let message = error.localizedDescription
+            externalOpenError = message
+            InteractionFeedback.notify(.error)
+            AccessibilitySupport.announce(message)
+        }
     }
 
     @MainActor

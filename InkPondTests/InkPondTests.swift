@@ -243,6 +243,30 @@ struct InkPondTests {
         #expect(FileManager.default.fileExists(atPath: dest.path))
     }
 
+    @Test func externalTypFileImporterCreatesSingleFileProjectWithoutEntryPicker() throws {
+        let srcDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: srcDir) }
+
+        let src = srcDir.appendingPathComponent("draft.typ")
+        try Data("= Draft\n\nOpened from Files.".utf8).write(to: src)
+
+        let document = try ExternalTypFileImporter.importFile(from: src)
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: document) }
+
+        #expect(document.title == "draft")
+        #expect(document.entryFileName == "draft.typ")
+        #expect(document.lastEditedFileName == "draft.typ")
+        #expect(!document.requiresInitialEntrySelection)
+        #expect(!document.requiresImportConfiguration)
+        #expect(document.importEntryFileOptions.isEmpty)
+
+        let importedSource = try ProjectFileManager.readTypFile(named: "draft.typ", for: document)
+        #expect(importedSource == "= Draft\n\nOpened from Files.")
+        #expect(ProjectFileManager.listAllTypFiles(for: document) == ["draft.typ"])
+        #expect(FileManager.default.fileExists(atPath: ProjectFileManager.imagesDirectory(for: document).path))
+        #expect(FileManager.default.fileExists(atPath: ProjectFileManager.fontsDirectory(for: document).path))
+    }
+
     @Test func projectFileManagerImportFilePreservesExistingDestinationWhenReplacementCopyFails() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         ProjectFileManager.ensureProjectStructure(for: doc)
