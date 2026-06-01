@@ -63,15 +63,48 @@ struct EntryFileResolution {
     let requiresInitialSelection: Bool
 }
 
+struct LinkedFolderLoadProgress: Equatable, Sendable {
+    enum Phase: Equatable, Sendable {
+        case scanning
+        case downloading
+    }
+
+    let phase: Phase
+    let scannedFileCount: Int
+    let downloadedFileCount: Int
+    let totalDownloadFileCount: Int
+
+    var remainingDownloadFileCount: Int {
+        max(totalDownloadFileCount - downloadedFileCount, 0)
+    }
+
+    var fractionCompleted: Double? {
+        guard phase == .downloading, totalDownloadFileCount > 0 else { return nil }
+        return min(max(Double(downloadedFileCount) / Double(totalDownloadFileCount), 0), 1)
+    }
+}
+
+struct LinkedFolderLoadResult: Equatable, Sendable {
+    let relativePaths: [String]
+    let scannedFileCount: Int
+    let downloadedFileCount: Int
+}
+
+struct ProjectReferenceCompletionSnapshot: Sendable {
+    let bibEntries: [TypstBibliographyEntry]
+    let externalLabels: [(name: String, kind: String)]
+    let imageFiles: [String]
+}
+
 // MARK: - ProjectFileManager
 
 enum ProjectFileManager {
-    static let supportedImageFileExtensions: Set<String> = [
+    nonisolated static let supportedImageFileExtensions: Set<String> = [
         "bmp", "eps", "gif", "heic", "heif", "jpg", "jpeg",
         "pdf", "png", "svg", "tif", "tiff", "webp"
     ]
-    static let fontFileExtensions: Set<String> = ["otf", "ttf", "woff", "woff2"]
-    static let referenceFileExtensions: Set<String> = [
+    nonisolated static let fontFileExtensions: Set<String> = ["otf", "ttf", "woff", "woff2"]
+    nonisolated static let referenceFileExtensions: Set<String> = [
         "bib", "yml", "yaml", "csv", "json", "xml", "toml", "txt"
     ]
 
@@ -112,7 +145,14 @@ enum ProjectFileManager {
         return localDocumentsURL
     }
 
+    nonisolated static func externalSingleFileURL(for document: InkPondDocument) -> URL? {
+        ExternalTypFileSessionStore.fileURL(projectID: document.projectID)
+    }
+
     nonisolated static func projectDirectory(for document: InkPondDocument) -> URL {
+        if let externalFileURL = externalSingleFileURL(for: document) {
+            return externalFileURL.deletingLastPathComponent()
+        }
         if let bookmarkURL = BookmarkManager.loadBookmark(projectID: document.projectID) {
             return bookmarkURL
         }
@@ -186,6 +226,7 @@ enum ProjectFileManager {
     }
 
     static func createProjectRoot(for document: InkPondDocument) throws {
+        if externalSingleFileURL(for: document) != nil { return }
         let url = projectDirectory(for: document)
         if useCoordination {
             try CloudFileCoordinator.createDirectory(at: url)
@@ -195,6 +236,7 @@ enum ProjectFileManager {
     }
 
     static func createImageDirectory(for document: InkPondDocument) throws {
+        if externalSingleFileURL(for: document) != nil { return }
         try createProjectRoot(for: document)
         let imageDirectory = imagesDirectory(for: document)
         if imageDirectory.standardizedFileURL != projectDirectory(for: document).standardizedFileURL {
@@ -207,6 +249,7 @@ enum ProjectFileManager {
     }
 
     static func createFontsDirectory(for document: InkPondDocument) throws {
+        if externalSingleFileURL(for: document) != nil { return }
         try createProjectRoot(for: document)
         let url = fontsDirectory(for: document)
         if useCoordination {
@@ -250,6 +293,10 @@ enum ProjectFileManager {
     }
 
     static func deleteProjectDirectory(for document: InkPondDocument) throws {
+        if externalSingleFileURL(for: document) != nil {
+            ExternalTypFileSessionStore.unregister(projectID: document.projectID)
+            return
+        }
         if BookmarkManager.hasBookmark(projectID: document.projectID) {
             BookmarkManager.removeBookmark(projectID: document.projectID)
             os_log(.info, "ProjectFileManager: removed bookmark for %{public}@", document.projectID)
@@ -267,11 +314,17 @@ enum ProjectFileManager {
     }
 
     static func entryFileURL(for document: InkPondDocument) -> URL {
-        projectDirectory(for: document).appendingPathComponent(document.entryFileName)
+        if let externalFileURL = externalSingleFileURL(for: document) {
+            return externalFileURL
+        }
+        return projectDirectory(for: document).appendingPathComponent(document.entryFileName)
     }
 
     static func typFileURL(named name: String, for document: InkPondDocument) -> URL {
-        projectDirectory(for: document).appendingPathComponent(name)
+        if let externalFileURL = externalSingleFileURL(for: document), name == document.entryFileName {
+            return externalFileURL
+        }
+        return projectDirectory(for: document).appendingPathComponent(name)
     }
 
     static func projectFileURL(relativePath: String, for document: InkPondDocument) throws -> URL {
@@ -297,6 +350,14 @@ enum ProjectFileManager {
             if allowEmpty { return projectDirectory(for: document) }
             throw InkPondFileError.invalidFileName(relativePath)
         }
+
+        if let externalFileURL = externalSingleFileURL(for: document) {
+            guard trimmed == document.entryFileName else {
+                throw InkPondFileError.fileNotFound(relativePath)
+            }
+            return externalFileURL
+        }
+
         guard !trimmed.hasPrefix("/"),
               !trimmed.contains("\\"),
               !trimmed.hasPrefix("~") else {
@@ -320,6 +381,20 @@ enum ProjectFileManager {
             throw InkPondFileError.unsafePath(relativePath)
         }
         return target
+    }
+
+    nonisolated static func relativePath(of fileURL: URL, in directoryURL: URL) -> String? {
+        let directory = directoryURL.standardizedFileURL.resolvingSymlinksInPath()
+        let file = fileURL.standardizedFileURL.resolvingSymlinksInPath()
+        let directoryComponents = directory.pathComponents
+        let fileComponents = file.pathComponents
+
+        guard fileComponents.count > directoryComponents.count,
+              fileComponents.starts(with: directoryComponents) else {
+            return nil
+        }
+
+        return fileComponents.dropFirst(directoryComponents.count).joined(separator: "/")
     }
 
     nonisolated static func safeImageDirectoryName(from raw: String) -> String {

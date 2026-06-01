@@ -25,6 +25,7 @@ final class TypistDocument {
     var importEntryFileOptions: [String] = []
     var importImageDirectoryOptions: [String] = []
     var importFontDirectoryOptions: [String] = []
+    var requiresExternalFolderLinkForPreview: Bool = false
 
     /// Last editing position — persisted for cross-launch resume.
     var lastEditedFileName: String = ""

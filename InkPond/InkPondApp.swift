@@ -7,10 +7,34 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 import os
+
+final class InkPondAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        if let url = launchOptions?[.url] as? URL {
+            ExternalOpenURLRouter.open(url)
+        }
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        guard ExternalTypFileImporter.canImport(url) else { return false }
+        ExternalOpenURLRouter.open(url)
+        return true
+    }
+}
 
 @main
 struct InkPondApp: App {
+    @UIApplicationDelegateAdaptor(InkPondAppDelegate.self) private var appDelegate
     @State private var storageManager: StorageManager
     @State private var modelContainer: ModelContainer?
     @State private var snippetStore = SnippetStore()

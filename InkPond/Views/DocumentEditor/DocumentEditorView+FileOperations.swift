@@ -11,8 +11,8 @@ extension DocumentEditorView {
     func prepareDocumentForEditing() {
         ProjectFileManager.ensureProjectRoot(for: document)
 
-        let typFiles = ProjectFileManager.listAllTypFiles(for: document)
         if document.requiresImportConfiguration || document.requiresInitialEntrySelection {
+            let typFiles = ProjectFileManager.listAllTypFiles(for: document)
             let resolution = ProjectFileManager.resolveImportedEntryFile(from: typFiles)
             if let suggestedEntry = resolution.entryFileName {
                 if !typFiles.contains(document.entryFileName) {
@@ -300,7 +300,9 @@ extension DocumentEditorView {
     @discardableResult
     func handleExternalOpenRequestIfNeeded(_ request: ExternalTypFileOpenRequest?) -> Bool {
         guard let request, request.projectID == document.projectID else { return false }
-        let typFiles = ProjectFileManager.listAllTypFiles(for: document)
+        let typFiles = document.isExternalFolder
+            ? [document.entryFileName]
+            : ProjectFileManager.listAllTypFiles(for: document)
         guard typFiles.contains(request.fileName) else { return false }
 
         if currentFileName != request.fileName {
@@ -379,6 +381,10 @@ extension DocumentEditorView {
 
     func compilePreviewNow() {
         guard flushPendingSave() else { return }
+        guard !previewRequiresExternalFolderLink else {
+            compiler.clearPreview()
+            return
+        }
         _ = refreshResolvedFonts(includeAvailableFamilies: false)
         if let fontResolutionError {
             compiler.presentPreflightError(fontResolutionError)
@@ -396,6 +402,10 @@ extension DocumentEditorView {
 
     func clearCachesAndRecompile() {
         guard flushPendingSave() else { return }
+        guard !previewRequiresExternalFolderLink else {
+            compiler.clearPreview()
+            return
+        }
         _ = refreshResolvedFonts(includeAvailableFamilies: false)
         if let fontResolutionError {
             compiler.presentPreflightError(fontResolutionError)
@@ -507,38 +517,19 @@ extension DocumentEditorView {
 
     func refreshReferenceCompletions() {
         let projectDir = ProjectFileManager.projectDirectory(for: document)
-
-        var bibEntries: [TypstBibliographyEntry] = []
-        let bibliographyFiles = ProjectFileManager.listAllFiles(in: projectDir)
-            .filter { isBibliographyFile($0) }
-        for file in bibliographyFiles {
-            let url = projectDir.appendingPathComponent(file)
-            if let content = try? String(contentsOf: url, encoding: .utf8),
-               let entries = TypstBridge.bibliographyEntries(source: content, fileName: file) {
-                bibEntries.append(contentsOf: entries)
-            }
+        let currentFileName = currentFileName
+        referenceCompletionRefreshTask?.cancel()
+        referenceCompletionRefreshTask = Task { @MainActor in
+            let snapshot = await ProjectFileManager.referenceCompletionSnapshot(
+                in: projectDir,
+                currentFileName: currentFileName
+            )
+            guard !Task.isCancelled else { return }
+            cachedBibEntries = snapshot.bibEntries
+            cachedExternalLabels = snapshot.externalLabels
+            cachedImageFiles = snapshot.imageFiles
         }
-        cachedBibEntries = bibEntries
-
-        let engine = CompletionEngine.shared
-        var labels: [(name: String, kind: String)] = []
-        let typFiles = ProjectFileManager.listAllTypFiles(for: document)
-        for file in typFiles where file != currentFileName {
-            if let content = try? ProjectFileManager.readTypFile(named: file, for: document) {
-                labels.append(contentsOf: engine.scanLabels(in: content))
-            }
-        }
-        cachedExternalLabels = labels
-
-        refreshImageFiles()
         refreshPackageSpecs()
-    }
-
-    private func isBibliographyFile(_ path: String) -> Bool {
-        let lowercased = path.lowercased()
-        return lowercased.hasSuffix(".bib")
-            || lowercased.hasSuffix(".yaml")
-            || lowercased.hasSuffix(".yml")
     }
 
     func refreshPackageSpecs() {
@@ -552,11 +543,12 @@ extension DocumentEditorView {
     }
 
     func refreshImageFiles() {
-        let allFiles = ProjectFileManager.listAllFiles(in: ProjectFileManager.projectDirectory(for: document))
-        let imageExtensions = ProjectFileManager.supportedImageFileExtensions
-        cachedImageFiles = allFiles.filter { path in
-            let ext = (path as NSString).pathExtension.lowercased()
-            return imageExtensions.contains(ext)
+        let projectDir = ProjectFileManager.projectDirectory(for: document)
+        imageFileRefreshTask?.cancel()
+        imageFileRefreshTask = Task { @MainActor in
+            let imageFiles = await ProjectFileManager.imageFiles(in: projectDir)
+            guard !Task.isCancelled else { return }
+            cachedImageFiles = imageFiles
         }
     }
 

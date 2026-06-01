@@ -75,6 +75,31 @@ struct TypstBridge {
 #endif
     }
 
+    nonisolated static func prefetchPreviewPackage(spec: String) -> Result<Void, TypstBridgeError> {
+#if TYPST_FFI_AVAILABLE
+        guard let cacheDir = packageCacheDirectoryURL?.path else {
+            return .failure(.compilationFailed("Package cache directory is unavailable."))
+        }
+
+        return spec.withCString { cSpec in
+            cacheDir.withCString { cCacheDir in
+                let result = typst_prefetch_package(cSpec, cCacheDir)
+                defer { typst_free_result(result) }
+
+                if result.success {
+                    return .success(())
+                } else if let errPtr = result.error_message {
+                    return .failure(.compilationFailed(String(cString: errPtr)))
+                } else {
+                    return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
+                }
+            }
+        }
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
     /// Compile Typst source to PDF data.
     ///
     /// - Parameters:

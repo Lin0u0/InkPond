@@ -8,6 +8,38 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import os
+
+enum ExternalOpenURLRouter {
+    private struct PendingOpen {
+        let url: URL
+    }
+
+    static let notificationName = Notification.Name("ExternalOpenURLRouterDidReceiveURL")
+    private nonisolated static let _lock = OSAllocatedUnfairLock<[PendingOpen]>(initialState: [])
+
+    nonisolated static func open(_ url: URL) {
+        _lock.withLock { pending in
+            let normalizedURL = url.standardizedFileURL.absoluteString
+            pending.removeAll { $0.url.standardizedFileURL.absoluteString == normalizedURL }
+            pending.append(PendingOpen(url: url))
+        }
+
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: notificationName, object: nil)
+        }
+    }
+
+    nonisolated static func consumePendingURLs() -> [URL] {
+        _lock.withLock { pending in
+            let urls = pending.map(\.url)
+            pending.removeAll()
+            return urls
+        }
+    }
+}
+
+private let contentLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "InkPond", category: "ContentView")
 
 /// Sets the title of the UIWindowScene that contains this view.
 /// This controls the name shown in the iPadOS app switcher and window labels.
@@ -72,6 +104,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(StorageManager.self) private var storageManager
     @State private var selectedDocument: InkPondDocument?
+    @State private var externalFileDocument: InkPondDocument?
     @State private var themeManager = ThemeManager()
     @State private var editorFontSettings = EditorFontSettings()
     @State private var appAppearanceManager = AppAppearanceManager()
@@ -92,7 +125,16 @@ struct ContentView: View {
             }
         }
         .background(WindowUserInterfaceStyleSetter(style: appAppearanceManager.userInterfaceStyle))
-        .onOpenURL(perform: handleExternalOpenURL)
+        .onAppear(perform: handleQueuedExternalOpenURLs)
+        .onOpenURL { ExternalOpenURLRouter.open($0) }
+        .onReceive(NotificationCenter.default.publisher(for: ExternalOpenURLRouter.notificationName)) { _ in
+            handleQueuedExternalOpenURLs()
+        }
+        .fullScreenCover(isPresented: externalFileEditorPresented) {
+            if let document = externalFileDocument {
+                externalFileEditor(document)
+            }
+        }
         .alert(L10n.tr("Import Error"), isPresented: Binding(
             get: { externalOpenError != nil },
             set: { if !$0 { externalOpenError = nil } }
@@ -118,7 +160,7 @@ struct ContentView: View {
 
     private var mainContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            DocumentListView(selectedDocument: $selectedDocument, searchText: $searchText)
+            DocumentListView(selectedDocument: documentListSelection, searchText: $searchText)
                 .navigationSplitViewColumnWidth(min: 320, ideal: 340)
         } detail: {
             if let document = selectedDocument {
@@ -127,7 +169,7 @@ struct ContentView: View {
                     isSidebarVisible: columnVisibility != .detailOnly,
                     externalOpenRequest: externalOpenRequest
                 )
-                    .id(document.persistentModelID)
+                .id(document.persistentModelID)
             } else {
                 ContentUnavailableView(
                     "No Document Selected",
@@ -138,7 +180,7 @@ struct ContentView: View {
                 .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             }
         }
-        .background(SceneTitleSetter(title: selectedDocument?.title ?? L10n.appName))
+        .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
         .environment(themeManager)
         .environment(editorFontSettings)
@@ -151,6 +193,7 @@ struct ContentView: View {
         }
         .onChange(of: storageManager.mode) { _, _ in
             selectedDocument = nil
+            externalFileDocument = nil
             appFontLibrary.stopMonitoring()
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
@@ -169,6 +212,61 @@ struct ContentView: View {
         }
     }
 
+    private var activeDocument: InkPondDocument? {
+        externalFileDocument ?? selectedDocument
+    }
+
+    private var documentListSelection: Binding<InkPondDocument?> {
+        Binding(
+            get: { selectedDocument },
+            set: { newValue in
+                selectedDocument = newValue
+                if newValue != nil {
+                    externalFileDocument = nil
+                }
+            }
+        )
+    }
+
+    private var externalFileEditorPresented: Binding<Bool> {
+        Binding(
+            get: { externalFileDocument != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if let projectID = externalFileDocument?.projectID {
+                    ExternalTypFileSessionStore.unregister(projectID: projectID)
+                }
+                externalFileDocument = nil
+                externalOpenRequest = nil
+            }
+        )
+    }
+
+    private func externalFileEditor(_ document: InkPondDocument) -> some View {
+        NavigationStack {
+            DocumentEditorView(
+                document: document,
+                isSidebarVisible: false,
+                externalOpenRequest: externalOpenRequest
+            )
+            .id("external-cover-\(document.projectID)")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        externalFileEditorPresented.wrappedValue = false
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel(L10n.tr("Done"))
+                }
+            }
+        }
+        .environment(appAppearanceManager)
+        .environment(themeManager)
+        .environment(editorFontSettings)
+        .environment(appFontLibrary)
+    }
+
     private var shouldSeedUITestDocument: Bool {
         let processInfo = ProcessInfo.processInfo
         return processInfo.arguments.contains("UITEST_SEED_SAMPLE_DOCUMENT")
@@ -184,29 +282,54 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func handleExternalOpenURL(_ url: URL) {
-        guard ExternalTypFileImporter.canImport(url) else { return }
+    private func handleQueuedExternalOpenURLs() {
+        for url in ExternalOpenURLRouter.consumePendingURLs() {
+            handleExternalOpenURL(url)
+        }
+    }
 
-        do {
-            let document: InkPondDocument
-            if let location = ExternalTypFileImporter.managedProjectLocation(for: url) {
-                document = try existingOrCreateManagedProjectDocument(for: location)
+    @MainActor
+    private func handleExternalOpenURL(_ url: URL) {
+        contentLog.info("External open URL received: \(url.absoluteString, privacy: .public)")
+        guard ExternalTypFileImporter.canImport(url) else {
+            contentLog.info("Ignoring unsupported external URL: \(url.absoluteString, privacy: .public)")
+            return
+        }
+
+        if let location = ExternalTypFileImporter.managedProjectLocation(for: url) {
+            do {
+                let document = try existingOrCreateManagedProjectDocument(for: location)
                 document.lastEditedFileName = location.relativeFileName
                 document.lastCursorLocation = 0
+                externalFileDocument = nil
                 externalOpenRequest = ExternalTypFileOpenRequest(
                     projectID: location.projectID,
                     fileName: location.relativeFileName
                 )
-            } else {
-                document = try ExternalTypFileImporter.importFile(from: url)
-                modelContext.insert(document)
-                externalOpenRequest = ExternalTypFileOpenRequest(
-                    projectID: document.projectID,
-                    fileName: document.entryFileName
-                )
+                hasCompletedOnboarding = true
+                selectedDocument = document
+                columnVisibility = .detailOnly
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yDocumentImported(document.title))
+            } catch {
+                let message = error.localizedDescription
+                externalOpenError = message
+                InteractionFeedback.notify(.error)
+                AccessibilitySupport.announce(message)
             }
+            return
+        }
+
+        do {
+            let document = try ExternalTypFileImporter.importFile(from: url)
+            selectedDocument = nil
+            externalFileDocument = document
+            columnVisibility = .detailOnly
+            externalOpenRequest = ExternalTypFileOpenRequest(
+                projectID: document.projectID,
+                fileName: document.entryFileName
+            )
             hasCompletedOnboarding = true
-            selectedDocument = document
             InteractionFeedback.notify(.success)
             AccessibilitySupport.announce(L10n.a11yDocumentImported(document.title))
         } catch {
@@ -226,11 +349,17 @@ struct ContentView: View {
             predicate: #Predicate { $0.projectID == projectID }
         )
         if let existingDocument = try modelContext.fetch(descriptor).first {
+            existingDocument.requiresExternalFolderLinkForPreview = false
+            let typFiles = ProjectFileManager.listAllTypFiles(for: existingDocument)
+            if typFiles.contains(location.relativeFileName) {
+                existingDocument.entryFileName = location.relativeFileName
+            }
             return existingDocument
         }
 
         let document = InkPondDocument(title: projectID, content: "")
         document.projectID = projectID
+        document.requiresExternalFolderLinkForPreview = false
 
         let typFiles = ProjectFileManager.listAllTypFiles(for: document)
         if typFiles.contains(location.relativeFileName) {

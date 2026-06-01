@@ -70,6 +70,10 @@ struct DocumentListView: View {
     @State var sortField: SortField = .modifiedAt
     @State var sortDirection: SortDirection = .descending
     @State var showingFolderImporter = false
+    @State var folderLinkImportProgress: LinkedFolderLoadProgress?
+    @State var folderLinkImportTitle: String?
+    @State var folderLinkImportProjectID: String?
+    @State var folderLinkImportTask: Task<Void, Never>?
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
@@ -132,18 +136,40 @@ struct DocumentListView: View {
                 prompt: Text(L10n.tr("Search"))
             )
             .toolbar { if isIPad { iPadToolbar } else { iPhoneToolbar } }
-            .overlay {
-                if exporter.isExporting {
-                    ZStack {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .ignoresSafeArea()
-                        ProgressView("Compiling…")
-                            .padding()
-                            .systemFloatingSurface(cornerRadius: 12)
-                    }
-                }
+            .overlay { documentListProgressOverlay }
+            .safeAreaInset(edge: .bottom) {
+                linkedFolderProgressInset
             }
+            .animation(.snappy(duration: 0.25), value: folderLinkImportProgress)
+    }
+
+    @ViewBuilder
+    private var documentListProgressOverlay: some View {
+        if exporter.isExporting {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                ProgressView("Compiling…")
+                    .padding()
+                    .systemFloatingSurface(cornerRadius: 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var linkedFolderProgressInset: some View {
+        if let folderLinkImportProgress {
+            LinkedFolderLoadProgressView(
+                title: folderLinkImportTitle ?? L10n.tr("doc.list.action.link_external"),
+                progress: folderLinkImportProgress
+            ) {
+                folderLinkImportTask?.cancel()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 }
 

@@ -602,7 +602,11 @@ struct CompileFontResolver {
     ) -> [String: String] {
         var fileContents: [String: String] = [:]
 
-        for fileName in ProjectFileManager.listAllTypFiles(for: document) {
+        let sourceFiles = document.isExternalFolder
+            ? [document.entryFileName]
+            : ProjectFileManager.listAllTypFiles(for: document)
+
+        for fileName in sourceFiles {
             if fileName == document.entryFileName, let entrySourceOverride {
                 fileContents[fileName] = entrySourceOverride
                 continue

@@ -162,6 +162,8 @@ extension DocumentListView {
         survivor.fontFileNames = Array(Set(survivor.fontFileNames + duplicate.fontFileNames)).sorted()
         survivor.requiresInitialEntrySelection = survivor.requiresInitialEntrySelection || duplicate.requiresInitialEntrySelection
         survivor.requiresImportConfiguration = survivor.requiresImportConfiguration || duplicate.requiresImportConfiguration
+        survivor.requiresExternalFolderLinkForPreview = survivor.requiresExternalFolderLinkForPreview
+            && duplicate.requiresExternalFolderLinkForPreview
         survivor.importEntryFileOptions = Array(
             Set(survivor.importEntryFileOptions + duplicate.importEntryFileOptions)
         ).sorted()
@@ -270,28 +272,70 @@ extension DocumentListView {
         let title = url.lastPathComponent
         let doc = InkPondDocument(title: title, content: "")
         doc.projectID = ProjectFileManager.uniqueFolderName(for: title)
+        doc.requiresExternalFolderLinkForPreview = false
 
         do {
             try BookmarkManager.saveBookmark(for: url, projectID: doc.projectID)
-
-            // Build relative paths for files in the external folder to configure import
-            var allFiles: [String] = []
-            if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey]) {
-                for case let fileURL as URL in enumerator {
-                    if let isRegularFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile, isRegularFile {
-                        let path = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
-                        allFiles.append(path)
-                    }
-                }
-            }
-            configureImportedDocument(doc, relativePaths: allFiles)
-            modelContext.insert(doc)
-            selectedDocument = doc
-            InteractionFeedback.notify(.success)
-            AccessibilitySupport.announce(L10n.a11yDocumentImported(title))
         } catch {
             BookmarkManager.removeBookmark(projectID: doc.projectID)
             zipImportError = error.localizedDescription
+            return
         }
+
+        folderLinkImportTask?.cancel()
+        folderLinkImportTitle = title
+        folderLinkImportProjectID = doc.projectID
+        folderLinkImportProgress = LinkedFolderLoadProgress(
+            phase: .scanning,
+            scannedFileCount: 0,
+            downloadedFileCount: 0,
+            totalDownloadFileCount: 0
+        )
+
+        let projectID = doc.projectID
+        folderLinkImportTask = Task { @MainActor in
+            do {
+                guard let linkedFolderURL = BookmarkManager.loadBookmark(projectID: projectID) else {
+                    throw InkPondFileError.fileNotFound(title)
+                }
+                defer { BookmarkManager.stopAccessing(projectID) }
+
+                let result = try await ProjectFileManager.loadLinkedFolderContents(at: linkedFolderURL) { progress in
+                    await MainActor.run {
+                        if folderLinkImportProjectID == projectID {
+                            folderLinkImportProgress = progress
+                        }
+                    }
+                }
+
+                guard !Task.isCancelled else {
+                    BookmarkManager.removeBookmark(projectID: projectID)
+                    clearFolderLinkImportProgress(projectID: projectID)
+                    return
+                }
+
+                configureImportedDocument(doc, relativePaths: result.relativePaths)
+                modelContext.insert(doc)
+                selectedDocument = doc
+                clearFolderLinkImportProgress(projectID: projectID)
+                InteractionFeedback.notify(.success)
+                AccessibilitySupport.announce(L10n.a11yDocumentImported(title))
+            } catch is CancellationError {
+                BookmarkManager.removeBookmark(projectID: projectID)
+                clearFolderLinkImportProgress(projectID: projectID)
+            } catch {
+                BookmarkManager.removeBookmark(projectID: projectID)
+                clearFolderLinkImportProgress(projectID: projectID)
+                zipImportError = error.localizedDescription
+                InteractionFeedback.notify(.error)
+            }
+        }
+    }
+
+    private func clearFolderLinkImportProgress(projectID: String) {
+        guard folderLinkImportProjectID == projectID else { return }
+        folderLinkImportProgress = nil
+        folderLinkImportTitle = nil
+        folderLinkImportProjectID = nil
     }
 }

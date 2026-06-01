@@ -28,6 +28,10 @@ typedef struct {
 /// options may be NULL to use bundled fonts only and skip package support.
 TypstResult typst_compile(const char *source, const TypstOptions *options);
 
+/// Download one @preview package into cache_dir before compilation.
+/// spec is formatted as "@preview/name:version".
+TypstResult typst_prefetch_package(const char *spec, const char *cache_dir);
+
 /// Free a TypstResult returned by typst_compile.
 void typst_free_result(TypstResult result);
 

@@ -522,6 +522,7 @@ struct PreviewPane: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor? = nil
     var compileToken: UUID = UUID()
+    var requiresExternalFolderLink: Bool = false
     var drivesCompilation: Bool = true
     var cancelsCompilerOnDisappear: Bool = true
     var focusCoordinator: EditorFocusCoordinator? = nil
@@ -531,6 +532,7 @@ struct PreviewPane: View {
     var entryFileName: String = "main.typ"
     var topViewportInset: CGFloat = 0
     var onGoToError: ((_ file: String, _ line: Int, _ column: Int) -> Void)? = nil
+    var onLinkExternalFolder: (() -> Void)? = nil
     @ScaledMetric(relativeTo: .caption2) private var previewStatsCardWidth = 126
     @ScaledMetric(relativeTo: .caption2) private var previewStatsMinHeight = 34
     @ScaledMetric(relativeTo: .caption2) private var previewStatsHorizontalPadding = 8
@@ -556,7 +558,10 @@ struct PreviewPane: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            if let pdf = compiler.pdfDocument {
+            if requiresExternalFolderLink {
+                externalFolderLinkRequiredPlaceholder
+                    .padding(.top, topViewportInset)
+            } else if let pdf = compiler.pdfDocument {
                 PDFKitView(
                     document: pdf,
                     focusCoordinator: focusCoordinator,
@@ -590,7 +595,7 @@ struct PreviewPane: View {
                     .padding(.top, topViewportInset)
             }
 
-            if compiler.isCompiling {
+            if compiler.isCompiling && !requiresExternalFolderLink {
                 GeometryReader { geometry in
                     let topPadding = topViewportInset > 0
                         ? topViewportInset + 8
@@ -606,7 +611,8 @@ struct PreviewPane: View {
                 .zIndex(1)
             }
 
-            if previewStatistics != nil || compiler.errorMessage != nil || !visibleFontWarnings.isEmpty {
+            if !requiresExternalFolderLink
+                && (previewStatistics != nil || compiler.errorMessage != nil || !visibleFontWarnings.isEmpty) {
                 bottomStatusOverlay
             }
         }
@@ -633,6 +639,10 @@ struct PreviewPane: View {
                 compileIfNeeded()
             }
             .onChange(of: compileToken) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: requiresExternalFolderLink, initial: true) { _, _ in
                 guard drivesCompilation else { return }
                 compileIfNeeded()
             }
@@ -676,6 +686,11 @@ struct PreviewPane: View {
 
     /// Only compile when the source contains meaningful content.
     private func compileIfNeeded() {
+        if requiresExternalFolderLink {
+            compiler.cancel()
+            compiler.clearPreview()
+            return
+        }
         let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             compiler.clearPreview()
@@ -695,6 +710,37 @@ struct PreviewPane: View {
     }
 
     // MARK: Sub-views
+
+    private var externalFolderLinkRequiredPlaceholder: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(L10n.tr("preview.external_link_required.title"))
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(L10n.tr("preview.external_link_required.message"))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+            if let onLinkExternalFolder {
+                Button(action: onLinkExternalFolder) {
+                    Label(L10n.tr("preview.external_link_required.button"), systemImage: "link")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .accessibilityIdentifier("editor.preview.link-external-folder")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.tr("preview.external_link_required.title"))
+        .accessibilityHint(L10n.tr("preview.external_link_required.message"))
+        .accessibilityIdentifier("editor.preview.external-link-required")
+    }
 
     private var placeholderView: some View {
         VStack(spacing: 16) {
@@ -1044,6 +1090,7 @@ struct PreviewCompileDriver: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     var compileToken: UUID
+    var requiresExternalFolderLink: Bool = false
 
     var body: some View {
         Color.clear
@@ -1066,6 +1113,9 @@ struct PreviewCompileDriver: View {
             .onChange(of: compileToken) {
                 compileIfNeeded()
             }
+            .onChange(of: requiresExternalFolderLink, initial: true) { _, _ in
+                compileIfNeeded()
+            }
             .onDisappear {
                 compiler.cancel()
             }
@@ -1074,6 +1124,11 @@ struct PreviewCompileDriver: View {
     }
 
     private func compileIfNeeded() {
+        if requiresExternalFolderLink {
+            compiler.cancel()
+            compiler.clearPreview()
+            return
+        }
         let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             compiler.clearPreview()

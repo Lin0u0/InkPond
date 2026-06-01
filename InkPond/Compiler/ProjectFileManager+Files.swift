@@ -35,6 +35,10 @@ extension ProjectFileManager {
 
     static func readTypFile(named name: String, for document: InkPondDocument) throws -> String {
         let url = try validatedProjectPath(relativePath: name, for: document)
+        if externalSingleFileURL(for: document) != nil {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            return try CloudFileCoordinator.readString(from: url)
+        }
         if useCoordination {
             return try CloudFileCoordinator.readString(from: url)
         }
@@ -43,6 +47,10 @@ extension ProjectFileManager {
 
     static func writeTypFile(named name: String, content: String, for document: InkPondDocument) throws {
         let url = try validatedProjectPath(relativePath: name, for: document)
+        if externalSingleFileURL(for: document) != nil {
+            try CloudFileCoordinator.writeString(content, to: url)
+            return
+        }
         if useCoordination {
             try CloudFileCoordinator.writeString(content, to: url)
         } else {

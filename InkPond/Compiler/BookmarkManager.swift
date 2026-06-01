@@ -8,7 +8,7 @@ enum BookmarkManager {
     }()
 
     /// Tracks resolved URLs and their access reference counts.
-    private nonisolated static let _lock = OSAllocatedUnfairLock<[String: (url: URL, refCount: Int)]>(initialState: [:])
+    private nonisolated static let _lock = OSAllocatedUnfairLock<[String: (url: URL, refCount: Int, isAccessing: Bool)]>(initialState: [:])
 
     nonisolated static func hasBookmark(projectID: String) -> Bool {
         if _lock.withLock({ $0[projectID] }) != nil { return true }
@@ -31,7 +31,7 @@ enum BookmarkManager {
     /// Each call increments a reference count — callers must balance with `stopAccessing(_:)`.
     nonisolated static func loadBookmark(projectID: String) -> URL? {
         // If already resolved, increment ref count and return cached URL.
-        if let entry = _lock.withLock({ state -> (url: URL, refCount: Int)? in
+        if let entry = _lock.withLock({ state -> (url: URL, refCount: Int, isAccessing: Bool)? in
             guard var entry = state[projectID] else { return nil }
             entry.refCount += 1
             state[projectID] = entry
@@ -44,7 +44,12 @@ enum BookmarkManager {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
 
         var isStale = false
-        guard let resolvedURL = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &isStale) else { return nil }
+        guard let resolvedURL = try? URL(
+            resolvingBookmarkData: data,
+            options: [.withoutImplicitStartAccessing],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return nil }
 
         if isStale {
             // Re-save refreshed bookmark data so it stays valid.
@@ -54,11 +59,17 @@ enum BookmarkManager {
             }
         }
 
-        if resolvedURL.startAccessingSecurityScopedResource() {
-            _lock.withLock { $0[projectID] = (url: resolvedURL, refCount: 1) }
-            return resolvedURL
+        let isAccessing = resolvedURL.startAccessingSecurityScopedResource()
+        guard FileManager.default.fileExists(atPath: resolvedURL.path)
+                || ((try? resolvedURL.checkResourceIsReachable()) == true) else {
+            if isAccessing {
+                resolvedURL.stopAccessingSecurityScopedResource()
+            }
+            return nil
         }
-        return nil
+
+        _lock.withLock { $0[projectID] = (url: resolvedURL, refCount: 1, isAccessing: isAccessing) }
+        return resolvedURL
     }
 
     /// Decrements the reference count for a bookmark's security-scoped access.
@@ -68,7 +79,9 @@ enum BookmarkManager {
             guard var entry = state[projectID] else { return }
             entry.refCount -= 1
             if entry.refCount <= 0 {
-                entry.url.stopAccessingSecurityScopedResource()
+                if entry.isAccessing {
+                    entry.url.stopAccessingSecurityScopedResource()
+                }
                 state.removeValue(forKey: projectID)
             } else {
                 state[projectID] = entry
@@ -79,7 +92,9 @@ enum BookmarkManager {
     static func removeBookmark(projectID: String) {
         _lock.withLock { state in
             if let entry = state[projectID] {
-                entry.url.stopAccessingSecurityScopedResource()
+                if entry.isAccessing {
+                    entry.url.stopAccessingSecurityScopedResource()
+                }
                 state.removeValue(forKey: projectID)
             }
         }

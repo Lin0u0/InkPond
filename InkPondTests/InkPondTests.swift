@@ -256,6 +256,8 @@ struct InkPondTests {
         #expect(document.title == "draft")
         #expect(document.entryFileName == "draft.typ")
         #expect(document.lastEditedFileName == "draft.typ")
+        #expect(document.requiresExternalFolderLinkForPreview)
+        #expect(document.needsExternalFolderLinkForPreview)
         #expect(!document.requiresInitialEntrySelection)
         #expect(!document.requiresImportConfiguration)
         #expect(document.importEntryFileOptions.isEmpty)
@@ -263,8 +265,118 @@ struct InkPondTests {
         let importedSource = try ProjectFileManager.readTypFile(named: "draft.typ", for: document)
         #expect(importedSource == "= Draft\n\nOpened from Files.")
         #expect(ProjectFileManager.listAllTypFiles(for: document) == ["draft.typ"])
-        #expect(FileManager.default.fileExists(atPath: ProjectFileManager.imagesDirectory(for: document).path))
-        #expect(FileManager.default.fileExists(atPath: ProjectFileManager.fontsDirectory(for: document).path))
+        #expect(!FileManager.default.fileExists(
+            atPath: ProjectFileManager.documentsURL.appendingPathComponent(document.projectID).path
+        ))
+
+        try ProjectFileManager.writeTypFile(named: "draft.typ", content: "= Edited", for: document)
+        let originalSource = try String(contentsOf: src, encoding: .utf8)
+        #expect(originalSource == "= Edited")
+    }
+
+    @MainActor
+    @Test func externalTypFileImporterOpensNestedFileAsEditorOnlySingleFile() async throws {
+        let srcDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: srcDir) }
+
+        let chapterDir = srcDir.appendingPathComponent("chapters", isDirectory: true)
+        try FileManager.default.createDirectory(at: chapterDir, withIntermediateDirectories: true)
+        try Data("= Root Main".utf8)
+            .write(to: srcDir.appendingPathComponent("main.typ"))
+        try Data("= Chapter Main".utf8)
+            .write(to: chapterDir.appendingPathComponent("main.typ"))
+        let openedFile = chapterDir.appendingPathComponent("intro.typ")
+        try Data("= Intro".utf8).write(to: openedFile)
+
+        let result = try await ExternalTypFileImporter.importFile(from: openedFile)
+        let document = result.document
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: document) }
+
+        #expect(result.mode == .singleFile)
+        #expect(!document.isExternalFolder)
+        #expect(document.entryFileName == "intro.typ")
+        #expect(document.lastEditedFileName == "intro.typ")
+        #expect(document.requiresExternalFolderLinkForPreview)
+        #expect(ProjectFileManager.listAllTypFiles(for: document) == ["intro.typ"])
+        #expect(!FileManager.default.fileExists(
+            atPath: ProjectFileManager.documentsURL.appendingPathComponent(document.projectID).path
+        ))
+        let source = try ProjectFileManager.readTypFile(named: "intro.typ", for: document)
+        #expect(source == "= Intro")
+    }
+
+    @Test func bookmarkManagerLoadsReachableFolderBookmark() throws {
+        let srcDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: srcDir) }
+
+        let projectID = "bookmark-\(UUID().uuidString)"
+        try BookmarkManager.saveBookmark(for: srcDir, projectID: projectID)
+        defer { BookmarkManager.removeBookmark(projectID: projectID) }
+
+        let resolved = try #require(BookmarkManager.loadBookmark(projectID: projectID))
+        defer { BookmarkManager.stopAccessing(projectID) }
+
+        #expect(resolved.standardizedFileURL == srcDir.standardizedFileURL)
+    }
+
+    @Test func externalFolderBookmarkAllowsPreviewEvenIfDocumentWasSingleFile() throws {
+        let srcDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: srcDir) }
+
+        let document = makeDocument(projectID: "bookmark-\(UUID().uuidString)")
+        document.requiresExternalFolderLinkForPreview = true
+        try BookmarkManager.saveBookmark(for: srcDir, projectID: document.projectID)
+        defer { BookmarkManager.removeBookmark(projectID: document.projectID) }
+
+        #expect(document.isExternalFolder)
+        #expect(!document.needsExternalFolderLinkForPreview)
+    }
+
+    @MainActor
+    @Test func externalTypFileImporterDoesNotCopyDependenciesForEditorOnlyOpen() async throws {
+        let srcDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: srcDir) }
+
+        let templateDir = srcDir.appendingPathComponent("templates", isDirectory: true)
+        let imageDir = srcDir.appendingPathComponent("images", isDirectory: true)
+        let fontsDir = srcDir.appendingPathComponent("fonts", isDirectory: true)
+        let hiddenCacheDir = srcDir.appendingPathComponent(".typst", isDirectory: true)
+        try FileManager.default.createDirectory(at: templateDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: imageDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fontsDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: hiddenCacheDir, withIntermediateDirectories: true)
+
+        let src = srcDir.appendingPathComponent("draft.typ")
+        try Data(#"#import "templates/style.typ": *\n#bibliography("refs.bib")\n#image("images/logo.png")"#.utf8)
+            .write(to: src)
+        try Data("= Main should not be selected".utf8)
+            .write(to: srcDir.appendingPathComponent("main.typ"))
+        try Data("#let heading(body) = body".utf8)
+            .write(to: templateDir.appendingPathComponent("style.typ"))
+        try Data("@book{demo,title={Demo}}".utf8)
+            .write(to: srcDir.appendingPathComponent("refs.bib"))
+        try Data([0x89, 0x50, 0x4E, 0x47])
+            .write(to: imageDir.appendingPathComponent("logo.png"))
+        try Data("font".utf8)
+            .write(to: fontsDir.appendingPathComponent("Demo.ttf"))
+        try Data("cache".utf8)
+            .write(to: hiddenCacheDir.appendingPathComponent("package.typ"))
+
+        let result = try await ExternalTypFileImporter.importFile(from: src, preferLinkedFolder: false)
+        let document = result.document
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: document) }
+
+        #expect(result.mode == .singleFile)
+        #expect(!document.isExternalFolder)
+        #expect(document.entryFileName == "draft.typ")
+        #expect(document.lastEditedFileName == "draft.typ")
+        #expect(document.requiresExternalFolderLinkForPreview)
+        #expect(!document.requiresImportConfiguration)
+
+        #expect(ProjectFileManager.listAllTypFiles(for: document) == ["draft.typ"])
+        #expect(!FileManager.default.fileExists(
+            atPath: ProjectFileManager.documentsURL.appendingPathComponent(document.projectID).path
+        ))
     }
 
     @Test func externalTypFileImporterResolvesManagedProjectLocation() throws {
@@ -290,6 +402,14 @@ struct InkPondTests {
         try Data("= Draft".utf8).write(to: externalURL)
 
         #expect(ExternalTypFileImporter.managedProjectLocation(for: externalURL) == nil)
+
+        let inboxDir = ProjectFileManager.documentsURL.appendingPathComponent("Inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: inboxDir, withIntermediateDirectories: true)
+        let inboxURL = inboxDir.appendingPathComponent("opened-\(UUID().uuidString).typ")
+        try Data("= Inbox copy".utf8).write(to: inboxURL)
+        defer { try? FileManager.default.removeItem(at: inboxURL) }
+
+        #expect(ExternalTypFileImporter.managedProjectLocation(for: inboxURL) == nil)
     }
 
     @Test func projectFileManagerImportFilePreservesExistingDestinationWhenReplacementCopyFails() throws {
@@ -383,6 +503,38 @@ struct InkPondTests {
 
         let files = ProjectFileManager.listAllFiles(in: ProjectFileManager.projectDirectory(for: doc))
         #expect(files == ["assets/icons/logo.png", "main.typ"])
+    }
+
+    @Test func linkedFolderLoaderScansFullFolderAndReportsProgress() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try Data("= Main".utf8).write(to: folder.appendingPathComponent("main.typ"))
+        let chapterDir = folder.appendingPathComponent("chapters", isDirectory: true)
+        let assetDir = folder.appendingPathComponent("assets/icons", isDirectory: true)
+        try FileManager.default.createDirectory(at: chapterDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: assetDir, withIntermediateDirectories: true)
+        try Data("= Intro".utf8).write(to: chapterDir.appendingPathComponent("intro.typ"))
+        try Data([0x01]).write(to: assetDir.appendingPathComponent("logo.png"))
+        for index in 0..<125 {
+            try Data("note \(index)".utf8).write(to: folder.appendingPathComponent("note-\(index).txt"))
+        }
+
+        var updates: [LinkedFolderLoadProgress] = []
+        let result = try await ProjectFileManager.loadLinkedFolderContents(at: folder) { progress in
+            await MainActor.run {
+                updates.append(progress)
+            }
+        }
+
+        #expect(result.scannedFileCount == 128)
+        #expect(result.downloadedFileCount == 0)
+        #expect(result.relativePaths.contains("main.typ"))
+        #expect(result.relativePaths.contains("chapters/intro.typ"))
+        #expect(result.relativePaths.contains("assets/icons/logo.png"))
+        #expect(result.relativePaths.contains("note-124.txt"))
+        #expect(updates.contains { $0.phase == .scanning && $0.scannedFileCount >= 50 })
+        #expect(updates.contains { $0.phase == .downloading })
     }
 
     @Test func projectFileManagerFindsImportDirectoryCandidates() {
@@ -987,6 +1139,100 @@ struct InkPondTests {
         #expect(!compiler.isCompiling)
         #expect(compiler.pdfData == nil)
         #expect(!compiler.compiledOnce)
+    }
+
+    @Test func typstCompilerUsesDefaultTimeoutForSourcesWithoutUncachedPreviewPackages() throws {
+        let cacheRoot = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+
+        let cachedPackage = cacheRoot
+            .appendingPathComponent("preview", isDirectory: true)
+            .appendingPathComponent("cetz", isDirectory: true)
+            .appendingPathComponent("0.3.4", isDirectory: true)
+        try FileManager.default.createDirectory(at: cachedPackage, withIntermediateDirectories: true)
+
+        #expect(TypstCompiler.timeout(forSource: "= Plain", packageCacheDirectory: cacheRoot) == Duration.seconds(30))
+        #expect(
+            TypstCompiler.timeout(
+                forSource: #"#import "@preview/cetz:0.3.4": canvas"#,
+                packageCacheDirectory: cacheRoot
+            ) == Duration.seconds(30)
+        )
+        #expect(
+            TypstCompiler.timeout(
+                forSource: #"#import "@local/cetz:0.3.4": canvas"#,
+                packageCacheDirectory: cacheRoot
+            ) == Duration.seconds(30)
+        )
+    }
+
+    @Test func typstCompilerExtendsTimeoutForUncachedPreviewPackages() {
+        let cacheRoot = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+
+        #expect(
+            TypstCompiler.timeout(
+                forSource: #"#import "@preview/cetz:0.3.4": canvas"#,
+                packageCacheDirectory: cacheRoot
+            ) == Duration.seconds(120)
+        )
+    }
+
+    @Test func typstCompilerFindsUncachedPreviewPackagesForPrefetch() throws {
+        let cacheRoot = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+
+        let cachedPackage = cacheRoot
+            .appendingPathComponent("preview", isDirectory: true)
+            .appendingPathComponent("cached", isDirectory: true)
+            .appendingPathComponent("1.0.0", isDirectory: true)
+        try FileManager.default.createDirectory(at: cachedPackage, withIntermediateDirectories: true)
+
+        let source = """
+        #import "@preview/cached:1.0.0": *
+        #import "@preview/missing:2.0.0": *
+        #import "@local/private:1.0.0": *
+        """
+
+        let specs = TypstCompiler.uncachedPreviewPackageSpecs(forSource: source, packageCacheDirectory: cacheRoot)
+        #expect(specs == ["@preview/missing:2.0.0"])
+    }
+
+    @MainActor
+    @Test func typstCompilerPrefetchFailurePreventsCompilation() async {
+        let cacheRoot = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+
+        let compileCounter = LockedCounter()
+        let prefetchCounter = LockedCounter()
+        let compiler = TypstCompiler(
+            compileWorker: { _, _, _ in
+                compileCounter.increment()
+                return .success((Data("compiled".utf8), nil))
+            },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in },
+            packageCacheDirectory: cacheRoot,
+            previewPackagePrefetcher: { specs in
+                if specs == ["@preview/missing:2.0.0"] {
+                    prefetchCounter.increment()
+                }
+                return .failure(.compilationFailed("prefetch failed"))
+            }
+        )
+
+        compiler.compileNow(
+            source: #"#import "@preview/missing:2.0.0": *"#,
+            fontPaths: [],
+            rootDir: nil
+        )
+
+        await waitUntil {
+            compiler.errorMessage == "prefetch failed" && !compiler.isCompiling
+        }
+
+        #expect(prefetchCounter.value == 1)
+        #expect(compileCounter.value == 0)
     }
 
     @MainActor

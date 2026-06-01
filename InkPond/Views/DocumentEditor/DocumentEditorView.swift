@@ -32,6 +32,7 @@ struct DocumentEditorView: View {
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(\.horizontalSizeClass) var sizeClass
+    @Environment(\.colorScheme) var colorScheme
     @Environment(\.modelContext) var modelContext
     @Environment(ThemeManager.self) var themeManager
     @Environment(EditorFontSettings.self) var editorFontSettings
@@ -86,6 +87,8 @@ struct DocumentEditorView: View {
     @State var cachedExternalLabels: [(name: String, kind: String)] = []
     @State var cachedImageFiles: [String] = []
     @State var cachedPackageSpecs: [String] = []
+    @State var referenceCompletionRefreshTask: Task<Void, Never>?
+    @State var imageFileRefreshTask: Task<Void, Never>?
     @State var showingPositionRestore = false
     @State var positionRestoreDismissTask: Task<Void, Never>?
     @State var pendingPreviewSync = false
@@ -93,11 +96,19 @@ struct DocumentEditorView: View {
     @State var showingKeyboardShortcuts = false
     @State var showingOutline = false
     @State var showingSnippetBrowser = false
+    @State var showingExternalFolderLinkImporter = false
+    @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
+    @State var externalFolderLinkProgressTitle: String?
+    @State var externalFolderLinkTask: Task<Void, Never>?
     @State var positionSyncTask: Task<Void, Never>?
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     
     var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
+
+    var previewRequiresExternalFolderLink: Bool {
+        document.needsExternalFolderLinkForPreview
+    }
     
     var compiledPreviewCacheDescriptor: CompiledPreviewCacheDescriptor {
         CompiledPreviewCacheDescriptor(
@@ -109,6 +120,21 @@ struct DocumentEditorView: View {
 
     var completionFontFamilies: [String] {
         availableFontFamilies
+    }
+
+    var editorTitleForegroundColor: Color {
+        switch themeManager.themeID {
+        case "mocha":
+            return .white
+        case "latte":
+            return .black
+        default:
+            return colorScheme == .dark ? .white : .black
+        }
+    }
+
+    var appThemeTitleForegroundColor: Color {
+        colorScheme == .dark ? .white : .black
     }
 
     init(

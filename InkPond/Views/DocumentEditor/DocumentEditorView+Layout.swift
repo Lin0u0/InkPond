@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import PDFKit
 import PhotosUI
 import UniformTypeIdentifiers
@@ -45,6 +46,20 @@ private struct ConditionalToolbarRoleModifier: ViewModifier {
             content.toolbarRole(.editor)
         } else {
             content
+        }
+    }
+}
+
+private enum ExternalFolderLinkError: LocalizedError {
+    case missingSource
+    case folderMismatch
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSource:
+            L10n.tr("preview.external_link_required.missing_source")
+        case .folderMismatch:
+            L10n.tr("preview.external_link_required.folder_mismatch")
         }
     }
 }
@@ -151,6 +166,7 @@ extension DocumentEditorView {
             rootDir: rootDir,
             previewCacheDescriptor: compiledPreviewCacheDescriptor,
             compileToken: compileToken,
+            requiresExternalFolderLink: previewRequiresExternalFolderLink,
             drivesCompilation: sizeClass == .regular,
             cancelsCompilerOnDisappear: sizeClass == .regular,
             focusCoordinator: focusCoordinator,
@@ -160,8 +176,111 @@ extension DocumentEditorView {
             topViewportInset: topViewportInset,
             onGoToError: { file, line, column in
                 navigateToError(file: file, line: line, column: column)
-            }
+            },
+            onLinkExternalFolder: previewRequiresExternalFolderLink ? {
+                showingExternalFolderLinkImporter = true
+            } : nil
         )
+    }
+
+    func linkExternalFolderForPreview(from folderURL: URL) {
+        guard flushPendingSave() else { return }
+        externalFolderLinkTask?.cancel()
+        externalFolderLinkProgressTitle = folderURL.lastPathComponent
+        externalFolderLinkProgress = LinkedFolderLoadProgress(
+            phase: .scanning,
+            scannedFileCount: 0,
+            downloadedFileCount: 0,
+            totalDownloadFileCount: 0
+        )
+
+        let projectID = document.projectID
+        externalFolderLinkTask = Task { @MainActor in
+            do {
+                let accessed = folderURL.startAccessingSecurityScopedResource()
+                defer { if accessed { folderURL.stopAccessingSecurityScopedResource() } }
+
+                guard let externalFileURL = ProjectFileManager.externalSingleFileURL(for: document) else {
+                    throw ExternalFolderLinkError.missingSource
+                }
+
+                guard let relativeFileName = ProjectFileManager.relativePath(of: externalFileURL, in: folderURL) else {
+                    throw ExternalFolderLinkError.folderMismatch
+                }
+
+                _ = try await ProjectFileManager.loadLinkedFolderContents(at: folderURL) { progress in
+                    await MainActor.run {
+                        if document.projectID == projectID {
+                            externalFolderLinkProgress = progress
+                        }
+                    }
+                }
+
+                guard !Task.isCancelled else {
+                    clearExternalFolderLinkProgress(projectID: projectID)
+                    return
+                }
+
+                try BookmarkManager.saveBookmark(for: folderURL, projectID: document.projectID)
+                ExternalTypFileSessionStore.unregister(projectID: document.projectID)
+                document.entryFileName = relativeFileName
+                document.lastEditedFileName = relativeFileName
+                document.lastCursorLocation = 0
+                document.requiresExternalFolderLinkForPreview = false
+                document.requiresInitialEntrySelection = false
+                document.requiresImportConfiguration = false
+                document.importEntryFileOptions = []
+                document.importImageDirectoryOptions = []
+                document.importFontDirectoryOptions = []
+                _ = loadFile(named: relativeFileName)
+                refreshReferenceCompletions()
+                handleCompileInputsChanged()
+                try persistLinkedExternalDocumentIfNeeded()
+                clearExternalFolderLinkProgress(projectID: projectID)
+                InteractionFeedback.notify(.success)
+            } catch is CancellationError {
+                clearExternalFolderLinkProgress(projectID: projectID)
+            } catch let error as ExternalFolderLinkError {
+                clearExternalFolderLinkProgress(projectID: projectID)
+                previewActionError = error.localizedDescription
+                InteractionFeedback.notify(.error)
+            } catch {
+                BookmarkManager.removeBookmark(projectID: projectID)
+                clearExternalFolderLinkProgress(projectID: projectID)
+                previewActionError = error.localizedDescription
+                InteractionFeedback.notify(.error)
+            }
+        }
+    }
+
+    private func persistLinkedExternalDocumentIfNeeded() throws {
+        let projectID = document.projectID
+        let descriptor = FetchDescriptor<InkPondDocument>(
+            predicate: #Predicate { $0.projectID == projectID }
+        )
+        if try modelContext.fetch(descriptor).isEmpty {
+            modelContext.insert(document)
+        }
+        try modelContext.save()
+    }
+
+    private func clearExternalFolderLinkProgress(projectID: String) {
+        guard document.projectID == projectID else { return }
+        externalFolderLinkProgress = nil
+        externalFolderLinkProgressTitle = nil
+        externalFolderLinkTask = nil
+    }
+
+    private var editorTitleSecondaryForegroundColor: Color {
+        editorTitleForegroundColor.opacity(0.68)
+    }
+
+    private var compactTitleForegroundColor: Color {
+        selectedTab == previewTab ? appThemeTitleForegroundColor : editorTitleForegroundColor
+    }
+
+    private var compactTitleSecondaryForegroundColor: Color {
+        compactTitleForegroundColor.opacity(0.68)
     }
 
     func splitHandle(totalWidth: CGFloat) -> some View {
@@ -242,7 +361,8 @@ extension DocumentEditorView {
                         preflightError: fontResolutionError,
                         rootDir: rootDir,
                         previewCacheDescriptor: compiledPreviewCacheDescriptor,
-                        compileToken: compileToken
+                        compileToken: compileToken,
+                        requiresExternalFolderLink: previewRequiresExternalFolderLink
                     )
                     editorPane(topViewportInset: topInset)
                         .ignoresSafeArea(edges: .top)
@@ -264,6 +384,12 @@ extension DocumentEditorView {
     }
 
     var shareButtonAction: () -> Void {
+        if previewRequiresExternalFolderLink {
+            return {
+                guard flushPendingSave() else { return }
+                exporter.exportTypSource(for: document, fileName: currentFileName)
+            }
+        }
         if sizeClass == .regular || selectedTab == previewTab {
             return {
                 guard flushPendingSave() else { return }
@@ -281,12 +407,14 @@ extension DocumentEditorView {
     }
 
     var shareButtonLabel: String {
+        if previewRequiresExternalFolderLink { return L10n.tr("Export .typ") }
         if sizeClass == .regular || selectedTab == previewTab { return L10n.tr("Share PDF") }
         return L10n.tr("Export .typ")
     }
 
     var canTriggerPreviewActions: Bool {
-        !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !previewRequiresExternalFolderLink
+            && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var resumeBannerLabel: String {
@@ -500,11 +628,12 @@ extension DocumentEditorView {
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(document.title)
                                     .font(.headline)
+                                    .foregroundStyle(compactTitleForegroundColor)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Text(currentFileName)
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(compactTitleSecondaryForegroundColor)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
@@ -697,11 +826,18 @@ extension DocumentEditorView {
                 positionSyncTask = nil
                 fontFamilyRefreshTask?.cancel()
                 fontFamilyRefreshTask = nil
+                externalFolderLinkTask?.cancel()
+                externalFolderLinkTask = nil
+                externalFolderLinkProgress = nil
+                externalFolderLinkProgressTitle = nil
                 _ = flushPendingSave()
                 persistEditorPositionIfNeeded()
                 stopConflictMonitoring()
                 focusCoordinator.clearFocusPreservation()
                 compiler.cancel()
+                if ExternalTypFileSessionStore.contains(projectID: document.projectID) {
+                    ExternalTypFileSessionStore.unregister(projectID: document.projectID)
+                }
             }
             .onChange(of: editorText) { _, newText in
                 guard !isLoadingFileContent else { return }
@@ -824,6 +960,10 @@ extension DocumentEditorView {
                     }
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                externalFolderLinkProgressInset
+            }
+            .animation(.snappy(duration: 0.25), value: externalFolderLinkProgress)
             .overlay(alignment: .bottom) {
                 if let toast = imageImportToast {
                     Text(toast)
@@ -869,6 +1009,15 @@ extension DocumentEditorView {
                     if let cursorOffset {
                         pendingCursorJump = targetRange.location + cursorOffset
                     }
+                }
+            }
+            .fileImporter(isPresented: $showingExternalFolderLinkImporter, allowedContentTypes: [.folder]) { result in
+                switch result {
+                case .success(let url):
+                    linkExternalFolderForPreview(from: url)
+                case .failure(let error):
+                    previewActionError = error.localizedDescription
+                    InteractionFeedback.notify(.error)
                 }
             }
             .fullScreenCover(isPresented: $showingSlideshow) {
@@ -937,6 +1086,21 @@ extension DocumentEditorView {
             } message: {
                 Text(L10n.format("icloud.conflict.message", conflictFileName))
             }
+    }
+
+    @ViewBuilder
+    private var externalFolderLinkProgressInset: some View {
+        if let externalFolderLinkProgress {
+            LinkedFolderLoadProgressView(
+                title: externalFolderLinkProgressTitle ?? L10n.tr("preview.external_link_required.button"),
+                progress: externalFolderLinkProgress
+            ) {
+                externalFolderLinkTask?.cancel()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 
     var splitHandleAccessibilityValue: String {

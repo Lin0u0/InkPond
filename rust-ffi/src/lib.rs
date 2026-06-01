@@ -577,6 +577,15 @@ pub struct TypstResult {
     pub success: bool,
 }
 
+fn success_empty_result() -> TypstResult {
+    TypstResult {
+        pdf_data: std::ptr::null_mut(),
+        pdf_len: 0,
+        error_message: std::ptr::null_mut(),
+        success: true,
+    }
+}
+
 /// Compile Typst source to PDF.
 ///
 /// # Safety
@@ -594,6 +603,87 @@ pub unsafe extern "C" fn typst_compile(
         Ok(result) => result,
         Err(_) => error_result("Typst compiler panicked"),
     }
+}
+
+/// Download one @preview package into the package cache.
+///
+/// # Safety
+/// `spec` must be a valid null-terminated UTF-8 string formatted as
+/// `@preview/name:version`. `cache_dir` must point to a valid UTF-8 directory.
+#[no_mangle]
+pub unsafe extern "C" fn typst_prefetch_package(
+    spec: *const c_char,
+    cache_dir: *const c_char,
+) -> TypstResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_prefetch_package_impl(spec, cache_dir)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_result("Typst package prefetch panicked"),
+    }
+}
+
+unsafe fn typst_prefetch_package_impl(
+    spec: *const c_char,
+    cache_dir: *const c_char,
+) -> TypstResult {
+    if spec.is_null() {
+        return error_result("null package spec pointer");
+    }
+    if cache_dir.is_null() {
+        return error_result("package cache directory is unavailable");
+    }
+
+    let spec_str = match CStr::from_ptr(spec).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_result("package spec is not valid UTF-8"),
+    };
+    let cache_dir_str = match CStr::from_ptr(cache_dir).to_str() {
+        Ok(s) if !s.is_empty() => s,
+        Ok(_) => return error_result("package cache directory is unavailable"),
+        Err(_) => return error_result("package cache directory is not valid UTF-8"),
+    };
+
+    let (namespace, name, version) = match parse_prefetch_package_spec(spec_str) {
+        Ok(parsed) => parsed,
+        Err(message) => return error_result(&message),
+    };
+
+    let cache_root = PathBuf::from(cache_dir_str);
+    let pkg_dir = cache_root.join(&namespace).join(&name).join(&version);
+    if pkg_dir.exists() {
+        return success_empty_result();
+    }
+
+    let key = format!("{namespace}/{name}/{version}");
+    let package_lock = package_fetch_lock(&key);
+    let _guard = package_lock.lock().unwrap();
+
+    if pkg_dir.exists() {
+        return success_empty_result();
+    }
+
+    let url = format!("https://packages.typst.org/{namespace}/{name}-{version}.tar.gz");
+    match download_and_extract(&url, &pkg_dir) {
+        Ok(_) => success_empty_result(),
+        Err(error) => error_result(&format!("{error}")),
+    }
+}
+
+fn parse_prefetch_package_spec(spec: &str) -> Result<(String, String, String), String> {
+    let rest = spec
+        .strip_prefix("@preview/")
+        .ok_or_else(|| "only @preview packages can be prefetched".to_string())?;
+    let (name, version) = rest
+        .split_once(':')
+        .ok_or_else(|| "package spec must be formatted as @preview/name:version".to_string())?;
+    if name.is_empty() || version.is_empty() {
+        return Err("package spec must include a name and version".to_string());
+    }
+    if name.contains('/') || name.contains('\\') || version.contains('/') || version.contains('\\') {
+        return Err("package spec contains an unsafe path component".to_string());
+    }
+    Ok(("preview".to_string(), name.to_string(), version.to_string()))
 }
 
 unsafe fn typst_compile_impl(source: *const c_char, options: *const TypstOptions) -> TypstResult {
