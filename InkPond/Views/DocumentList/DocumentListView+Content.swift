@@ -3,17 +3,23 @@
 //  InkPond
 //
 
+import PDFKit
 import SwiftUI
 import SwiftData
+import UIKit
 
 extension DocumentListView {
     var documentList: some View {
-        List(selection: $selectedDocument) {
-            ForEach(sortedDocuments) { document in
-                documentRow(document)
+        ScrollView {
+            LazyVGrid(columns: projectGridColumns, spacing: 16) {
+                ForEach(sortedDocuments) { document in
+                    documentRow(document)
+                }
             }
+            .padding(.horizontal, isIPad ? 24 : 16)
+            .padding(.vertical, 16)
         }
-        .listStyle(.insetGrouped)
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .overlay {
             if isShowingLibraryEmptyState {
                 libraryEmptyState
@@ -23,6 +29,7 @@ extension DocumentListView {
         }
         .task {
             startFilesystemMonitoring()
+            refreshPreviewCacheSnapshot()
         }
         .onChange(of: storageManager.mode) { _, _ in
             guard !storageManager.isMigrating else { return }
@@ -35,6 +42,9 @@ extension DocumentListView {
         .onChange(of: storageManager.iCloudAvailable) { _, _ in
             scheduleFilesystemMonitoringRestart()
         }
+        .onChange(of: documents.map(\.projectID)) { _, _ in
+            refreshPreviewCacheSnapshot()
+        }
         .onDisappear {
             monitor.stop()
             syncTask?.cancel()
@@ -44,28 +54,27 @@ extension DocumentListView {
         }
     }
 
+    var projectGridColumns: [GridItem] {
+        [
+            GridItem(
+                .adaptive(minimum: isIPad ? 220 : 155, maximum: 320),
+                spacing: 16,
+                alignment: .top
+            )
+        ]
+    }
+
     func documentRow(_ document: InkPondDocument) -> some View {
-        NavigationLink(value: document) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    if document.isExternalFolder {
-                        Image(systemName: "link")
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(document.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.format("doc.time.created_value", document.createdAt.formatted(rowDateFormat)))
-                    Text(L10n.format("doc.time.modified_value", document.modifiedAt.formatted(rowDateFormat)))
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
+        Button {
+            selectedDocument = document
+        } label: {
+            ProjectHomeCard(
+                document: document,
+                cacheEntry: previewCacheEntriesByProjectID[document.projectID],
+                dateFormat: rowDateFormat
+            )
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             L10n.a11yDocumentRowLabel(
@@ -76,7 +85,7 @@ extension DocumentListView {
         )
         .accessibilityHint(L10n.a11yDocumentRowHint)
         .accessibilityValue(selectedDocument == document ? L10n.tr("a11y.state.selected") : "")
-        .accessibilityIdentifier("document-list.row.\(document.projectID)")
+        .accessibilityIdentifier("project-home.card.\(document.projectID)")
         .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.rename"))) {
             renamingDocument = document
             newTitle = document.title
@@ -120,6 +129,15 @@ extension DocumentListView {
                     Label("Delete", systemImage: "trash")
                 }
             }
+        }
+    }
+
+    func refreshPreviewCacheSnapshot() {
+        do {
+            let entries = try CompiledPreviewCacheStore().snapshot().entries
+            previewCacheEntriesByProjectID = Dictionary(uniqueKeysWithValues: entries.map { ($0.projectID, $0) })
+        } catch {
+            previewCacheEntriesByProjectID = [:]
         }
     }
 
@@ -308,5 +326,98 @@ extension DocumentListView {
                 L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label)
             )
         )
+    }
+}
+
+private struct ProjectHomeCard: View {
+    let document: InkPondDocument
+    let cacheEntry: CompiledPreviewCacheEntry?
+    let dateFormat: Date.FormatStyle
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ProjectHomeThumbnail(pdfURL: cacheEntry?.pdfURL)
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(.quaternary, lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    if document.isExternalFolder {
+                        Image(systemName: "link")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(document.title)
+                        .font(.headline.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Text(document.entryFileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(L10n.format("doc.time.modified_value", document.modifiedAt.formatted(dateFormat)))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct ProjectHomeThumbnail: View {
+    let pdfURL: URL?
+    @State private var thumbnail: UIImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(10)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.richtext")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Typst")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task(id: pdfURL) {
+            loadThumbnail()
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func loadThumbnail() {
+        guard let pdfURL,
+              let document = PDFDocument(url: pdfURL),
+              let page = document.page(at: 0) else {
+            thumbnail = nil
+            return
+        }
+        thumbnail = page.thumbnail(of: CGSize(width: 520, height: 680), for: .mediaBox)
     }
 }

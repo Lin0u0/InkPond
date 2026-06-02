@@ -29,6 +29,7 @@ struct DocumentEditorView: View {
     @Bindable var document: InkPondDocument
     var isSidebarVisible: Bool = false
     var externalOpenRequest: ExternalTypFileOpenRequest?
+    var onCloseProject: (() -> Void)?
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(\.horizontalSizeClass) var sizeClass
@@ -101,10 +102,29 @@ struct DocumentEditorView: View {
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?
     @State var positionSyncTask: Task<Void, Never>?
+    @State var openTabs: [ProjectFileTab] = []
+    @State var activeTabPath: String?
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     
     var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
+
+    var activeProjectPath: String {
+        activeTabPath ?? currentFileName
+    }
+
+    var activeProjectTab: ProjectFileTab? {
+        guard let activeTabPath else { return nil }
+        return openTabs.first { $0.relativePath == activeTabPath }
+    }
+
+    var activeTabIsTextEditable: Bool {
+        activeProjectTab?.kind.isTextEditable ?? true
+    }
+
+    var activeEditorSubtitle: String {
+        activeProjectTab?.relativePath ?? currentFileName
+    }
 
     var previewRequiresExternalFolderLink: Bool {
         document.needsExternalFolderLinkForPreview
@@ -140,11 +160,13 @@ struct DocumentEditorView: View {
     init(
         document: InkPondDocument,
         isSidebarVisible: Bool = false,
-        externalOpenRequest: ExternalTypFileOpenRequest? = nil
+        externalOpenRequest: ExternalTypFileOpenRequest? = nil,
+        onCloseProject: (() -> Void)? = nil
     ) {
         self.document = document
         self.isSidebarVisible = isSidebarVisible
         self.externalOpenRequest = externalOpenRequest
+        self.onCloseProject = onCloseProject
     }
 
     var body: some View {

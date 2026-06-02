@@ -485,9 +485,32 @@ struct InkPondTests {
 
         #expect(tree.map(\.displayName) == ["chapters", "fonts", "images", "main.typ"])
         let chapters = try #require(tree.first(where: { $0.relativePath == "chapters" }))
+        #expect(chapters.kind == .directory)
         #expect(chapters.children.map(\.relativePath) == ["chapters/intro.typ"])
         let images = try #require(tree.first(where: { $0.relativePath == "images" }))
         #expect(images.children.map(\.relativePath) == ["images/cover.png"])
+    }
+
+    @Test func fileKindClassifiesSupportedWorkspaceTypes() {
+        let cases: [(String, FileKind)] = [
+            ("main.typ", .typ),
+            ("notes.txt", .text),
+            ("refs.bib", .bibliography),
+            ("refs.yaml", .bibliography),
+            ("data.json", .data),
+            ("table.csv", .data),
+            ("typst.toml", .configuration),
+            ("cover.png", .image),
+            ("diagram.svg", .vector),
+            ("attachment.pdf", .pdf),
+            ("fonts/Inter-Regular.otf", .font),
+            ("archive.zip", .archive),
+            ("unknown.bin", .other)
+        ]
+
+        for (path, expected) in cases {
+            #expect(ProjectFileManager.fileKind(for: path, imageDirectoryName: "images") == expected)
+        }
     }
 
     @Test func projectFileManagerListsAllFilesRecursively() throws {
@@ -574,6 +597,16 @@ struct InkPondTests {
         #expect(isImageKind(tree.first(where: { $0.relativePath == "bitmap.bmp" })?.kind))
         let images = try #require(tree.first(where: { $0.relativePath == "images" }))
         #expect(isImageKind(images.children.first(where: { $0.relativePath == "images/scan.tiff" })?.kind))
+    }
+
+    @Test func projectFileManagerRemovesFontReferencesByPathOrFileName() {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        doc.fontFileNames = ["Inter-Regular.otf", "fonts/Mono.ttf", "Keep.ttf"]
+
+        ProjectFileManager.removeFontReference(relativePath: "fonts/Inter-Regular.otf", from: doc)
+        ProjectFileManager.removeFontReference(relativePath: "fonts/Mono.ttf", from: doc)
+
+        #expect(doc.fontFileNames == ["Keep.ttf"])
     }
 
     @Test func projectFileManagerRecognizesOnlyRealImportChoices() {
@@ -2559,11 +2592,13 @@ struct InkPondTests {
 
 }
 
-private func isImageKind(_ kind: ProjectTreeNode.Kind?) -> Bool {
-    if case .image? = kind {
+private func isImageKind(_ kind: FileKind?) -> Bool {
+    switch kind {
+    case .image, .vector, .pdf:
         return true
+    case .directory, .typ, .text, .bibliography, .data, .configuration, .font, .archive, .other, .none:
+        return false
     }
-    return false
 }
 
 private final class LockedCounter: @unchecked Sendable {

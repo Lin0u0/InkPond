@@ -159,25 +159,22 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            DocumentListView(selectedDocument: documentListSelection, searchText: $searchText)
-                .navigationSplitViewColumnWidth(min: 320, ideal: 340)
-        } detail: {
-            if let document = selectedDocument {
+        NavigationStack {
+            Group {
+                if let document = selectedDocument {
                 DocumentEditorView(
                     document: document,
-                    isSidebarVisible: columnVisibility != .detailOnly,
-                    externalOpenRequest: externalOpenRequest
+                    isSidebarVisible: false,
+                    externalOpenRequest: externalOpenRequest,
+                    onCloseProject: {
+                        selectedDocument = nil
+                        externalOpenRequest = nil
+                    }
                 )
                 .id(document.persistentModelID)
-            } else {
-                ContentUnavailableView(
-                    "No Document Selected",
-                    systemImage: "doc.text",
-                    description: Text("Select a document from the list or create a new one.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+                } else {
+                    ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)
+                }
             }
         }
         .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))

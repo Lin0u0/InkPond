@@ -398,6 +398,8 @@ final class TypstTextView: UITextView {
         typingAttributes = editorTypingAttributes
         highlighter.updateTheme(theme)
         gutterView.applyTheme(theme)
+        completionPopup?.applyTheme(theme)
+        (inputAccessoryView as? KeyboardAccessoryView)?.applyTheme(theme)
         scheduleHighlighting(.immediate)
     }
 
@@ -1089,6 +1091,7 @@ final class TypstTextView: UITextView {
     private func ensureCompletionPopup() -> CompletionPopupView {
         if let popup = completionPopup { return popup }
         let popup = CompletionPopupView()
+        popup.applyTheme(storedTheme)
         popup.onSelect = { [weak self] item in
             self?.acceptCompletion(item)
         }

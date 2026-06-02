@@ -66,6 +66,7 @@ extension DocumentEditorView {
         pendingCursorJump = nil
         editorViewState = EditorViewState()
         currentFileName = name
+        activateTab(relativePath: name, kind: ProjectFileManager.fileKind(for: name, imageDirectoryName: document.imageDirectoryName))
         isLoadingFileContent = true
         editorText = text
         fileLoadToken = UUID()
@@ -82,6 +83,124 @@ extension DocumentEditorView {
 
         pumpPendingInsertionsIfNeeded()
         return true
+    }
+
+    func activateTab(relativePath: String, kind: FileKind) {
+        guard kind.canBecomeTab else { return }
+        let tab = ProjectFileTab(
+            relativePath: relativePath,
+            displayName: (relativePath as NSString).lastPathComponent,
+            kind: kind
+        )
+        if let index = openTabs.firstIndex(where: { $0.relativePath == relativePath }) {
+            openTabs[index] = tab
+        } else {
+            openTabs.append(tab)
+        }
+        activeTabPath = relativePath
+    }
+
+    func openProjectFile(_ node: ProjectTreeNode) {
+        guard node.kind.canBecomeTab else { return }
+        if node.kind.isTextEditable {
+            selectedTab = editorTab
+            _ = openFileIfPossible(named: node.relativePath)
+            return
+        }
+
+        guard flushPendingSave() else { return }
+        focusCoordinator.dismissKeyboard()
+        selectedTab = editorTab
+        activateTab(relativePath: node.relativePath, kind: node.kind)
+        InteractionFeedback.selection()
+    }
+
+    func selectProjectTab(_ tab: ProjectFileTab) {
+        guard tab.relativePath != activeTabPath else { return }
+        if tab.kind.isTextEditable {
+            selectedTab = editorTab
+            _ = openFileIfPossible(named: tab.relativePath)
+            return
+        }
+
+        guard flushPendingSave() else { return }
+        focusCoordinator.dismissKeyboard()
+        selectedTab = editorTab
+        activeTabPath = tab.relativePath
+        InteractionFeedback.selection()
+    }
+
+    func closeProjectTab(_ tab: ProjectFileTab) {
+        if tab.relativePath == currentFileName {
+            guard flushPendingSave() else { return }
+        }
+
+        openTabs.removeAll { $0.relativePath == tab.relativePath }
+        guard activeTabPath == tab.relativePath else { return }
+
+        if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
+            activeTabPath = currentTextTab.relativePath
+        } else if let nextTab = openTabs.first {
+            selectProjectTab(nextTab)
+        } else if !currentFileName.isEmpty {
+            activateTab(
+                relativePath: currentFileName,
+                kind: ProjectFileManager.fileKind(for: currentFileName, imageDirectoryName: document.imageDirectoryName)
+            )
+        } else {
+            activeTabPath = nil
+        }
+    }
+
+    @discardableResult
+    func setEntryProjectFile(_ relativePath: String) -> Bool {
+        guard relativePath != document.entryFileName else { return true }
+        guard flushPendingSave() else { return false }
+
+        document.entryFileName = relativePath
+        document.modifiedAt = Date()
+
+        if currentFileName == relativePath {
+            entrySource = editorText
+        } else if let source = try? ProjectFileManager.readTypFile(named: relativePath, for: document) {
+            entrySource = source
+        }
+
+        _ = refreshResolvedFonts(includeAvailableFamilies: false)
+        compileToken = UUID()
+        InteractionFeedback.selection()
+        return true
+    }
+
+    func handleProjectFileDeleted(_ node: ProjectTreeNode) {
+        openTabs.removeAll { $0.relativePath == node.relativePath }
+        if node.relativePath == currentFileName {
+            saveTask?.cancel()
+            saveTask = nil
+            stopConflictMonitoring()
+            if ProjectFileManager.listAllTypFiles(for: document).contains(document.entryFileName) {
+                _ = loadFile(named: document.entryFileName)
+            } else {
+                currentFileName = ""
+                editorText = ""
+                lastPersistedText = ""
+            }
+            return
+        }
+
+        if node.relativePath == activeTabPath {
+            if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
+                activeTabPath = currentTextTab.relativePath
+            } else if let firstTab = openTabs.first {
+                activeTabPath = firstTab.relativePath
+            } else {
+                activeTabPath = currentFileName.isEmpty ? nil : currentFileName
+            }
+        }
+
+        if node.kind == .font {
+            handleCompileInputsChanged()
+        }
     }
 
     // MARK: - Conflict monitoring

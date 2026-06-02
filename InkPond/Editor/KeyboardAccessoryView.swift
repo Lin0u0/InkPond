@@ -28,6 +28,10 @@ final class KeyboardAccessoryView: UIView {
     var onPhotoButtonTapped: (() -> Void)?
     var onSnippetButtonTapped: (() -> Void)?
     private let separator = UIView()
+    private weak var glassContainer: UIVisualEffectView?
+    private var themedButtons: [UIButton] = []
+    private var activeTheme: EditorTheme = .system
+    private var appearanceRegistration: (any UITraitChangeRegistration)?
     private lazy var snippetButton = makeButton(systemImage: "text.badge.plus") { [weak self] in
         InteractionFeedback.impact(.light)
         self?.onSnippetButtonTapped?()
@@ -79,8 +83,10 @@ final class KeyboardAccessoryView: UIView {
         autoresizingMask = [.flexibleWidth]
         configureActionButtons()
         setupViews()
+        setupAppearanceObservation()
         startObservingHardwareKeyboard()
         updateActionButtonsVisibility()
+        applyTheme(activeTheme)
     }
 
     required init?(coder: NSCoder) {
@@ -110,7 +116,6 @@ final class KeyboardAccessoryView: UIView {
     }
 
     private func configureActionButtons() {
-        separator.backgroundColor = .separator.withAlphaComponent(0.3)
         separator.translatesAutoresizingMaskIntoConstraints = false
 
         snippetButton.accessibilityLabel = L10n.a11yKeyboardSnippetLabel
@@ -171,6 +176,7 @@ final class KeyboardAccessoryView: UIView {
 
         // Glass container
         let glass = UIVisualEffectView(effect: UIGlassEffect())
+        glassContainer = glass
         glass.translatesAutoresizingMaskIntoConstraints = false
         glass.clipsToBounds = true
         glass.layer.cornerRadius = 25
@@ -210,8 +216,6 @@ final class KeyboardAccessoryView: UIView {
     // MARK: - Pre-iOS 26 Layout
 
     private func setupLegacyLayout() {
-        backgroundColor = .secondarySystemBackground
-
         let (scrollView, rightStack, separator) = buildContent()
 
         addSubview(scrollView)
@@ -232,6 +236,45 @@ final class KeyboardAccessoryView: UIView {
         ]
 
         NSLayoutConstraint.activate(constraints)
+    }
+
+    func applyTheme(_ theme: EditorTheme) {
+        activeTheme = theme
+        let interfaceStyle = editorThemeInterfaceStyle
+        overrideUserInterfaceStyle = interfaceStyle
+        glassContainer?.overrideUserInterfaceStyle = interfaceStyle
+        glassContainer?.contentView.backgroundColor = theme.gutterBackground.withAlphaComponent(interfaceStyle == .dark ? 0.18 : 0.08)
+
+        if #available(iOS 26, *) {
+            backgroundColor = .clear
+        } else {
+            backgroundColor = theme.gutterBackground
+        }
+        separator.backgroundColor = theme.gutterForeground.withAlphaComponent(0.32)
+        for button in themedButtons {
+            applyTheme(to: button)
+        }
+    }
+
+    private func setupAppearanceObservation() {
+        appearanceRegistration = registerForTraitChanges(
+            [UITraitUserInterfaceStyle.self]
+        ) { (view: KeyboardAccessoryView, _: UITraitCollection) in
+            view.applyTheme(view.activeTheme)
+        }
+    }
+
+    private var editorThemeInterfaceStyle: UIUserInterfaceStyle {
+        let background = activeTheme.background.resolvedColor(with: traitCollection)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard background.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return .unspecified
+        }
+        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return luminance < 0.5 ? .dark : .light
     }
 
     // MARK: - Shared Content
@@ -290,6 +333,17 @@ final class KeyboardAccessoryView: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
+        themedButtons.append(button)
+        applyTheme(to: button)
         return button
+    }
+
+    private func applyTheme(to button: UIButton) {
+        var config = button.configuration ?? .plain()
+        config.baseForegroundColor = activeTheme.text
+        config.background.backgroundColor = .clear
+        button.configuration = config
+        button.tintColor = activeTheme.text
+        button.overrideUserInterfaceStyle = editorThemeInterfaceStyle
     }
 }

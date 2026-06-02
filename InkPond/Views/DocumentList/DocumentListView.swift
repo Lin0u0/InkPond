@@ -74,6 +74,7 @@ struct DocumentListView: View {
     @State var folderLinkImportTitle: String?
     @State var folderLinkImportProjectID: String?
     @State var folderLinkImportTask: Task<Void, Never>?
+    @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = [:]
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 

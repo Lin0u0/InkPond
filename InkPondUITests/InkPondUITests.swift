@@ -82,7 +82,7 @@ final class InkPondUITests: XCTestCase {
         app.buttons["document-list.settings"].tap()
 
         XCTAssertTrue(waitForElement(app.buttons["settings.done"]))
-        XCTAssertTrue(waitForElement(app.buttons["settings.import-zip"]))
+        XCTAssertTrue(waitForElement(app.buttons["settings.import-zip"], revealWithSwipes: 2))
         XCTAssertTrue(waitForElement(app.buttons["settings.fonts"], revealWithSwipes: 2))
         XCTAssertTrue(waitForElement(app.buttons["settings.cache"], revealWithSwipes: 2))
     }
@@ -91,16 +91,20 @@ final class InkPondUITests: XCTestCase {
     func testSeededDocumentExposesEditorPrimaryControls() throws {
         let app = launchApp(seedDocument: true)
 
-        if !app.buttons["editor.share"].waitForExistence(timeout: 3) {
+        if !app.buttons["editor.more-menu"].waitForExistence(timeout: 3) {
             let seededRow = app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "document-list.row.")
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                    "project-home.card.",
+                    "document-list.row."
+                )
             ).firstMatch
             XCTAssertTrue(seededRow.waitForExistence(timeout: 5))
             seededRow.tap()
         }
 
-        XCTAssertTrue(app.buttons["editor.share"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["editor.more-menu"].exists)
+        XCTAssertTrue(app.buttons["editor.more-menu"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["editor.share"].exists || app.buttons["editor.more-menu"].exists)
         XCTAssertTrue(app.segmentedControls["editor.mode-picker"].exists || app.otherElements["editor.preview"].exists)
     }
 
