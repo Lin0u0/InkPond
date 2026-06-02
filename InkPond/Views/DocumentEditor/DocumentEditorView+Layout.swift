@@ -171,6 +171,7 @@ private extension View {
 extension DocumentEditorView {
     /// Sync is only useful on iPad where both panes are visible simultaneously.
     private var isSyncEnabled: Bool { sizeClass == .regular }
+    private var regularWorkspaceTopBarHeight: CGFloat { 56 }
     private var usesSystemCompactToolbar: Bool {
         sizeClass != .regular
     }
@@ -479,8 +480,14 @@ extension DocumentEditorView {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 56)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .frame(height: regularWorkspaceTopBarHeight)
+        .background {
+            if #available(iOS 26, *) {
+                Color.clear
+            } else {
+                Color(uiColor: .secondarySystemGroupedBackground)
+            }
+        }
     }
 
     private var regularWorkspaceTopBarContent: some View {
@@ -549,7 +556,7 @@ extension DocumentEditorView {
     }
 
     private var regularWorkspaceActionButtons: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 2) {
             Button { findRequested = !findRequested } label: {
                 regularToolbarIconLabel("magnifyingglass")
             }
@@ -625,6 +632,9 @@ extension DocumentEditorView {
             .accessibilityHint(L10n.a11yEditorMenuHint)
             .accessibilityIdentifier("editor.more-menu")
         }
+        .padding(.horizontal, 4)
+        .frame(height: 48)
+        .regularToolbarCapsuleSurface()
         .buttonStyle(.plain)
     }
 
@@ -632,8 +642,7 @@ extension DocumentEditorView {
         Image(systemName: systemName)
             .font(.title3.weight(.semibold))
             .foregroundStyle(Color.accentColor)
-            .frame(width: 48, height: 48)
-            .regularToolbarCircleSurface()
+            .frame(width: 44, height: 44)
     }
 
     @ViewBuilder
@@ -668,9 +677,23 @@ extension DocumentEditorView {
         }
     }
 
-    private func regularPreviewColumn() -> some View {
-        previewPane(topViewportInset: 0)
+    private func regularPreviewColumn(topViewportInset: CGFloat = 0) -> some View {
+        previewPane(topViewportInset: topViewportInset)
             .modifier(SoftScrollEdgeEffectModifier())
+    }
+
+    private var regularEditorTopFade: some View {
+        LinearGradient(
+            stops: [
+                .init(color: editorThemeChromeColor.opacity(0.22), location: 0),
+                .init(color: editorThemeChromeColor.opacity(0.10), location: 0.55),
+                .init(color: .clear, location: 1)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: regularWorkspaceTopBarHeight + 24)
+        .allowsHitTesting(false)
     }
 
     private func projectTabButton(_ tab: ProjectFileTab, isCompact: Bool) -> some View {
@@ -768,26 +791,17 @@ extension DocumentEditorView {
     @ViewBuilder
     var contentLayout: some View {
         if sizeClass == .regular {
-            VStack(spacing: 0) {
-                regularWorkspaceTopBar
-                Divider()
-                    .overlay(editorThemeBorderColor.opacity(0.28))
-                GeometryReader { geo in
-                    let total = geo.size.width
-                    let treeWidth = min(max(total * 0.22, 240), 320)
-                    let workspaceWidth = max(total - treeWidth - 1, 1)
-                    HStack(spacing: 0) {
-                        projectFileTreeSidebar
-                            .frame(width: treeWidth)
-                        Divider()
-                        HStack(spacing: 0) {
-                            workspaceEditorPane(topViewportInset: 0)
-                                .frame(width: workspaceWidth * editorFraction)
-                            splitHandle(totalWidth: workspaceWidth)
-                            regularPreviewColumn()
-                        }
-                        .coordinateSpace(name: "splitContainer")
-                    }
+            if #available(iOS 26, *) {
+                ZStack(alignment: .top) {
+                    regularWorkspaceContent(topViewportInset: regularWorkspaceTopBarHeight)
+                    regularWorkspaceTopBar
+                        .zIndex(1)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    regularWorkspaceTopBar
+                    regularWorkspaceTopBarSeparator
+                    regularWorkspaceContent(topViewportInset: 0)
                 }
             }
         } else {
@@ -818,6 +832,43 @@ extension DocumentEditorView {
                 }
                 .animation(nil, value: selectedTab)
             }
+        }
+    }
+
+    private func regularWorkspaceContent(topViewportInset: CGFloat) -> some View {
+        GeometryReader { geo in
+            let total = geo.size.width
+            let treeWidth = min(max(total * 0.22, 240), 320)
+            let workspaceWidth = max(total - treeWidth - 1, 1)
+            HStack(spacing: 0) {
+                projectFileTreeSidebar
+                    .padding(.top, topViewportInset)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .frame(width: treeWidth)
+                Divider()
+                HStack(spacing: 0) {
+                    workspaceEditorPane(topViewportInset: topViewportInset)
+                        .overlay(alignment: .top) {
+                            if topViewportInset > 0 {
+                                regularEditorTopFade
+                            }
+                        }
+                        .frame(width: workspaceWidth * editorFraction)
+                    splitHandle(totalWidth: workspaceWidth)
+                    regularPreviewColumn(topViewportInset: 0)
+                }
+                .coordinateSpace(name: "splitContainer")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var regularWorkspaceTopBarSeparator: some View {
+        if #available(iOS 26, *) {
+            EmptyView()
+        } else {
+            Divider()
+                .overlay(editorThemeBorderColor.opacity(0.28))
         }
     }
 
