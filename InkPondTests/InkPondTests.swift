@@ -537,6 +537,34 @@ struct InkPondTests {
         #expect(updates.contains { $0.phase == .downloading })
     }
 
+    @Test func linkedFolderLoaderScansLargeLocalFolderWithoutDownloadWait() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        for index in 0..<600 {
+            let bucket = folder.appendingPathComponent("bucket-\(index / 100)", isDirectory: true)
+            try FileManager.default.createDirectory(at: bucket, withIntermediateDirectories: true)
+            try Data("note \(index)".utf8).write(to: bucket.appendingPathComponent("note-\(index).typ"))
+        }
+
+        var progressEvents: [LinkedFolderLoadProgress] = []
+        let result = try await ProjectFileManager.loadLinkedFolderContents(
+            at: folder,
+            maxDownloadWait: 1
+        ) { progress in
+            await MainActor.run {
+                progressEvents.append(progress)
+            }
+        }
+
+        #expect(result.scannedFileCount == 600)
+        #expect(result.downloadedFileCount == 0)
+        #expect(result.relativePaths.first == "bucket-0/note-0.typ")
+        #expect(result.relativePaths.last == "bucket-5/note-599.typ")
+        #expect(progressEvents.contains { $0.phase == .scanning && $0.scannedFileCount >= 500 })
+        #expect(progressEvents.last?.phase == .downloading)
+    }
+
     @Test func projectFileManagerFindsImportDirectoryCandidates() {
         let files = [
             "main.typ",
@@ -1033,6 +1061,43 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func autoPairWrapsSelectedTextAndUndoRestoresOriginalSelection() {
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.text = "alpha beta"
+        textView.selectedRange = NSRange(location: 6, length: 4)
+
+        #expect(AutoPairEngine.handleInsert("(", in: textView))
+        #expect(textView.text == "alpha (beta)")
+        #expect(textView.selectedRange.location == 7)
+        #expect(textView.selectedRange.length == 4)
+
+        textView.undoManager?.undo()
+        #expect(textView.text == "alpha beta")
+        #expect(textView.selectedRange.location == 6)
+        #expect(textView.selectedRange.length == 4)
+    }
+
+    @MainActor
+    @Test func autoPairWrapsSelectionWithMathAndAnglePairs() {
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.text = "label equation"
+        textView.selectedRange = NSRange(location: 0, length: 5)
+
+        #expect(AutoPairEngine.handleInsert("<", in: textView))
+        #expect(textView.text == "<label> equation")
+        #expect(textView.selectedRange.location == 1)
+        #expect(textView.selectedRange.length == 5)
+
+        textView.selectedRange = NSRange(location: 8, length: 8)
+        #expect(AutoPairEngine.handleInsert("$", in: textView))
+        #expect(textView.text == "<label> $equation$")
+        #expect(textView.selectedRange.location == 9)
+        #expect(textView.selectedRange.length == 8)
+    }
+
+    @MainActor
     @Test func editorFocusCoordinatorWaitsForAllSuppressionScopesBeforeRestoringFocus() async {
         let coordinator = EditorFocusCoordinator()
         let (window, textView) = makeHostedTextView()
@@ -1139,6 +1204,70 @@ struct InkPondTests {
         #expect(!compiler.isCompiling)
         #expect(compiler.pdfData == nil)
         #expect(!compiler.compiledOnce)
+    }
+
+    @MainActor
+    @Test func typstCompilerDelaysDebouncedErrorVisibility() async {
+        let compileCounter = LockedCounter()
+        let compiler = TypstCompiler(
+            compileWorker: { _, _, _ in
+                compileCounter.increment()
+                return .failure(.compilationFailed("temporary syntax error"))
+            },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { duration in
+                if duration == Duration.seconds(1) {
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+            }
+        )
+
+        compiler.compile(source: "$", fontPaths: [], rootDir: nil)
+
+        await waitUntil {
+            compileCounter.value == 1 && !compiler.isCompiling
+        }
+        #expect(compiler.errorMessage == nil)
+
+        await waitUntil(timeout: .seconds(1)) {
+            compiler.errorMessage == "temporary syntax error"
+        }
+        #expect(compiler.errorMessage == "temporary syntax error")
+    }
+
+    @MainActor
+    @Test func typstCompilerSuccessfulDebouncedCompileCancelsPendingError() async {
+        let compileCounter = LockedCounter()
+        let compiler = TypstCompiler(
+            compileWorker: { source, _, _ in
+                compileCounter.increment()
+                if source == "bad" {
+                    return .failure(.compilationFailed("stale error"))
+                }
+                return .success((Data(source.utf8), nil))
+            },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { duration in
+                if duration == Duration.seconds(1) {
+                    try await Task.sleep(for: .milliseconds(400))
+                }
+            }
+        )
+
+        compiler.compile(source: "bad", fontPaths: [], rootDir: nil)
+        await waitUntil {
+            compileCounter.value == 1 && !compiler.isCompiling
+        }
+        #expect(compiler.errorMessage == nil)
+
+        compiler.compile(source: "good", fontPaths: [], rootDir: nil)
+        await waitUntil {
+            compileCounter.value == 2 && compiler.compiledOnce && !compiler.isCompiling
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+
+        #expect(compiler.errorMessage == nil)
+        #expect(compiler.pdfData == Data("good".utf8))
     }
 
     @Test func typstCompilerUsesDefaultTimeoutForSourcesWithoutUncachedPreviewPackages() throws {

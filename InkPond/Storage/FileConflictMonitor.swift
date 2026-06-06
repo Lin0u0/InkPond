@@ -37,6 +37,9 @@ final class FileConflictMonitor: NSObject, NSFilePresenter {
     /// Callback invoked on the main actor when a conflict is first detected.
     var onConflictDetected: (() -> Void)?
 
+    /// Callback invoked when the presented file changed without an unresolved conflict.
+    var onPresentedItemChanged: (() -> Void)?
+
     /// The file being monitored.
     private(set) var monitoredURL: URL?
 
@@ -62,7 +65,7 @@ final class FileConflictMonitor: NSObject, NSFilePresenter {
     // MARK: - Lifecycle
 
     func startMonitoring(url: URL) {
-        stopMonitoring()
+        stopMonitoring(clearCallbacks: false)
 
         let standardized = url.standardizedFileURL
         _presentedItemURLLock.withLock { $0 = standardized }
@@ -75,10 +78,19 @@ final class FileConflictMonitor: NSObject, NSFilePresenter {
     }
 
     func stopMonitoring() {
-        guard monitoredURL != nil else { return }
+        stopMonitoring(clearCallbacks: true)
+    }
 
+    private func stopMonitoring(clearCallbacks: Bool) {
         changeDebounceTask?.cancel()
         changeDebounceTask = nil
+        if clearCallbacks {
+            onConflictDetected = nil
+            onPresentedItemChanged = nil
+        }
+
+        guard monitoredURL != nil else { return }
+
         NSFileCoordinator.removeFilePresenter(self)
         _presentedItemURLLock.withLock { $0 = nil }
         monitoredURL = nil
@@ -122,6 +134,9 @@ final class FileConflictMonitor: NSObject, NSFilePresenter {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             self?.refreshConflictState()
+            if self?.hasConflict == false {
+                self?.onPresentedItemChanged?()
+            }
         }
     }
 

@@ -379,8 +379,24 @@ extension DocumentEditorView {
                     }
                 }
                 .animation(nil, value: selectedTab)
+                .simultaneousGesture(compactModeSwipeGesture)
             }
         }
+    }
+
+    private var compactModeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 35, coordinateSpace: .local)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) >= 70, abs(horizontal) > abs(vertical) * 1.35 else { return }
+
+                if horizontal < 0, selectedTab == editorTab {
+                    selectedTab = previewTab
+                } else if horizontal > 0, selectedTab == previewTab {
+                    selectedTab = editorTab
+                }
+            }
     }
 
     var shareButtonAction: () -> Void {
