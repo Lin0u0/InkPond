@@ -102,6 +102,7 @@ struct ExternalTypFileOpenRequest: Equatable {
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var systemColorScheme
     @Environment(StorageManager.self) private var storageManager
     @State private var selectedDocument: InkPondDocument?
     @State private var externalFileDocument: InkPondDocument?
@@ -158,30 +159,49 @@ struct ContentView: View {
             || processInfo.environment["UITEST_SKIP_ONBOARDING"] == "1"
     }
 
+    private var resolvedAppColorScheme: ColorScheme {
+        appAppearanceManager.colorScheme ?? systemColorScheme
+    }
+
     private var mainContent: some View {
         NavigationStack {
-            Group {
+            ZStack {
                 if let document = selectedDocument {
-                DocumentEditorView(
-                    document: document,
-                    isSidebarVisible: false,
-                    externalOpenRequest: externalOpenRequest,
-                    onCloseProject: {
-                        selectedDocument = nil
-                        externalOpenRequest = nil
-                    }
-                )
-                .id(document.persistentModelID)
+                    DocumentEditorView(
+                        document: document,
+                        isSidebarVisible: false,
+                        externalOpenRequest: externalOpenRequest,
+                        onCloseProject: {
+                            withAnimation(projectNavigationAnimation) {
+                                selectedDocument = nil
+                                externalOpenRequest = nil
+                            }
+                        }
+                    )
+                    .id(document.persistentModelID)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 } else {
                     ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(projectNavigationAnimation, value: selectedDocument?.projectID)
         }
         .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
         .environment(themeManager)
         .environment(editorFontSettings)
         .environment(appFontLibrary)
+        .preferredColorScheme(appAppearanceManager.colorScheme)
+        .environment(\.colorScheme, resolvedAppColorScheme)
+        .liquidGlassColorScheme(resolvedAppColorScheme)
         .task {
             appFontLibrary.reload()
             appFontLibrary.startMonitoring()
@@ -213,13 +233,19 @@ struct ContentView: View {
         externalFileDocument ?? selectedDocument
     }
 
+    private var projectNavigationAnimation: Animation {
+        .snappy(duration: 0.28, extraBounce: 0.02)
+    }
+
     private var documentListSelection: Binding<InkPondDocument?> {
         Binding(
             get: { selectedDocument },
             set: { newValue in
-                selectedDocument = newValue
-                if newValue != nil {
-                    externalFileDocument = nil
+                withAnimation(projectNavigationAnimation) {
+                    selectedDocument = newValue
+                    if newValue != nil {
+                        externalFileDocument = nil
+                    }
                 }
             }
         )
@@ -262,6 +288,9 @@ struct ContentView: View {
         .environment(themeManager)
         .environment(editorFontSettings)
         .environment(appFontLibrary)
+        .preferredColorScheme(appAppearanceManager.colorScheme)
+        .environment(\.colorScheme, resolvedAppColorScheme)
+        .liquidGlassColorScheme(resolvedAppColorScheme)
     }
 
     private var shouldSeedUITestDocument: Bool {

@@ -19,7 +19,7 @@ extension DocumentListView {
             .padding(.horizontal, isIPad ? 24 : 16)
             .padding(.vertical, 16)
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .background(Color(uiColor: projectHomeChromeUIColor).ignoresSafeArea())
         .overlay {
             if isShowingLibraryEmptyState {
                 libraryEmptyState
@@ -71,7 +71,9 @@ extension DocumentListView {
             ProjectHomeCard(
                 document: document,
                 cacheEntry: previewCacheEntriesByProjectID[document.projectID],
-                dateFormat: rowDateFormat
+                dateFormat: rowDateFormat,
+                backgroundColor: projectHomeCardUIColor,
+                thumbnailBackgroundColor: projectHomeThumbnailUIColor
             )
         }
         .buttonStyle(.plain)
@@ -333,15 +335,17 @@ private struct ProjectHomeCard: View {
     let document: InkPondDocument
     let cacheEntry: CompiledPreviewCacheEntry?
     let dateFormat: Date.FormatStyle
+    let backgroundColor: UIColor
+    let thumbnailBackgroundColor: UIColor
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ProjectHomeThumbnail(pdfURL: cacheEntry?.pdfURL)
+            ProjectHomeThumbnail(pdfURL: cacheEntry?.pdfURL, backgroundColor: thumbnailBackgroundColor)
                 .aspectRatio(4.0 / 3.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(.quaternary, lineWidth: 1)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                 )
 
             VStack(alignment: .leading, spacing: 5) {
@@ -371,22 +375,23 @@ private struct ProjectHomeCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color(uiColor: backgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }
 
 private struct ProjectHomeThumbnail: View {
     let pdfURL: URL?
+    let backgroundColor: UIColor
     @State private var thumbnail: UIImage?
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+                .fill(Color(uiColor: backgroundColor))
 
             if let thumbnail {
                 Image(uiImage: thumbnail)
@@ -398,7 +403,7 @@ private struct ProjectHomeThumbnail: View {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.richtext")
                         .font(.system(size: 34, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(.primary)
                     Text("Typst")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)

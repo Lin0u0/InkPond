@@ -32,6 +32,7 @@ struct EditorView: UIViewRepresentable {
     var sourceMap: SourceMap?
     var syncCoordinator: SyncCoordinator?
     var theme: EditorTheme = .system
+    var externalChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
     var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
     var onPhotoTapped: () -> Void = {}
@@ -54,6 +55,7 @@ struct EditorView: UIViewRepresentable {
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
         textView.applyEditorFont(editorFont)
+        textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.accessibilityLabel = L10n.a11yEditorLabel
@@ -68,6 +70,7 @@ struct EditorView: UIViewRepresentable {
         context.coordinator.parent = self
         focusCoordinator?.register(textView)
         textView.applyEditorFont(editorFont)
+        textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.setErrorLines(errorLines)

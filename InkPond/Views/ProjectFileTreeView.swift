@@ -12,8 +12,10 @@ struct ProjectFileTreeView: View {
     var openNode: (ProjectTreeNode) -> Void
     var setEntryFile: (String) -> Bool
     var onNodeDeleted: (ProjectTreeNode) -> Void
+    var editorTheme: EditorTheme = .system
     var closeAfterOpen: Bool = false
     var usesNavigationToolbar: Bool = true
+    var refreshToken: UUID?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(StorageManager.self) private var storageManager
@@ -40,24 +42,44 @@ struct ProjectFileTreeView: View {
         }
     }
 
+    private var editorTextColor: Color {
+        Color(uiColor: editorTheme.text)
+    }
+
+    private var editorSecondaryTextColor: Color {
+        Color(uiColor: editorTheme.gutterForeground)
+    }
+
+    private var editorAccentColor: Color {
+        editorTextColor
+    }
+
+    private var editorStringColor: Color {
+        Color(uiColor: editorTheme.string)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if !usesNavigationToolbar {
-                inlineProjectControls
-                Divider()
-            }
-
-            List {
-                if projectTree.isEmpty {
-                    Text(L10n.tr("No files"))
-                        .foregroundStyle(.tertiary)
-                } else {
-                    ForEach(visibleRows) { row in
-                        rowView(for: row)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    if projectTree.isEmpty {
+                        Text(L10n.tr("No files"))
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                    } else {
+                        ForEach(visibleRows) { row in
+                            rowView(for: row)
+                        }
                     }
                 }
+                .padding(.horizontal, usesNavigationToolbar ? 8 : 12)
+                .padding(.vertical, 8)
             }
-            .listStyle(.sidebar)
+            .scrollIndicators(.hidden)
+            .background(Color.clear)
         }
         .accessibilityIdentifier("project-file-tree")
         .toolbar {
@@ -100,6 +122,10 @@ struct ProjectFileTreeView: View {
         .onChange(of: document.imageDirectoryName) { _, _ in
             refreshProjectState()
         }
+        .onChange(of: refreshToken) { _, _ in
+            refreshProjectState()
+            startCloudMonitoringIfNeeded()
+        }
         .onChange(of: actionError) { _, newValue in
             guard newValue != nil else { return }
             InteractionFeedback.notify(.error)
@@ -119,36 +145,25 @@ struct ProjectFileTreeView: View {
     }
 
     private var inlineProjectControls: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "folder")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(L10n.tr("Project Files"))
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+        HStack {
             Spacer(minLength: 0)
             inlineProjectActionControls
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .padding(.vertical, 4)
+        .background(Color.clear)
+        .accessibilityLabel(L10n.tr("Project Files"))
     }
 
-    @ViewBuilder
     private var inlineProjectActionControls: some View {
-        if #available(iOS 26, *) {
-            GlassEffectContainer(spacing: 8) {
-                projectSettingsButton
-                downloadAllButtonIfNeeded
-                addFileMenu
-            }
-        } else {
-            HStack(spacing: 8) {
-                projectSettingsButton
-                downloadAllButtonIfNeeded
-                addFileMenu
-            }
+        HStack(spacing: 2) {
+            projectSettingsButton
+            downloadAllButtonIfNeeded
+            addFileMenu
         }
+        .padding(.horizontal, 4)
+        .frame(height: 44)
+        .projectSidebarControlCapsuleSurface()
     }
 
     private var projectSettingsButton: some View {
@@ -209,9 +224,8 @@ struct ProjectFileTreeView: View {
         } else {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 44, height: 44)
-                .projectSidebarControlSurface()
+                .foregroundStyle(.primary)
+                .frame(width: 40, height: 40)
         }
     }
 
@@ -229,7 +243,7 @@ struct ProjectFileTreeView: View {
         } label: {
             rowLabel(for: row)
         }
-        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive))
+        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive, editorTheme: editorTheme))
         .contentShape(Rectangle())
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !node.isDirectory {
@@ -288,26 +302,27 @@ struct ProjectFileTreeView: View {
 
     private func rowLabel(for row: VisibleProjectFileRow) -> some View {
         let node = row.node
+        let isActive = node.relativePath == activePath
         return HStack(alignment: .center, spacing: 8) {
             if node.isDirectory {
                 Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 12, height: 18, alignment: .center)
+                    .foregroundStyle(isActive ? editorTextColor.opacity(0.72) : editorSecondaryTextColor.opacity(0.74))
+                    .frame(width: 14, height: 20, alignment: .center)
             } else {
                 Color.clear
-                    .frame(width: 12, height: 18)
+                    .frame(width: 14, height: 20)
             }
 
             Image(systemName: node.kind.iconName)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 18, alignment: .center)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isActive ? editorTextColor : editorSecondaryTextColor)
+                .frame(width: 22, height: 22, alignment: .center)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(node.displayName)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
+                    .font(.callout.weight(isActive ? .semibold : .regular))
+                    .foregroundStyle(isActive ? editorTextColor : editorTextColor.opacity(0.88))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -323,6 +338,7 @@ struct ProjectFileTreeView: View {
             Spacer(minLength: 0)
         }
         .padding(.leading, CGFloat(row.depth) * 16)
+        .frame(minHeight: 44)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -332,8 +348,8 @@ struct ProjectFileTreeView: View {
         switch cloudSyncMonitor.fileStatuses[relativePath] {
         case .notDownloaded:
             Image(systemName: "icloud.and.arrow.down")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(editorSecondaryTextColor)
                 .onTapGesture {
                     let url = ProjectFileManager.projectDirectory(for: document)
                         .appendingPathComponent(relativePath)
@@ -368,16 +384,16 @@ struct ProjectFileTreeView: View {
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.16), in: Capsule())
-                    .foregroundStyle(Color.accentColor)
+                    .background(editorAccentColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(editorAccentColor)
             }
             if path == activePath {
                 Text(L10n.tr("Editing"))
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.green.opacity(0.16), in: Capsule())
-                    .foregroundStyle(.green)
+                    .background(editorStringColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(editorStringColor)
             }
         }
     }
@@ -538,39 +554,49 @@ private struct VisibleProjectFileRow: Identifiable, Hashable {
 
 private struct ProjectFileRowButtonStyle: ButtonStyle {
     let isActive: Bool
+    let editorTheme: EditorTheme
+
+    private var editorTextColor: Color {
+        Color(uiColor: editorTheme.text)
+    }
+
+    private var editorBorderColor: Color {
+        Color(uiColor: editorTheme.gutterForeground)
+    }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, 2)
             .background { rowBackground(isPressed: configuration.isPressed) }
-            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-            .listRowBackground(Color.clear)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.12), value: isActive)
     }
 
     @ViewBuilder
     private func rowBackground(isPressed: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
+        let activeFill = editorTextColor.opacity(isPressed ? 0.12 : 0.08)
+        let activeBorder = editorTextColor.opacity(0.18)
+        let inactivePressedFill = editorBorderColor.opacity(0.14)
         if isActive {
             if #available(iOS 26, *) {
                 shape
-                    .fill(Color.accentColor.opacity(isPressed ? 0.11 : 0.07))
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                    .fill(activeFill)
+                    .lockedLiquidGlassRect(cornerRadius: 13, isInteractive: true)
                     .overlay {
-                        shape.strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 1)
+                        shape.strokeBorder(activeBorder, lineWidth: 1)
                     }
             } else {
                 shape
-                    .fill(Color.accentColor.opacity(isPressed ? 0.14 : 0.08))
+                    .fill(activeFill)
                     .overlay {
-                        shape.strokeBorder(Color.accentColor.opacity(0.18), lineWidth: 1)
+                        shape.strokeBorder(activeBorder, lineWidth: 1)
                     }
             }
         } else if isPressed {
-            shape.fill(Color.primary.opacity(0.06))
+            shape.fill(inactivePressedFill)
         } else {
             Color.clear
         }
@@ -592,11 +618,11 @@ private struct ProjectFileToolbarControlStyleModifier: ViewModifier {
 
 private extension View {
     @ViewBuilder
-    func projectSidebarControlSurface() -> some View {
+    func projectSidebarControlCapsuleSurface() -> some View {
         if #available(iOS 26, *) {
-            self.glassEffect(.regular.interactive(), in: .circle)
+            self.lockedLiquidGlassRect(cornerRadius: 22, isInteractive: true)
         } else {
-            self.systemFloatingSurface(cornerRadius: 999)
+            self.systemFloatingSurface(cornerRadius: 22)
         }
     }
 }

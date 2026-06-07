@@ -97,6 +97,8 @@ final class TypstTextView: UITextView {
         ]
     }
 
+    private var externalChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
+
     // MARK: - Init (Force TextKit 1)
 
     init() {
@@ -195,11 +197,65 @@ final class TypstTextView: UITextView {
     }
 
     private func setupAccessoryView() {
-        inputAccessoryView = KeyboardAccessoryView(textView: self)
+        let accessoryView = KeyboardAccessoryView(textView: self)
+        accessoryView.applyWorkspaceChromeBackground(externalChromeBackgroundColor)
+        inputAccessoryView = accessoryView
     }
 
     private func setupFindInteraction() {
         isFindInteractionEnabled = true
+    }
+
+    func applyExternalChromeBackground(_ color: UIColor) {
+        externalChromeBackgroundColor = color
+        applyEditorChromeSurfaces()
+    }
+
+    private func applyEditorChromeSurfaces() {
+        (inputAccessoryView as? KeyboardAccessoryView)?.applyWorkspaceChromeBackground(externalChromeBackgroundColor)
+        applyFindNavigatorChromeBackground()
+    }
+
+    private func scheduleFindNavigatorChromeBackgroundUpdate() {
+        applyFindNavigatorChromeBackground()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyFindNavigatorChromeBackground()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            self?.applyFindNavigatorChromeBackground()
+        }
+    }
+
+    private func applyFindNavigatorChromeBackground() {
+        guard let rootView = window else { return }
+        applyFindNavigatorChromeBackground(in: rootView, color: externalChromeBackgroundColor)
+    }
+
+    private func applyFindNavigatorChromeBackground(
+        in view: UIView,
+        color: UIColor,
+        isInsideFindNavigator: Bool = false
+    ) {
+        let className = NSStringFromClass(type(of: view)).lowercased()
+        let isFindNavigatorView = className.contains("find") || className.contains("textsearch")
+        let shouldStyleBackground = isFindNavigatorView
+            || (isInsideFindNavigator && (view is UIVisualEffectView || view is UIToolbar))
+
+        if shouldStyleBackground {
+            view.isOpaque = true
+            view.backgroundColor = color
+            if let effectView = view as? UIVisualEffectView {
+                effectView.effect = nil
+                effectView.contentView.backgroundColor = color
+            }
+        }
+        view.subviews.forEach { subview in
+            applyFindNavigatorChromeBackground(
+                in: subview,
+                color: color,
+                isInsideFindNavigator: isInsideFindNavigator || isFindNavigatorView
+            )
+        }
     }
 
     private func setupAppearanceObservation() {
@@ -242,7 +298,7 @@ final class TypstTextView: UITextView {
     }
 
     @objc private func showFind() {
-        findInteraction?.presentFindNavigator(showingReplace: false)
+        presentFind(showingReplace: false)
     }
 
     @objc private func completionMoveUp() {
@@ -393,13 +449,13 @@ final class TypstTextView: UITextView {
     func applyTheme(_ theme: EditorTheme) {
         guard theme.id != storedTheme.id else { return }
         storedTheme = theme
+        applyEditorChromeSurfaces()
         backgroundColor = theme.background
         textColor = theme.text
         typingAttributes = editorTypingAttributes
         highlighter.updateTheme(theme)
         gutterView.applyTheme(theme)
         completionPopup?.applyTheme(theme)
-        (inputAccessoryView as? KeyboardAccessoryView)?.applyTheme(theme)
         scheduleHighlighting(.immediate)
     }
 
@@ -504,6 +560,10 @@ final class TypstTextView: UITextView {
         // Add extra padding so UITextView's native scrolling keeps the cursor
         // comfortably above the keyboard, not right at the edge.
         let totalInset = overlap > 0 ? overlap + Self.keyboardBottomPadding : 0
+        let previousBottomInset = contentInset.bottom
+        let shouldRevealCursor = isFirstResponder
+            && overlap > 0
+            && totalInset > previousBottomInset + 1
 
         let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
         let animationOptions = Self.keyboardAnimationOptions(from: userInfo)
@@ -514,7 +574,7 @@ final class TypstTextView: UITextView {
         ) {
             self.contentInset.bottom = totalInset
             self.verticalScrollIndicatorInsets.bottom = overlap
-            if overlap > 0 {
+            if shouldRevealCursor {
                 self.layoutIfNeeded()
                 self.scrollSelectionToUpperThird(animated: false)
             }
@@ -948,6 +1008,7 @@ final class TypstTextView: UITextView {
 
     func presentFind(showingReplace: Bool = false) {
         findInteraction?.presentFindNavigator(showingReplace: showingReplace)
+        scheduleFindNavigatorChromeBackgroundUpdate()
     }
 
     // MARK: - Completion

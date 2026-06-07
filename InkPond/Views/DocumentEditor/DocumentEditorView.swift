@@ -84,6 +84,9 @@ struct DocumentEditorView: View {
     @State var fileLoadToken = UUID()
     @State var pendingCursorJump: Int?
     @State var pendingManualCompileFeedback = false
+    @State var previewStatsWordCount = 0
+    @State var previewStatsCharacterCount = 0
+    @State var showingPreviewStatsDetails = false
     @State var cachedBibEntries: [TypstBibliographyEntry] = []
     @State var cachedExternalLabels: [(name: String, kind: String)] = []
     @State var cachedImageFiles: [String] = []
@@ -98,12 +101,17 @@ struct DocumentEditorView: View {
     @State var showingOutline = false
     @State var showingSnippetBrowser = false
     @State var showingExternalFolderLinkImporter = false
+    @State var showingProjectFileImporter = false
+    @State var showingNewProjectFileAlert = false
+    @State var newProjectFileName = ""
+    @State var projectFileTreeRefreshToken = UUID()
     @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?
     @State var positionSyncTask: Task<Void, Never>?
     @State var openTabs: [ProjectFileTab] = []
     @State var activeTabPath: String?
+    @State var didRestoreProjectEditorState = false
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     

@@ -35,4 +35,3 @@ struct ProjectFileBrowserSheet: View {
         .presentationDetents([.medium, .large])
     }
 }
-

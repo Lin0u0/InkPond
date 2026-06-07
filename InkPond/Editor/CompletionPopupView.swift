@@ -257,7 +257,7 @@ private final class CompletionCell: UITableViewCell {
             iconLabel.textColor = theme.string
         case .reference:
             iconLabel.text = "@"
-            iconLabel.textColor = theme.heading
+            iconLabel.textColor = theme.label
         }
         nameLabel.text = item.label
         detailLabel.text = item.detail
@@ -280,10 +280,10 @@ private final class CompletionCell: UITableViewCell {
                     self.selectionCardView.layer.borderColor = self.theme.gutterForeground.withAlphaComponent(0.24).cgColor
                     self.selectionCardView.layer.borderWidth = 0.8
                 } else {
-                    self.selectionCardView.backgroundColor = self.theme.heading.withAlphaComponent(0.16)
-                    self.selectionCardView.layer.shadowColor = self.theme.heading.cgColor
+                    self.selectionCardView.backgroundColor = self.theme.label.withAlphaComponent(0.14)
+                    self.selectionCardView.layer.shadowColor = self.theme.label.cgColor
                     self.selectionCardView.layer.shadowOpacity = 0.18
-                    self.selectionCardView.layer.borderColor = self.theme.heading.withAlphaComponent(0.22).cgColor
+                    self.selectionCardView.layer.borderColor = self.theme.label.withAlphaComponent(0.22).cgColor
                     self.selectionCardView.layer.borderWidth = 0.8
                 }
             } else {

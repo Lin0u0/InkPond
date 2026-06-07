@@ -12,6 +12,7 @@ final class LineNumberGutterView: UIView {
     private weak var textView: UITextView?
     private var gutterBgColor: UIColor = .secondarySystemBackground
     private var gutterFgColor: UIColor = .secondaryLabel
+    private var jumpAccentColor: UIColor = .systemBlue
     private var gutterFont = EditorFontSettings.lineNumberFont(for: EditorFontSettings.defaultUIFont)
     private var lineStartOffsets: [Int] = [0]
     private var cachedGutterWidth: CGFloat = LineNumberGutterView.minGutterWidth
@@ -29,6 +30,7 @@ final class LineNumberGutterView: UIView {
     func applyTheme(_ theme: EditorTheme) {
         gutterBgColor = theme.gutterBackground
         gutterFgColor = theme.gutterForeground
+        jumpAccentColor = theme.label
         setNeedsDisplay()
     }
 
@@ -71,7 +73,7 @@ final class LineNumberGutterView: UIView {
         // Resolve dynamic UIColors against the current trait collection before converting to CGColor.
         let resolvedBg = gutterBgColor.resolvedColor(with: traitCollection)
         let resolvedFg = gutterFgColor.resolvedColor(with: traitCollection)
-        let jumpAccent = UIColor.systemBlue.resolvedColor(with: traitCollection)
+        let jumpAccent = jumpAccentColor.resolvedColor(with: traitCollection)
         let highlightOpacity = max(0, min(jumpHighlightOpacity, 1))
         let jumpFill = jumpAccent.withAlphaComponent(0.14 * highlightOpacity)
         let jumpStroke = jumpAccent.withAlphaComponent(0.8 * highlightOpacity)

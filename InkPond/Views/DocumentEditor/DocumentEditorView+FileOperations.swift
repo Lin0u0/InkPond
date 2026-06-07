@@ -100,6 +100,70 @@ extension DocumentEditorView {
         activeTabPath = relativePath
     }
 
+    func restoreProjectEditorStateIfNeeded() {
+        guard !didRestoreProjectEditorState else { return }
+        didRestoreProjectEditorState = true
+
+        let savedState = ProjectEditorStateStore.load(projectID: document.projectID)
+        let restoredTabs = savedState.openTabPaths.compactMap(savedProjectTab(for:))
+        guard !restoredTabs.isEmpty else {
+            persistProjectEditorTabState()
+            return
+        }
+
+        openTabs = restoredTabs
+
+        if let activePath = savedState.activeTabPath,
+           let activeTab = restoredTabs.first(where: { $0.relativePath == activePath }) {
+            if activeTab.kind.isTextEditable {
+                _ = loadFile(named: activePath)
+            } else {
+                focusCoordinator.dismissKeyboard()
+                selectedTab = editorTab
+                activeTabPath = activePath
+            }
+        } else if let currentTextTab = restoredTabs.first(where: { $0.relativePath == currentFileName }) {
+            activeTabPath = currentTextTab.relativePath
+        } else {
+            activeTabPath = restoredTabs.first?.relativePath
+        }
+
+        persistProjectEditorTabState()
+    }
+
+    func persistProjectEditorTabState() {
+        guard didRestoreProjectEditorState else { return }
+        ProjectEditorStateStore.saveTabs(
+            projectID: document.projectID,
+            openTabPaths: openTabs.map(\.relativePath),
+            activeTabPath: activeTabPath
+        )
+    }
+
+    private func savedProjectTab(for relativePath: String) -> ProjectFileTab? {
+        guard isSafeSavedProjectPath(relativePath) else { return nil }
+
+        let projectDirectory = ProjectFileManager.projectDirectory(for: document).standardizedFileURL
+        let url = projectDirectory.appendingPathComponent(relativePath).standardizedFileURL
+        guard url.path.hasPrefix(projectDirectory.path + "/"),
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+
+        let kind = ProjectFileManager.fileKind(for: relativePath, imageDirectoryName: document.imageDirectoryName)
+        guard kind.canBecomeTab else { return nil }
+        return ProjectFileTab(
+            relativePath: relativePath,
+            displayName: (relativePath as NSString).lastPathComponent,
+            kind: kind
+        )
+    }
+
+    private func isSafeSavedProjectPath(_ relativePath: String) -> Bool {
+        guard !relativePath.isEmpty, !relativePath.hasPrefix("/") else { return false }
+        return !relativePath.split(separator: "/").contains("..")
+    }
+
     func openProjectFile(_ node: ProjectTreeNode) {
         guard node.kind.canBecomeTab else { return }
         if node.kind.isTextEditable {
@@ -200,6 +264,94 @@ extension DocumentEditorView {
 
         if node.kind == .font {
             handleCompileInputsChanged()
+        }
+    }
+
+    func createNewProjectFileFromMenu() {
+        var name = newProjectFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty && !name.hasSuffix(".typ") {
+            name += ".typ"
+        }
+        guard !name.isEmpty else { return }
+
+        do {
+            try ProjectFileManager.createTypFile(named: name, for: document)
+            document.modifiedAt = Date()
+            projectFileTreeRefreshToken = UUID()
+            openProjectFile(ProjectTreeNode(
+                relativePath: name,
+                displayName: (name as NSString).lastPathComponent,
+                kind: .typ,
+                children: []
+            ))
+            InteractionFeedback.notify(.success)
+        } catch {
+            fileSaveError = error.localizedDescription
+            InteractionFeedback.notify(.error)
+        }
+    }
+
+    func handleProjectFileImportFromMenu(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else {
+            if case .failure(let error) = result {
+                fileSaveError = error.localizedDescription
+                InteractionFeedback.notify(.error)
+            }
+            return
+        }
+
+        var firstError: Error?
+        var importedNodes: [ProjectTreeNode] = []
+        var importedFont = false
+
+        for url in urls {
+            let ext = url.pathExtension.lowercased()
+            let subdir: String
+            if ProjectFileManager.supportedImageFileExtensions.contains(ext) {
+                subdir = document.imageDirectoryName
+            } else if ProjectFileManager.fontFileExtensions.contains(ext) {
+                subdir = "fonts"
+            } else {
+                subdir = ""
+            }
+
+            do {
+                let importedPath = try ProjectFileManager.importFile(from: url, to: subdir, for: document)
+                let kind = ProjectFileManager.fileKind(for: importedPath, imageDirectoryName: document.imageDirectoryName)
+                if ProjectFileManager.fontFileExtensions.contains(ext) {
+                    importedFont = true
+                    let name = url.lastPathComponent
+                    if !document.fontFileNames.contains(name) {
+                        document.fontFileNames.append(name)
+                    }
+                }
+                importedNodes.append(ProjectTreeNode(
+                    relativePath: importedPath,
+                    displayName: (importedPath as NSString).lastPathComponent,
+                    kind: kind,
+                    children: []
+                ))
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+
+        if !importedNodes.isEmpty {
+            document.modifiedAt = Date()
+            projectFileTreeRefreshToken = UUID()
+            refreshReferenceCompletions()
+            if importedFont {
+                handleCompileInputsChanged()
+            }
+            if urls.count == 1, let node = importedNodes.first {
+                openProjectFile(node)
+            }
+            InteractionFeedback.notify(.success)
+        }
+
+        if let firstError {
+            fileSaveError = firstError.localizedDescription
+            InteractionFeedback.notify(.error)
         }
     }
 

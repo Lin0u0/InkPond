@@ -11,6 +11,7 @@ struct ProjectHomeView: View {
 
     var body: some View {
         DocumentListView(selectedDocument: $selectedDocument, searchText: $searchText)
+            .navigationTitle(L10n.appName)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
-

@@ -295,7 +295,7 @@ final class SyntaxHighlighter {
     }
 
     private func jumpHighlightColor(opacity: CGFloat) -> UIColor {
-        UIColor.systemBlue.withAlphaComponent(0.14 * opacity)
+        theme.label.withAlphaComponent(0.14 * opacity)
     }
 
     /// Iterate lines of `textStorage` using `NSString.lineRange`,

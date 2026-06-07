@@ -28,10 +28,6 @@ final class KeyboardAccessoryView: UIView {
     var onPhotoButtonTapped: (() -> Void)?
     var onSnippetButtonTapped: (() -> Void)?
     private let separator = UIView()
-    private weak var glassContainer: UIVisualEffectView?
-    private var themedButtons: [UIButton] = []
-    private var activeTheme: EditorTheme = .system
-    private var appearanceRegistration: (any UITraitChangeRegistration)?
     private lazy var snippetButton = makeButton(systemImage: "text.badge.plus") { [weak self] in
         InteractionFeedback.impact(.light)
         self?.onSnippetButtonTapped?()
@@ -55,6 +51,7 @@ final class KeyboardAccessoryView: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
+    private var workspaceChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
     private var hardwareKeyboardObservers: [NotificationObserverToken] = []
     private static let barHeight: CGFloat = 60
 
@@ -83,10 +80,8 @@ final class KeyboardAccessoryView: UIView {
         autoresizingMask = [.flexibleWidth]
         configureActionButtons()
         setupViews()
-        setupAppearanceObservation()
         startObservingHardwareKeyboard()
         updateActionButtonsVisibility()
-        applyTheme(activeTheme)
     }
 
     required init?(coder: NSCoder) {
@@ -107,6 +102,11 @@ final class KeyboardAccessoryView: UIView {
         CGSize(width: size.width, height: Self.barHeight)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyWorkspaceChromeBackground()
+    }
+
     private var isPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
@@ -116,6 +116,7 @@ final class KeyboardAccessoryView: UIView {
     }
 
     private func configureActionButtons() {
+        separator.backgroundColor = .separator.withAlphaComponent(0.3)
         separator.translatesAutoresizingMaskIntoConstraints = false
 
         snippetButton.accessibilityLabel = L10n.a11yKeyboardSnippetLabel
@@ -171,12 +172,10 @@ final class KeyboardAccessoryView: UIView {
 
     @available(iOS 26, *)
     private func setupGlassLayout() {
-        // Transparent host — the glass container provides all visuals
-        backgroundColor = .clear
+        applyWorkspaceChromeBackground()
 
         // Glass container
         let glass = UIVisualEffectView(effect: UIGlassEffect())
-        glassContainer = glass
         glass.translatesAutoresizingMaskIntoConstraints = false
         glass.clipsToBounds = true
         glass.layer.cornerRadius = 25
@@ -191,7 +190,6 @@ final class KeyboardAccessoryView: UIView {
         glass.contentView.addSubview(rightStack)
 
         let constraints = [
-            // Glass container constraints
             glass.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             glass.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             glass.topAnchor.constraint(equalTo: topAnchor, constant: 4),
@@ -216,6 +214,8 @@ final class KeyboardAccessoryView: UIView {
     // MARK: - Pre-iOS 26 Layout
 
     private func setupLegacyLayout() {
+        applyWorkspaceChromeBackground()
+
         let (scrollView, rightStack, separator) = buildContent()
 
         addSubview(scrollView)
@@ -236,45 +236,6 @@ final class KeyboardAccessoryView: UIView {
         ]
 
         NSLayoutConstraint.activate(constraints)
-    }
-
-    func applyTheme(_ theme: EditorTheme) {
-        activeTheme = theme
-        let interfaceStyle = editorThemeInterfaceStyle
-        overrideUserInterfaceStyle = interfaceStyle
-        glassContainer?.overrideUserInterfaceStyle = interfaceStyle
-        glassContainer?.contentView.backgroundColor = theme.gutterBackground.withAlphaComponent(interfaceStyle == .dark ? 0.18 : 0.08)
-
-        if #available(iOS 26, *) {
-            backgroundColor = .clear
-        } else {
-            backgroundColor = theme.gutterBackground
-        }
-        separator.backgroundColor = theme.gutterForeground.withAlphaComponent(0.32)
-        for button in themedButtons {
-            applyTheme(to: button)
-        }
-    }
-
-    private func setupAppearanceObservation() {
-        appearanceRegistration = registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self]
-        ) { (view: KeyboardAccessoryView, _: UITraitCollection) in
-            view.applyTheme(view.activeTheme)
-        }
-    }
-
-    private var editorThemeInterfaceStyle: UIUserInterfaceStyle {
-        let background = activeTheme.background.resolvedColor(with: traitCollection)
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        guard background.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
-            return .unspecified
-        }
-        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-        return luminance < 0.5 ? .dark : .light
     }
 
     // MARK: - Shared Content
@@ -312,7 +273,7 @@ final class KeyboardAccessoryView: UIView {
 
     private func makeButton(title: String? = nil, systemImage: String? = nil, action: @escaping () -> Void) -> UIButton {
         var config = UIButton.Configuration.plain()
-        config.baseForegroundColor = .label
+        config.baseForegroundColor = controlForegroundColor
         if let title {
             config.title = title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
@@ -333,17 +294,38 @@ final class KeyboardAccessoryView: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
-        themedButtons.append(button)
-        applyTheme(to: button)
         return button
     }
 
-    private func applyTheme(to button: UIButton) {
-        var config = button.configuration ?? .plain()
-        config.baseForegroundColor = activeTheme.text
-        config.background.backgroundColor = .clear
-        button.configuration = config
-        button.tintColor = activeTheme.text
-        button.overrideUserInterfaceStyle = editorThemeInterfaceStyle
+    func applyWorkspaceChromeBackground(_ color: UIColor? = nil) {
+        if let color {
+            workspaceChromeBackgroundColor = color
+        }
+        backgroundColor = workspaceChromeBackgroundColor
+        separator.backgroundColor = controlForegroundColor.withAlphaComponent(0.22)
+        applyControlForegroundColor(in: self)
+    }
+
+    private var controlForegroundColor: UIColor {
+        let color = workspaceChromeBackgroundColor.resolvedColor(with: traitCollection)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return .label
+        }
+        let luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+        return luminance < 0.5 ? .white : .black
+    }
+
+    private func applyControlForegroundColor(in view: UIView) {
+        if let button = view as? UIButton {
+            var config = button.configuration
+            config?.baseForegroundColor = controlForegroundColor
+            button.configuration = config
+            button.tintColor = controlForegroundColor
+        }
+        view.subviews.forEach(applyControlForegroundColor)
     }
 }

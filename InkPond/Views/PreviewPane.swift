@@ -26,7 +26,7 @@ private struct CompilationErrorPresentation {
     let location: String?
 }
 
-private struct PreviewStatistics {
+struct PreviewStatistics {
     let pageCount: Int
     let wordCount: Int
     let characterCount: Int
@@ -75,6 +75,9 @@ private struct PDFPreviewScrollState {
 final class PDFContainerView: UIView {
     fileprivate let pdfView = PassivePDFView()
     private let syncMarkerView = PreviewSyncMarkerView()
+    var previewBackgroundColor: UIColor = .secondarySystemBackground {
+        didSet { applyPreviewBackgroundColor() }
+    }
     /// Incremented on each `scrollToPosition` call so stale scroll-animation
     /// completion handlers don't fire `showMarker` for an outdated position.
     private var scrollGeneration: UInt = 0
@@ -105,6 +108,7 @@ final class PDFContainerView: UIView {
             syncMarkerView.topAnchor.constraint(equalTo: topAnchor),
             syncMarkerView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        applyPreviewBackgroundColor()
 
     }
 
@@ -120,7 +124,7 @@ final class PDFContainerView: UIView {
     }
 
     func reloadDocument(_ document: PDFDocument, focusCoordinator: EditorFocusCoordinator?) {
-        pdfView.backgroundColor = .secondarySystemBackground
+        applyPreviewBackgroundColor()
 
         guard pdfView.document !== document else {
             focusCoordinator?.setResignSuppressed(false)
@@ -207,6 +211,12 @@ final class PDFContainerView: UIView {
         }
 
         return nil
+    }
+
+    private func applyPreviewBackgroundColor() {
+        backgroundColor = previewBackgroundColor
+        pdfView.backgroundColor = previewBackgroundColor
+        findScrollView(in: pdfView)?.backgroundColor = previewBackgroundColor
     }
 
     private func updateScrollInsetsIfNeeded(forcePinnedTop: Bool = false) {
@@ -347,6 +357,7 @@ struct PDFKitView: UIViewRepresentable {
     let focusCoordinator: EditorFocusCoordinator?
     var topViewportInset: CGFloat = 0
     var scrollTarget: PreviewScrollTarget?
+    var backgroundColor: UIColor = .secondarySystemBackground
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -358,11 +369,11 @@ struct PDFKitView: UIViewRepresentable {
         context.coordinator.isHoldingInitialMountSuppression = true
 
         let container = PDFContainerView()
+        container.previewBackgroundColor = backgroundColor
         let pdfView = container.pdfView
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.backgroundColor = .secondarySystemBackground
         pdfView.isAccessibilityElement = false
         container.isAccessibilityElement = true
         container.accessibilityIdentifier = "editor.preview"
@@ -381,6 +392,7 @@ struct PDFKitView: UIViewRepresentable {
     func updateUIView(_ container: PDFContainerView, context: Context) {
         context.coordinator.onTapLocation = onTapLocation
         context.coordinator.pdfView = container.pdfView
+        container.previewBackgroundColor = backgroundColor
         container.topViewportInset = topViewportInset
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
@@ -533,6 +545,8 @@ struct PreviewPane: View {
     var topViewportInset: CGFloat = 0
     var onGoToError: ((_ file: String, _ line: Int, _ column: Int) -> Void)? = nil
     var onLinkExternalFolder: (() -> Void)? = nil
+    var showsStatisticsOverlay: Bool = true
+    var backgroundColor: UIColor = .secondarySystemBackground
     @ScaledMetric(relativeTo: .caption2) private var previewStatsCardWidth = 126
     @ScaledMetric(relativeTo: .caption2) private var previewStatsMinHeight = 34
     @ScaledMetric(relativeTo: .caption2) private var previewStatsHorizontalPadding = 8
@@ -565,8 +579,9 @@ struct PreviewPane: View {
                 PDFKitView(
                     document: pdf,
                     focusCoordinator: focusCoordinator,
-                    topViewportInset: 0,
+                    topViewportInset: topViewportInset,
                     scrollTarget: syncCoordinator?.previewScrollTarget,
+                    backgroundColor: backgroundColor,
                     onTapLocation: { page, yPoints in
                         guard let syncCoordinator,
                               let sourceMap,
@@ -581,7 +596,6 @@ struct PreviewPane: View {
                         )
                     }
                 )
-                .padding(.top, topViewportInset)
                 .ignoresSafeArea(.container, edges: .bottom)
                 .modifier(SoftScrollEdgeEffect())
                 .accessibilityLabel(L10n.a11yPreviewLabel)
@@ -612,10 +626,15 @@ struct PreviewPane: View {
             }
 
             if !requiresExternalFolderLink
-                && (previewStatistics != nil || compiler.errorMessage != nil || !visibleFontWarnings.isEmpty) {
+                && (
+                    (showsStatisticsOverlay && previewStatistics != nil)
+                    || compiler.errorMessage != nil
+                    || !visibleFontWarnings.isEmpty
+                ) {
                 bottomStatusOverlay
             }
         }
+            .background(Color(uiColor: backgroundColor))
             .onChange(of: source, initial: true) {
                 if drivesCompilation {
                     compileIfNeeded()
@@ -735,7 +754,7 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(Color(uiColor: backgroundColor))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L10n.tr("preview.external_link_required.title"))
         .accessibilityHint(L10n.tr("preview.external_link_required.message"))
@@ -758,7 +777,7 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(Color(uiColor: backgroundColor))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.a11yPreviewPlaceholderLabel)
         .accessibilityHint(L10n.a11yPreviewPlaceholderHint)
@@ -768,7 +787,7 @@ struct PreviewPane: View {
 
     private var bottomStatusOverlay: some View {
         VStack(alignment: .trailing, spacing: 10) {
-            if let stats = previewStatistics {
+            if showsStatisticsOverlay, let stats = previewStatistics {
                 previewStatisticsButton(stats)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -1148,7 +1167,7 @@ struct PreviewCompileDriver: View {
     }
 }
 
-private extension String {
+extension String {
     nonisolated var previewWordCount: Int {
         let tokenizer = NLTokenizer(unit: .word)
         tokenizer.string = self
