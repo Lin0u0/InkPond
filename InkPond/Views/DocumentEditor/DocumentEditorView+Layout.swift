@@ -177,6 +177,12 @@ extension DocumentEditorView {
             onGoToError: { file, line, column in
                 navigateToError(file: file, line: line, column: column)
             },
+            onCompactPreviewSwipe: sizeClass == .regular ? nil : {
+                if selectedTab != editorTab {
+                    pendingCompactSwipeFeedback = true
+                    selectedTab = editorTab
+                }
+            },
             onLinkExternalFolder: previewRequiresExternalFolderLink ? {
                 showingExternalFolderLinkImporter = true
             } : nil
@@ -389,11 +395,14 @@ extension DocumentEditorView {
             .onEnded { value in
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
+                let startsAwayFromLeadingEdge = value.startLocation.x > 44
                 guard abs(horizontal) >= 70, abs(horizontal) > abs(vertical) * 1.35 else { return }
 
-                if horizontal < 0, selectedTab == editorTab {
+                if horizontal < 0, selectedTab == editorTab, startsAwayFromLeadingEdge {
+                    pendingCompactSwipeFeedback = true
                     selectedTab = previewTab
-                } else if horizontal > 0, selectedTab == previewTab {
+                } else if horizontal > 0, selectedTab == previewTab, startsAwayFromLeadingEdge {
+                    pendingCompactSwipeFeedback = true
                     selectedTab = editorTab
                 }
             }
@@ -903,7 +912,12 @@ extension DocumentEditorView {
                 pumpPendingInsertionsIfNeeded()
             }
             .onChange(of: selectedTab) { _, newTab in
-                InteractionFeedback.selection()
+                if pendingCompactSwipeFeedback {
+                    pendingCompactSwipeFeedback = false
+                    InteractionFeedback.impact(.light)
+                } else {
+                    InteractionFeedback.selection()
+                }
                 if newTab == editorTab {
                     let shouldRestoreFocus = shouldRestoreEditorFocusAfterPreview
                     shouldRestoreEditorFocusAfterPreview = false

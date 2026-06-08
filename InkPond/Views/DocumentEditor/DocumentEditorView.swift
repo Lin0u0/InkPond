@@ -56,6 +56,7 @@ struct DocumentEditorView: View {
     let editorTab:Int = 0
     let previewTab:Int = 1
     @State var selectedTab:Int = ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" ? 1 : 0
+    @State var pendingCompactSwipeFeedback = false
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
     @State var showingPhotoPicker = false

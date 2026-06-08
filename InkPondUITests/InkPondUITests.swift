@@ -118,7 +118,27 @@ final class InkPondUITests: XCTestCase {
 
         app.swipeRight()
         XCTAssertTrue(app.textViews["editor.text-view"].waitForExistence(timeout: 5))
-        XCTAssertFalse(preview.exists)
+        XCTAssertTrue(waitForNonExistence(preview, timeout: 5))
+    }
+
+    @MainActor
+    func testCompactPreviewSurfaceSwipeReturnsToEditor() throws {
+        let app = launchApp(
+            seedDocument: true,
+            environment: ["UITEST_START_IN_PREVIEW": "1"]
+        )
+        openSeededDocumentIfNeeded(in: app)
+
+        let modePicker = app.segmentedControls["editor.mode-picker"]
+        if !modePicker.waitForExistence(timeout: 3) {
+            throw XCTSkip("Compact mode picker is not visible on this simulator.")
+        }
+
+        let preview = openPreview(in: app, requireRenderedPDF: true)
+
+        preview.swipeRight()
+        XCTAssertTrue(app.textViews["editor.text-view"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForNonExistence(preview, timeout: 5))
     }
 
     @MainActor
@@ -131,7 +151,7 @@ final class InkPondUITests: XCTestCase {
             ]
         )
 
-        let preview = openPreview(in: app)
+        let preview = openPreview(in: app, requireRenderedPDF: true)
 
         let darkPixels = waitForVisibleInk(in: preview)
         XCTAssertGreaterThan(
@@ -155,7 +175,7 @@ final class InkPondUITests: XCTestCase {
             ]
         )
 
-        let preview = openPreview(in: app)
+        let preview = openPreview(in: app, requireRenderedPDF: true)
 
         let darkPixels = waitForVisibleInk(in: preview, minimumVisiblePixels: 1000)
         XCTAssertGreaterThan(
@@ -184,16 +204,33 @@ final class InkPondUITests: XCTestCase {
         return bestCount
     }
 
-    private func openPreview(in app: XCUIApplication) -> XCUIElement {
+    private func openPreview(
+        in app: XCUIApplication,
+        requireRenderedPDF: Bool = false
+    ) -> XCUIElement {
         let preview = app.otherElements["editor.preview"]
         if preview.waitForExistence(timeout: 2) {
+            if requireRenderedPDF {
+                XCTAssertTrue(waitForRenderedPreview(in: app))
+            }
             return preview
         }
 
         let modePicker = app.segmentedControls["editor.mode-picker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 5))
+        app.swipeLeft()
+        if preview.waitForExistence(timeout: 5) {
+            if requireRenderedPDF {
+                XCTAssertTrue(waitForRenderedPreview(in: app))
+            }
+            return preview
+        }
+
         tapPreviewSegment(in: modePicker)
         XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        if requireRenderedPDF {
+            XCTAssertTrue(waitForRenderedPreview(in: app))
+        }
         return preview
     }
 
@@ -222,6 +259,31 @@ final class InkPondUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
         return false
+    }
+
+    private func waitForNonExistence(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !element.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return !element.exists
+    }
+
+    private func waitForRenderedPreview(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        let renderedMarker = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@", "editor.preview.stats"))
+            .firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if renderedMarker.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return renderedMarker.exists
     }
 
     private func tapPreviewSegment(in modePicker: XCUIElement) {
