@@ -105,6 +105,7 @@ struct DocumentEditorView: View {
     @State var showingNewProjectFileAlert = false
     @State var newProjectFileName = ""
     @State var projectFileTreeRefreshToken = UUID()
+    @State var isProjectFileTreeVisible = true
     @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?

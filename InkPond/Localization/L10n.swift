@@ -93,6 +93,8 @@ enum L10n {
     nonisolated static var a11yProjectFilesSettingsHint: String { tr("a11y.project_files.settings.hint") }
     nonisolated static var a11yProjectFilesAddLabel: String { tr("a11y.project_files.add_menu.label") }
     nonisolated static var a11yProjectFilesAddHint: String { tr("a11y.project_files.add_menu.hint") }
+    nonisolated static var a11yProjectFilesShowLabel: String { tr("a11y.project_files.sidebar.show.label") }
+    nonisolated static var a11yProjectFilesHideLabel: String { tr("a11y.project_files.sidebar.hide.label") }
     nonisolated static var a11yProjectFilesExpandHint: String { tr("a11y.project_files.row.hint.expand") }
     nonisolated static var a11yProjectFilesOpenHint: String { tr("a11y.project_files.row.hint.open") }
     nonisolated static var a11yProjectFilesPreviewHint: String { tr("a11y.project_files.row.hint.preview") }

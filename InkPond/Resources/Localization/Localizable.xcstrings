@@ -2205,6 +2205,64 @@
         }
       }
     },
+    "a11y.project_files.sidebar.hide.label" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide project files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏项目文件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏專案檔案"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏專案檔案"
+          }
+        }
+      }
+    },
+    "a11y.project_files.sidebar.show.label" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show project files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示项目文件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示專案檔案"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示專案檔案"
+          }
+        }
+      }
+    },
     "a11y.settings.header.label" : {
       "extractionState" : "stale",
       "localizations" : {

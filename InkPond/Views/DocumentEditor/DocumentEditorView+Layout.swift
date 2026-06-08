@@ -20,11 +20,13 @@ private struct HitTestShield: View {
 
 private struct RegularWorkspaceMetrics {
     let treeWidth: CGFloat
+    let treeDividerWidth: CGFloat
+    let projectHeaderWidth: CGFloat
     let workspaceWidth: CGFloat
     let editorWidth: CGFloat
     let splitHandleWidth: CGFloat
 
-    var editorStartX: CGFloat { treeWidth + 1 }
+    var editorStartX: CGFloat { treeWidth + treeDividerWidth }
     var previewStartX: CGFloat { editorStartX + editorWidth + splitHandleWidth }
     var previewWidth: CGFloat { max(workspaceWidth - editorWidth - splitHandleWidth, 1) }
 }
@@ -597,11 +599,11 @@ extension DocumentEditorView {
         ZStack(alignment: .topLeading) {
             regularWorkspaceProjectHeader
                 .padding(.horizontal, 12)
-                .frame(width: metrics.treeWidth, height: regularWorkspaceTopBarHeight, alignment: .leading)
+                .frame(width: metrics.projectHeaderWidth, height: regularWorkspaceTopBarHeight, alignment: .leading)
                 .background(regularWorkspaceChromeColor)
                 .liquidGlassColorScheme(regularWorkspaceColorScheme)
                 .position(
-                    x: metrics.treeWidth / 2,
+                    x: metrics.projectHeaderWidth / 2,
                     y: regularWorkspaceTopBarHeight / 2
                 )
 
@@ -620,6 +622,8 @@ extension DocumentEditorView {
 
     private var regularWorkspaceProjectHeader: some View {
         HStack(spacing: 12) {
+            regularProjectFileTreeToggleButton
+
             if let onCloseProject {
                 Button {
                     guard flushPendingSave() else { return }
@@ -639,6 +643,25 @@ extension DocumentEditorView {
             regularProjectTitleMenu
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var regularProjectFileTreeToggleButton: some View {
+        Button {
+            InteractionFeedback.impact(.light)
+            withAnimation(.easeInOut(duration: 0.22)) {
+                isProjectFileTreeVisible.toggle()
+            }
+        } label: {
+            Image(systemName: "sidebar.leading")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(regularToolbarForegroundColor)
+                .frame(width: 48, height: 48)
+                .regularToolbarCircleSurface()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isProjectFileTreeVisible ? L10n.a11yProjectFilesHideLabel : L10n.a11yProjectFilesShowLabel)
+        .accessibilityValue(isProjectFileTreeVisible ? L10n.a11yStateExpanded : L10n.a11yStateCollapsed)
+        .accessibilityIdentifier("project-workspace.file-tree-toggle")
     }
 
     private var regularProjectTitleMenu: some View {
@@ -1126,10 +1149,14 @@ extension DocumentEditorView {
         GeometryReader { geo in
             let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
             HStack(spacing: 0) {
-                projectFileTreeSidebar
-                    .padding(.top, topViewportInset)
-                    .frame(width: metrics.treeWidth)
-                Divider()
+                if isProjectFileTreeVisible {
+                    projectFileTreeSidebar
+                        .padding(.top, topViewportInset)
+                        .frame(width: metrics.treeWidth)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Divider()
+                        .transition(.opacity)
+                }
                 HStack(spacing: 0) {
                     workspaceEditorPane(topViewportInset: topViewportInset)
                         .frame(width: metrics.editorWidth)
@@ -1140,10 +1167,11 @@ extension DocumentEditorView {
                 .coordinateSpace(name: "splitContainer")
             }
             .background(regularWorkspaceChromeColor)
+            .animation(.easeInOut(duration: 0.22), value: isProjectFileTreeVisible)
             .overlay(alignment: .topLeading) {
-                if topViewportInset > 0 {
+                if topViewportInset > 0, isProjectFileTreeVisible {
                     regularWorkspaceTopFade
-                        .frame(width: metrics.treeWidth + 1, alignment: .leading)
+                        .frame(width: metrics.treeWidth + metrics.treeDividerWidth, alignment: .leading)
                 }
             }
         }
@@ -1158,11 +1186,15 @@ extension DocumentEditorView {
     @ViewBuilder
     private func regularWorkspaceTabsOverlay(metrics: RegularWorkspaceMetrics) -> some View {
         if !openTabs.isEmpty {
-            let tabWidth = max(metrics.editorWidth - regularTabOverlayLeadingInset, 1)
+            let tabStartX = max(
+                metrics.editorStartX + regularTabOverlayLeadingInset,
+                metrics.projectHeaderWidth + regularTabOverlayLeadingInset
+            )
+            let tabWidth = max(metrics.previewStartX - tabStartX, 1)
             regularEditorTabOverlay
                 .frame(width: tabWidth, height: regularWorkspaceTopHitHeight, alignment: .topLeading)
                 .clippedHorizontally(verticalOutset: 48)
-                .offset(x: metrics.editorStartX + regularTabOverlayLeadingInset)
+                .offset(x: tabStartX)
                 .accessibilityIdentifier("project-workspace.tabs-overlay")
         }
     }
@@ -1178,11 +1210,22 @@ extension DocumentEditorView {
     }
 
     private func regularWorkspaceMetrics(totalWidth: CGFloat) -> RegularWorkspaceMetrics {
-        let treeWidth = min(max(totalWidth * 0.22, 240), 320)
-        let workspaceWidth = max(totalWidth - treeWidth - 1, 1)
-        let editorWidth = workspaceWidth * editorFraction
+        let expandedTreeWidth = min(max(totalWidth * 0.22, 240), 320)
+        let treeWidth = isProjectFileTreeVisible ? expandedTreeWidth : 0
+        let treeDividerWidth: CGFloat = isProjectFileTreeVisible ? 1 : 0
+        let projectHeaderWidth = isProjectFileTreeVisible
+            ? expandedTreeWidth
+            : min(max(totalWidth * 0.22, 220), 300)
+        let workspaceWidth = max(totalWidth - treeWidth - treeDividerWidth, 1)
+        let maximumEditorWidth = max(workspaceWidth - regularSplitHandleWidth - 1, 1)
+        let minimumEditorWidth = isProjectFileTreeVisible
+            ? 1
+            : min(projectHeaderWidth + regularTabOverlayLeadingInset, maximumEditorWidth)
+        let editorWidth = min(max(workspaceWidth * editorFraction, minimumEditorWidth), maximumEditorWidth)
         return RegularWorkspaceMetrics(
             treeWidth: treeWidth,
+            treeDividerWidth: treeDividerWidth,
+            projectHeaderWidth: projectHeaderWidth,
             workspaceWidth: workspaceWidth,
             editorWidth: editorWidth,
             splitHandleWidth: regularSplitHandleWidth
