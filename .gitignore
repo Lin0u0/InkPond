@@ -39,6 +39,8 @@ Frameworks/*
 !Frameworks/.gitkeep
 !Frameworks/typst_ios.xcframework/
 !Frameworks/typst_ios.xcframework/**
+Frameworks/typst_ios.xcframework/.DS_Store
+Frameworks/typst_ios.xcframework/**/.DS_Store
 
 # IDE
 .idea/
