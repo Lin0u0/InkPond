@@ -301,7 +301,13 @@ final class KeyboardAccessoryView: UIView {
         if let color {
             workspaceChromeBackgroundColor = color
         }
-        backgroundColor = workspaceChromeBackgroundColor
+        if #available(iOS 26, *) {
+            backgroundColor = .clear
+            isOpaque = false
+        } else {
+            backgroundColor = workspaceChromeBackgroundColor
+            isOpaque = true
+        }
         separator.backgroundColor = controlForegroundColor.withAlphaComponent(0.22)
         applyControlForegroundColor(in: self)
     }

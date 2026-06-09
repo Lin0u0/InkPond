@@ -135,6 +135,7 @@ enum L10n {
     }
     nonisolated static var previewStatsHintCollapsed: String { tr("preview.stats.a11y.hint.collapsed") }
     nonisolated static var previewStatsHintExpanded: String { tr("preview.stats.a11y.hint.expanded") }
+    nonisolated static var previewStatsLoading: String { tr("preview.stats.loading") }
     nonisolated static var a11yCompileSuccess: String { tr("a11y.compile.success") }
     nonisolated static var a11yCompileFailed: String { tr("a11y.compile.failed") }
     nonisolated static var a11yCacheRefreshStarted: String { tr("a11y.cache_refresh.started") }

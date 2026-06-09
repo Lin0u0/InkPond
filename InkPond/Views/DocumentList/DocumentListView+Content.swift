@@ -26,6 +26,7 @@ extension DocumentListView {
             .padding(.horizontal, isIPad ? 24 : 16)
             .padding(.vertical, 16)
         }
+        .softScrollEdgeEffect()
         .background(Color(uiColor: projectHomeChromeUIColor).ignoresSafeArea())
         .overlay {
             if isShowingLibraryEmptyState {
@@ -345,13 +346,16 @@ private struct ProjectHomeCard: View {
     let backgroundColor: UIColor
     let thumbnailBackgroundColor: UIColor
 
+    private let cardCornerRadius: CGFloat = 16
+    private let thumbnailCornerRadius: CGFloat = 12
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ProjectHomeThumbnail(pdfURL: cacheEntry?.pdfURL, backgroundColor: thumbnailBackgroundColor)
                 .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: thumbnailCornerRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: thumbnailCornerRadius, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                 )
 
@@ -382,9 +386,9 @@ private struct ProjectHomeCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: backgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color(uiColor: backgroundColor), in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }

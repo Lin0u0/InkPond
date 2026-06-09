@@ -65,6 +65,7 @@ private final class SlideshowPDFContainerView: UIView {
     private func centerRenderedPageIfNeeded() {
         guard let scrollView = findScrollView(in: pdfView) else { return }
 
+        scrollView.applySoftScrollEdgeEffects()
         scrollView.layoutIfNeeded()
 
         let horizontalInset = max((scrollView.bounds.width - scrollView.contentSize.width) / 2, 0)

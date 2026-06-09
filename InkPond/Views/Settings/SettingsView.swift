@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Environment(ThemeManager.self) var themeManager
     @Environment(EditorFontSettings.self) var editorFontSettings
     @Environment(StorageManager.self) var storageManager
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
 
@@ -33,6 +34,10 @@ struct SettingsView: View {
     var typstVersionString: String? {
         guard let version = TypstBridge.runtimeVersion else { return nil }
         return L10n.format("settings.typst_version_format", version)
+    }
+
+    private var settingsColorScheme: ColorScheme {
+        appAppearanceManager.colorScheme ?? colorScheme
     }
 
     var body: some View {
@@ -79,6 +84,10 @@ struct SettingsView: View {
                 Text(zipImportError ?? "")
             }
         }
+        .id(appAppearanceManager.mode)
+        .preferredColorScheme(settingsColorScheme)
+        .environment(\.colorScheme, settingsColorScheme)
+        .liquidGlassColorScheme(settingsColorScheme)
     }
 }
 

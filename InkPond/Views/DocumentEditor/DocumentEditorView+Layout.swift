@@ -12,13 +12,14 @@ import UIKit
 
 private struct HitTestShield: View {
     var body: some View {
-        Color.black.opacity(0.001)
+        Color.clear
             .contentShape(Rectangle())
             .onTapGesture {}
     }
 }
 
 private struct RegularWorkspaceMetrics {
+    let totalWidth: CGFloat
     let treeWidth: CGFloat
     let treeDividerWidth: CGFloat
     let projectHeaderWidth: CGFloat
@@ -35,29 +36,6 @@ private enum RegularToolbarActionLayout {
     case full
     case compact
     case minimal
-}
-
-private struct TopBarHostingView<Content: View>: UIViewControllerRepresentable {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    func makeUIViewController(context: Context) -> UIHostingController<Content> {
-        let controller = UIHostingController(rootView: content)
-        controller.view.backgroundColor = .clear
-        controller.view.clipsToBounds = false
-        controller.view.layer.masksToBounds = false
-        return controller
-    }
-
-    func updateUIViewController(_ controller: UIHostingController<Content>, context: Context) {
-        controller.rootView = content
-        controller.view.backgroundColor = .clear
-        controller.view.clipsToBounds = false
-        controller.view.layer.masksToBounds = false
-    }
 }
 
 private struct HorizontalBoundsClipShape: Shape {
@@ -77,16 +55,6 @@ private struct HorizontalBoundsClipShape: Shape {
     }
 }
 
-private struct SoftScrollEdgeEffectModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.scrollEdgeEffectStyle(.soft, for: .all)
-        } else {
-            content
-        }
-    }
-}
-
 private struct EditorNavigationBarBackgroundModifier: ViewModifier {
     let usesCompactChrome: Bool
     let background: Color
@@ -94,7 +62,10 @@ private struct EditorNavigationBarBackgroundModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         if usesCompactChrome {
-            if #available(iOS 18.0, *) {
+            if #available(iOS 26.0, *) {
+                content
+                    .toolbarColorScheme(colorScheme, for: .navigationBar)
+            } else if #available(iOS 18.0, *) {
                 content
                     .toolbarBackground(background, for: .navigationBar)
                     .toolbarBackgroundVisibility(.visible, for: .navigationBar)
@@ -124,18 +95,6 @@ private struct ConditionalToolbarRoleModifier: ViewModifier {
     }
 }
 
-private struct RegularNavigationBarVisibilityModifier: ViewModifier {
-    let hidesNavigationBar: Bool
-
-    func body(content: Content) -> some View {
-        if hidesNavigationBar {
-            content.toolbar(.hidden, for: .navigationBar)
-        } else {
-            content
-        }
-    }
-}
-
 private enum ExternalFolderLinkError: LocalizedError {
     case missingSource
     case folderMismatch
@@ -153,6 +112,15 @@ private enum ExternalFolderLinkError: LocalizedError {
 private extension View {
     func clippedHorizontally(verticalOutset: CGFloat) -> some View {
         clipShape(HorizontalBoundsClipShape(verticalOutset: verticalOutset))
+    }
+
+    @ViewBuilder
+    func highPriorityGestureIfEnabled<G: Gesture>(_ isEnabled: Bool, _ gesture: G) -> some View {
+        if isEnabled {
+            highPriorityGesture(gesture)
+        } else {
+            self
+        }
     }
 
     @ViewBuilder
@@ -212,7 +180,7 @@ private extension View {
                 .background(background, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(border.opacity(0.72), lineWidth: 0.7)
+                        .strokeBorder(border.opacity(0.54), lineWidth: 0.5)
                         .allowsHitTesting(false)
                 }
                 .lockedLiquidGlassRect(cornerRadius: cornerRadius, isInteractive: isInteractive)
@@ -233,8 +201,22 @@ extension DocumentEditorView {
     private var isSyncEnabled: Bool { sizeClass == .regular }
     private var regularWorkspaceTopBarHeight: CGFloat { 56 }
     private var regularWorkspaceTopHitHeight: CGFloat { regularWorkspaceTopBarHeight + 14 }
+    private var regularToolbarControlHeight: CGFloat { 48 }
     private var regularSplitHandleWidth: CGFloat { 12 }
-    private var regularTabOverlayLeadingInset: CGFloat { 20 }
+    private var regularTabOverlayLeadingInset: CGFloat { 6 }
+    private var regularTabOverlayTrailingInset: CGFloat { 18 }
+    private var regularTabOverlayEdgeFadeWidth: CGFloat { 24 }
+    private var regularProjectTabSpacing: CGFloat { 5 }
+    private var regularProjectTabMinimumWidth: CGFloat { 168 }
+    private var regularProjectTabMaximumWidth: CGFloat { 214 }
+    private var regularProjectTabTitleMaximumWidth: CGFloat { 116 }
+    private var regularProjectTabSurfaceHeight: CGFloat { 44 }
+    private var regularCollapsedProjectHeaderMinimumWidth: CGFloat { 272 }
+    private var regularCollapsedProjectHeaderMaximumWidth: CGFloat { 312 }
+    private var regularToolbarActionButtonSpacing: CGFloat { 2 }
+    private var regularToolbarActionCapsuleHorizontalPadding: CGFloat { 8 }
+    private var regularToolbarPreviewStatsFullEstimatedWidth: CGFloat { 134 }
+    private var regularToolbarPreviewStatsCompactEstimatedWidth: CGFloat { 78 }
     private var regularToolbarMinimalActionsMaximumPreviewWidth: CGFloat { 220 }
     private var regularToolbarCompactActionsMaximumPreviewWidth: CGFloat { 280 }
     private var regularPreviewStatsCompactMinimumPreviewWidth: CGFloat { 340 }
@@ -257,6 +239,15 @@ extension DocumentEditorView {
 
     private var regularWorkspaceChromeColor: Color {
         Color(uiColor: regularWorkspaceChromeUIColor)
+    }
+
+    @ViewBuilder
+    private var regularWorkspaceTopBarBackdrop: some View {
+        if #available(iOS 26, *) {
+            Color.clear
+        } else {
+            regularWorkspaceChromeColor
+        }
     }
 
     private var regularWorkspaceChromeUIColor: UIColor {
@@ -476,7 +467,7 @@ extension DocumentEditorView {
     }
 
     private var navigationEditorSubtitle: String {
-        openTabs.isEmpty ? activeEditorSubtitle : ""
+        openTabs.count <= 1 ? activeEditorSubtitle : ""
     }
 
     func splitHandle(totalWidth: CGFloat) -> some View {
@@ -535,7 +526,7 @@ extension DocumentEditorView {
     @ViewBuilder
     func workspaceEditorPane(topViewportInset: CGFloat = 0) -> some View {
         VStack(spacing: 0) {
-            if sizeClass != .regular {
+            if sizeClass != .regular, !usesCompactTabsInTopChrome {
                 compactProjectTabBar
             }
             if activeTabIsTextEditable {
@@ -551,18 +542,19 @@ extension DocumentEditorView {
             editorPane(topViewportInset: topViewportInset)
         }
         }
+        .animation(.smooth(duration: 0.22, extraBounce: 0), value: openTabs.count)
     }
 
     @ViewBuilder
-    private var projectFileTreeSidebar: some View {
+    private func projectFileTreeSidebar(topContentInset: CGFloat = 0) -> some View {
         ProjectFileTreeView(
             document: document,
             activePath: activeProjectPath,
             openNode: openProjectFile,
             setEntryFile: setEntryProjectFile,
             onNodeDeleted: handleProjectFileDeleted,
-            editorTheme: themeManager.currentTheme,
             usesNavigationToolbar: false,
+            topContentInset: topContentInset,
             refreshToken: projectFileTreeRefreshToken
         )
         .environment(\.colorScheme, regularWorkspaceColorScheme)
@@ -572,16 +564,17 @@ extension DocumentEditorView {
 
     private var regularToolbarTabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: regularProjectTabSpacing) {
                 ForEach(openTabs) { tab in
                     projectTabButton(tab, isCompact: false)
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 4)
         }
         .scrollClipDisabled()
-        .frame(maxWidth: .infinity, minHeight: 46, maxHeight: regularWorkspaceTopHitHeight, alignment: .topLeading)
+        .softScrollEdgeEffect(for: .horizontal)
+        .frame(height: regularToolbarControlHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("project-workspace.tabs")
     }
 
@@ -591,12 +584,9 @@ extension DocumentEditorView {
             let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
             regularWorkspaceTopBarContent(metrics: metrics)
                 .background {
-                    if #available(iOS 26, *) {
-                        Color.clear
-                    } else {
-                        regularWorkspaceChromeColor
-                    }
+                    regularWorkspaceTopBarBackdrop
                 }
+                .scrollEdgeElementContainer(edge: .top)
         }
         .frame(height: regularWorkspaceTopBarHeight)
     }
@@ -606,17 +596,24 @@ extension DocumentEditorView {
             regularWorkspaceProjectHeader
                 .padding(.horizontal, 12)
                 .frame(width: metrics.projectHeaderWidth, height: regularWorkspaceTopBarHeight, alignment: .leading)
-                .background(regularWorkspaceChromeColor)
+                .background {
+                    regularWorkspaceTopBarBackdrop
+                }
                 .liquidGlassColorScheme(regularWorkspaceColorScheme)
                 .position(
                     x: metrics.projectHeaderWidth / 2,
                     y: regularWorkspaceTopBarHeight / 2
                 )
 
+            regularWorkspaceTabsOverlay(metrics: metrics)
+                .zIndex(1)
+
             regularWorkspaceActionButtons(metrics: metrics)
                 .padding(.horizontal, 12)
                 .frame(width: metrics.previewWidth, height: regularWorkspaceTopBarHeight, alignment: .trailing)
-                .background(regularWorkspaceChromeColor)
+                .background {
+                    regularWorkspaceTopBarBackdrop
+                }
                 .liquidGlassColorScheme(regularWorkspaceColorScheme)
                 .position(
                     x: metrics.previewStartX + metrics.previewWidth / 2,
@@ -638,7 +635,7 @@ extension DocumentEditorView {
                     Image(systemName: "chevron.left")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(regularToolbarForegroundColor)
-                        .frame(width: 48, height: 48)
+                        .frame(width: regularToolbarControlHeight, height: regularToolbarControlHeight)
                         .regularToolbarCircleSurface()
                 }
                 .buttonStyle(.plain)
@@ -648,20 +645,21 @@ extension DocumentEditorView {
 
             regularProjectTitleMenu
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
         }
     }
 
     private var regularProjectFileTreeToggleButton: some View {
         Button {
             InteractionFeedback.impact(.light)
-            withAnimation(.easeInOut(duration: 0.22)) {
+            withAnimation(.smooth(duration: 0.24, extraBounce: 0)) {
                 isProjectFileTreeVisible.toggle()
             }
         } label: {
             Image(systemName: "sidebar.leading")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(regularToolbarForegroundColor)
-                .frame(width: 48, height: 48)
+                .frame(width: regularToolbarControlHeight, height: regularToolbarControlHeight)
                 .regularToolbarCircleSurface()
         }
         .buttonStyle(.plain)
@@ -710,15 +708,16 @@ extension DocumentEditorView {
                 Text(document.title)
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.72)
                 Image(systemName: "chevron.down")
                     .font(.subheadline.weight(.semibold))
                     .symbolRenderingMode(.hierarchical)
             }
             .foregroundStyle(regularToolbarForegroundColor)
             .padding(.horizontal, 6)
-            .frame(height: 48)
-            .frame(maxWidth: 280, alignment: .leading)
+            .frame(height: regularToolbarControlHeight)
+            .frame(maxWidth: 320, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -728,10 +727,14 @@ extension DocumentEditorView {
     private func regularWorkspaceActionButtons(metrics: RegularWorkspaceMetrics) -> some View {
         let actionLayout = regularToolbarActionLayout(for: metrics.previewWidth)
         let usesCompactStats = metrics.previewWidth < regularPreviewStatsFullMinimumPreviewWidth
-        let showsStats = metrics.previewWidth >= regularPreviewStatsCompactMinimumPreviewWidth
+        let showsStats = regularShouldShowPreviewStatistics(for: metrics.previewWidth)
         return HStack(spacing: 8) {
-            if showsStats, let stats = toolbarPreviewStatistics {
-                regularPreviewStatisticsPill(stats, usesCompactLabel: usesCompactStats)
+            if showsStats {
+                regularPreviewStatisticsPill(
+                    toolbarPreviewStatistics,
+                    usesCompactLabel: usesCompactStats,
+                    includesRenderedPages: toolbarPreviewStatisticsIncludesRenderedPages
+                )
             }
 
             regularWorkspaceButtonCapsule(layout: actionLayout)
@@ -754,7 +757,7 @@ extension DocumentEditorView {
         let usesFullLayout = layout == .full
         let usesMinimalLayout = layout == .minimal
         let iconSize: CGFloat = usesFullLayout ? 44 : 40
-        let iconSpacing: CGFloat = usesFullLayout ? 2 : 0
+        let iconSpacing: CGFloat = usesFullLayout ? regularToolbarActionButtonSpacing : 0
 
         return HStack(spacing: iconSpacing) {
             if usesFullLayout {
@@ -874,69 +877,107 @@ extension DocumentEditorView {
             .accessibilityIdentifier("editor.more-menu")
         }
         .padding(.horizontal, 4)
-        .frame(height: 48)
+        .frame(height: regularToolbarControlHeight)
         .regularToolbarCapsuleSurface()
     }
 
     private func regularPreviewStatisticsPill(
-        _ stats: PreviewStatistics,
-        usesCompactLabel: Bool = false
+        _ stats: PreviewStatistics?,
+        usesCompactLabel: Bool = false,
+        includesRenderedPages: Bool = false
     ) -> some View {
-        Button {
+        let pillWidth = usesCompactLabel
+            ? regularToolbarPreviewStatsCompactEstimatedWidth
+            : regularToolbarPreviewStatsFullEstimatedWidth
+        let hasStats = stats != nil
+
+        return Button {
+            guard hasStats else { return }
             showingPreviewStatsDetails.toggle()
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "doc.text")
                     .font(.caption.weight(.semibold))
                     .accessibilityHidden(true)
-                Text(
-                    usesCompactLabel
-                    ? regularPreviewStatsCompactLabel(stats.wordCount)
-                    : L10n.previewStatsWords(stats.wordCount)
-                )
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
+                if let stats {
+                    Text(
+                        usesCompactLabel
+                        ? regularPreviewStatsCompactLabel(stats.wordCount)
+                        : L10n.previewStatsWords(stats.wordCount)
+                    )
+                        .transition(.opacity)
+                } else if usesCompactLabel {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(L10n.tr("preview.stats.words.label"))
+                        .foregroundStyle(regularToolbarSecondaryForegroundColor)
+                }
             }
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
             .foregroundStyle(regularToolbarForegroundColor)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)
-            .frame(height: 44)
+            .frame(width: pillWidth, height: 44)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showingPreviewStatsDetails, arrowEdge: .top) {
-            regularPreviewStatisticsDetails(stats)
-                .padding(16)
-                .presentationCompactAdaptation(.popover)
+            if let stats {
+                regularPreviewStatisticsDetails(stats, includesRenderedPages: includesRenderedPages)
+                    .padding(16)
+                    .presentationCompactAdaptation(.popover)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.a11yPreviewLabel)
-        .accessibilityValue(
-            L10n.previewStatsExpandedValue(
-                pages: L10n.previewStatsPages(stats.pageCount),
-                words: L10n.previewStatsWords(stats.wordCount),
-                characters: L10n.previewStatsCharacters(stats.characterCount)
-            )
-        )
-        .accessibilityHint(L10n.previewStatsHintCollapsed)
+        .accessibilityValue(regularPreviewStatisticsAccessibilityValue(stats, includesRenderedPages: includesRenderedPages))
+        .accessibilityHint(hasStats ? L10n.previewStatsHintCollapsed : L10n.previewStatsLoading)
         .accessibilityIdentifier("editor.preview.stats.toolbar")
-        .frame(height: 48)
-        .fixedSize(horizontal: true, vertical: false)
+        .frame(height: regularToolbarControlHeight)
+        .frame(width: pillWidth)
         .regularToolbarCapsuleSurface()
+        .animation(.easeInOut(duration: 0.18), value: hasStats)
     }
 
     private func regularPreviewStatsCompactLabel(_ wordCount: Int) -> String {
         NumberFormatter.localizedString(from: NSNumber(value: wordCount), number: .decimal)
     }
 
-    private func regularPreviewStatisticsDetails(_ stats: PreviewStatistics) -> some View {
+    private func regularPreviewStatisticsDetails(
+        _ stats: PreviewStatistics,
+        includesRenderedPages: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.previewStatsPages(stats.pageCount))
+            if includesRenderedPages {
+                Text(L10n.previewStatsPages(stats.pageCount))
+            }
             Text(L10n.previewStatsWords(stats.wordCount))
             Text(L10n.previewStatsCharacters(stats.characterCount))
         }
         .font(.footnote.weight(.medium))
         .foregroundStyle(.primary)
         .frame(minWidth: 160, alignment: .leading)
+    }
+
+    private func regularPreviewStatisticsAccessibilityValue(
+        _ stats: PreviewStatistics?,
+        includesRenderedPages: Bool
+    ) -> String {
+        guard let stats else { return L10n.previewStatsLoading }
+        let words = L10n.previewStatsWords(stats.wordCount)
+        let characters = L10n.previewStatsCharacters(stats.characterCount)
+        if includesRenderedPages {
+            return L10n.previewStatsExpandedValue(
+                pages: L10n.previewStatsPages(stats.pageCount),
+                words: words,
+                characters: characters
+            )
+        }
+        return "\(words), \(characters)"
     }
 
     private func requestFindReplaceFromToolbar() {
@@ -959,37 +1000,33 @@ extension DocumentEditorView {
         Image(systemName: systemName)
             .font(.title3.weight(.semibold))
             .foregroundStyle(regularToolbarForegroundColor)
-            .frame(width: size, height: 44)
+            .frame(width: size, height: regularToolbarControlHeight - 4)
     }
 
     @ViewBuilder
     private var compactProjectTabBar: some View {
-        if !openTabs.isEmpty {
-            ZStack {
-                appChromeColor
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(openTabs) { tab in
-                            projectTabButton(tab, isCompact: true)
-                        }
+        if openTabs.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(openTabs) { tab in
+                        projectTabButton(tab, isCompact: true)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .accessibilityIdentifier("project-workspace.compact-tabs")
-                .projectTabBarSurface(
-                    background: appChromeColor.opacity(0.62),
-                    border: .clear,
-                    cornerRadius: 18,
-                    isInteractive: true
-                )
                 .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.vertical, 3)
             }
-            .frame(height: 62)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background {
+                compactProjectTabBarBackdrop
+            }
+            .softScrollEdgeEffect(for: .horizontal)
+            .clippedHorizontally(verticalOutset: 48)
+            .transition(.asymmetric(
+                insertion: .move(edge: .top).combined(with: .opacity),
+                removal: .move(edge: .top).combined(with: .opacity)
+            ))
+            .accessibilityIdentifier("project-workspace.compact-tabs")
         }
     }
 
@@ -997,9 +1034,28 @@ extension DocumentEditorView {
         previewPane(topViewportInset: topViewportInset)
     }
 
+    private var usesCompactTabsInTopChrome: Bool {
+        guard sizeClass != .regular else { return false }
+        if #available(iOS 26.0, *) {
+            return true
+        }
+        return false
+    }
+
+    @ViewBuilder
+    private var compactProjectTabBarBackdrop: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+        } else {
+            appChromeColor
+        }
+    }
+
     private var regularWorkspaceTopFade: some View {
         Group {
-            if regularWorkspaceColorScheme == .dark {
+            if #available(iOS 26, *) {
+                Color.clear
+            } else if regularWorkspaceColorScheme == .dark {
                 LinearGradient(
                     stops: [
                         .init(color: regularWorkspaceChromeColor, location: 0),
@@ -1022,47 +1078,85 @@ extension DocumentEditorView {
         let tabForeground = isCompact ? appThemeTitleForegroundColor : regularToolbarForegroundColor
         let tabSecondaryForeground = isCompact ? appThemeTitleForegroundColor.opacity(0.68) : regularToolbarSecondaryForegroundColor
         let activeForeground = tabForeground
-        let activeBackground = tabForeground.opacity(isCompact ? 0.14 : 0.12)
-        let inactiveBackground = tabForeground.opacity(isCompact ? 0.045 : 0.035)
-        let activeBorder = tabForeground.opacity(isCompact ? 0.42 : 0.36)
-        return HStack(spacing: 4) {
+        let activeBackground = tabForeground.opacity(isCompact ? 0.10 : 0.075)
+        let inactiveBackground = tabForeground.opacity(isCompact ? 0.025 : 0.012)
+        let activeBorder = tabForeground.opacity(isCompact ? 0.26 : 0.22)
+        let tabSurfaceHeight: CGFloat? = isCompact ? nil : regularProjectTabSurfaceHeight
+        let tabMinimumWidth: CGFloat? = (!isCompact && openTabs.count == 1) ? regularProjectTabMinimumWidth : nil
+        let tabMaximumWidth: CGFloat? = isCompact || openTabs.count == 1 ? regularProjectTabMaximumWidth : nil
+        let titleMaximumWidth: CGFloat? = isCompact ? nil : regularProjectTabTitleMaximumWidth
+        let shouldHugContent = !isCompact && openTabs.count > 1
+        let compactTapSlop: CGFloat = 10
+        let closeHitSize: CGFloat = isCompact ? 44 : regularProjectTabSurfaceHeight
+        return HStack(spacing: 2) {
             Button {
                 selectProjectTab(tab)
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: tab.kind.iconName)
-                        .font(.system(size: isCompact ? 11 : 13, weight: .semibold))
+                        .font(.system(size: isCompact ? 11 : 12.5, weight: .semibold))
                     Text(tab.displayName)
-                        .font(isCompact ? .caption.weight(isActive ? .semibold : .medium) : .subheadline.weight(isActive ? .semibold : .medium))
+                        .font(isCompact ? .caption.weight(isActive ? .semibold : .medium) : .callout.weight(isActive ? .semibold : .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .frame(maxWidth: titleMaximumWidth, alignment: .leading)
                 }
                 .foregroundStyle(isActive ? activeForeground : tabForeground)
-                .padding(.leading, isCompact ? 8 : 10)
-                .padding(.vertical, isCompact ? 7 : 8)
-                .frame(minHeight: isCompact ? 34 : 40)
+                .padding(.leading, isCompact ? 8 : 9)
+                .padding(.vertical, isCompact ? 7 : 6)
+                .frame(minHeight: isCompact ? 34 : regularProjectTabSurfaceHeight - 4)
             }
             .buttonStyle(.plain)
+            .highPriorityGestureIfEnabled(
+                isCompact,
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        let translation = value.translation
+                        guard abs(translation.width) <= compactTapSlop,
+                              abs(translation.height) <= compactTapSlop else {
+                            return
+                        }
+                        selectProjectTab(tab)
+                    }
+            )
 
             Button {
                 closeProjectTab(tab)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: isCompact ? 9 : 10, weight: .bold))
-                    .foregroundStyle(tabSecondaryForeground)
-                    .frame(width: isCompact ? 28 : 34, height: isCompact ? 32 : 38)
+                    .font(.system(size: isCompact ? 9 : 9.5, weight: .semibold))
+                    .foregroundStyle(tabSecondaryForeground.opacity(isActive ? 1 : 0.72))
+                    .frame(width: closeHitSize, height: closeHitSize)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .highPriorityGestureIfEnabled(
+                isCompact,
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        let translation = value.translation
+                        guard abs(translation.width) <= compactTapSlop,
+                              abs(translation.height) <= compactTapSlop else {
+                            return
+                        }
+                        closeProjectTab(tab)
+                    }
+            )
             .accessibilityLabel(L10n.tr("Close"))
         }
-        .padding(.trailing, 3)
+        .padding(.trailing, isCompact ? 0 : 2)
+        .frame(height: tabSurfaceHeight)
         .projectTabBarSurface(
             background: isActive ? activeBackground : inactiveBackground,
-            border: isActive ? activeBorder : tabSecondaryForeground.opacity(0.20),
-            cornerRadius: isCompact ? 9 : 13,
+            border: isActive ? activeBorder : tabSecondaryForeground.opacity(0.08),
+            cornerRadius: isCompact ? 9 : 14,
             isInteractive: true
         )
-        .frame(maxWidth: isCompact ? 220 : 210)
+        .fixedSize(horizontal: shouldHugContent, vertical: false)
+        .frame(
+            minWidth: tabMinimumWidth,
+            maxWidth: tabMaximumWidth
+        )
         .accessibilityElement(children: .combine)
         .accessibilityValue(isActive ? L10n.tr("a11y.state.selected") : "")
         .accessibilityIdentifier("project-workspace.tab.\(tab.relativePath)")
@@ -1097,31 +1191,30 @@ extension DocumentEditorView {
         if sizeClass == .regular {
             if #available(iOS 26, *) {
                 GeometryReader { geo in
-                    let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
-                    ZStack(alignment: .topLeading) {
-                        regularWorkspaceContent(topViewportInset: regularWorkspaceTopBarHeight)
-                        regularWorkspaceTopChromePlate
-                            .zIndex(0.25)
-                        HitTestShield()
-                            .frame(width: metrics.previewWidth, height: regularWorkspaceTopHitHeight)
-                            .offset(x: metrics.previewStartX)
-                            .zIndex(0.5)
-                        regularWorkspaceTabsOverlay(metrics: metrics)
-                            .zIndex(1.25)
-                        regularWorkspaceTopBar
-                            .containerCornerOffsetWhenAvailable()
-                            .zIndex(1)
-                    }
+                    regularWorkspaceContent(topViewportInset: 0)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                        .safeAreaBar(edge: .top, spacing: 0) {
+                            regularWorkspaceTopBar
+                                .frame(height: regularWorkspaceTopBarHeight)
+                                .containerCornerOffsetWhenAvailable()
+                        }
+                        .softScrollEdgeEffect(for: .top)
+                        .background(regularWorkspaceChromeColor)
+                        .clipped()
                 }
+                .ignoresSafeArea(edges: .bottom)
             } else {
                 VStack(spacing: 0) {
                     regularWorkspaceTopBar
                     regularWorkspaceTopBarSeparator
                     regularWorkspaceContent(topViewportInset: 0)
                 }
+                .background(regularWorkspaceChromeColor)
+                .ignoresSafeArea(edges: .bottom)
             }
         } else {
-            GeometryReader { _ in
+            GeometryReader { geo in
+                let topViewportInset = geo.safeAreaInsets.top
                 ZStack {
                     PreviewCompileDriver(
                         compiler: compiler,
@@ -1134,14 +1227,16 @@ extension DocumentEditorView {
                         compileToken: compileToken,
                         requiresExternalFolderLink: previewRequiresExternalFolderLink
                     )
-                    workspaceEditorPane(topViewportInset: 0)
-                        .modifier(SoftScrollEdgeEffectModifier())
+                    workspaceEditorPane(topViewportInset: topViewportInset)
+                        .ignoresSafeArea(edges: .top)
+                        .softScrollEdgeEffect()
                         .opacity(selectedTab == editorTab ? 1 : 0)
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
                     if selectedTab == previewTab {
-                        previewPane(topViewportInset: 0)
-                            .modifier(SoftScrollEdgeEffectModifier())
+                        previewPane(topViewportInset: topViewportInset)
+                            .ignoresSafeArea(edges: .top)
+                            .softScrollEdgeEffect()
                             .transition(.identity)
                             .accessibilityHidden(false)
                     }
@@ -1157,8 +1252,7 @@ extension DocumentEditorView {
             let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
             HStack(spacing: 0) {
                 if isProjectFileTreeVisible {
-                    projectFileTreeSidebar
-                        .padding(.top, topViewportInset)
+                    projectFileTreeSidebar(topContentInset: topViewportInset)
                         .frame(width: metrics.treeWidth)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     Divider()
@@ -1166,15 +1260,17 @@ extension DocumentEditorView {
                 }
                 HStack(spacing: 0) {
                     workspaceEditorPane(topViewportInset: topViewportInset)
+                        .softScrollEdgeEffect()
                         .frame(width: metrics.editorWidth)
                         .clipped()
                     splitHandle(totalWidth: metrics.workspaceWidth)
                     regularPreviewColumn(topViewportInset: topViewportInset)
+                        .softScrollEdgeEffect()
                 }
                 .coordinateSpace(name: "splitContainer")
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             .background(regularWorkspaceChromeColor)
-            .animation(.easeInOut(duration: 0.22), value: isProjectFileTreeVisible)
             .overlay(alignment: .topLeading) {
                 if topViewportInset > 0, isProjectFileTreeVisible {
                     regularWorkspaceTopFade
@@ -1185,44 +1281,105 @@ extension DocumentEditorView {
     }
 
     private var regularWorkspaceTopChromePlate: some View {
-        regularWorkspaceChromeColor
+        regularWorkspaceTopBarBackdrop
             .frame(maxWidth: .infinity, minHeight: regularWorkspaceTopHitHeight, maxHeight: regularWorkspaceTopHitHeight, alignment: .topLeading)
             .allowsHitTesting(false)
     }
 
     @ViewBuilder
     private func regularWorkspaceTabsOverlay(metrics: RegularWorkspaceMetrics) -> some View {
-        if !openTabs.isEmpty {
-            let tabStartX = max(
-                metrics.editorStartX + regularTabOverlayLeadingInset,
-                metrics.projectHeaderWidth + regularTabOverlayLeadingInset
+        if openTabs.count > 1 {
+            let tabStartX = metrics.projectHeaderWidth + regularTabOverlayLeadingInset
+            let tabEndX = max(
+                metrics.previewStartX,
+                metrics.totalWidth - regularToolbarTrailingReservedWidth(for: metrics) - regularTabOverlayTrailingInset
             )
-            let tabWidth = max(metrics.previewStartX - tabStartX, 1)
+            let tabWidth = max(tabEndX - tabStartX, 1)
             regularEditorTabOverlay
-                .frame(width: tabWidth, height: regularWorkspaceTopHitHeight, alignment: .topLeading)
+                .frame(width: tabWidth, height: regularWorkspaceTopBarHeight, alignment: .center)
                 .clippedHorizontally(verticalOutset: 48)
-                .offset(x: tabStartX)
+                .position(
+                    x: tabStartX + tabWidth / 2,
+                    y: regularWorkspaceTopBarHeight / 2
+                )
                 .accessibilityIdentifier("project-workspace.tabs-overlay")
         }
     }
 
     private var regularEditorTabOverlay: some View {
-        TopBarHostingView {
-            regularToolbarTabBar
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, maxHeight: regularWorkspaceTopHitHeight, alignment: .topLeading)
-                .background(regularWorkspaceChromeColor)
-                .liquidGlassColorScheme(regularWorkspaceColorScheme)
+        regularToolbarTabBar
+            .padding(.horizontal, 12)
+            .frame(height: regularWorkspaceTopBarHeight)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .background {
+                regularWorkspaceTopBarBackdrop
+            }
+            .overlay(alignment: .leading) {
+                regularTabOverlayEdgeFade(isLeading: true)
+            }
+            .overlay(alignment: .trailing) {
+                regularTabOverlayEdgeFade(isLeading: false)
+            }
+            .liquidGlassColorScheme(regularWorkspaceColorScheme)
+    }
+
+    private func regularTabOverlayEdgeFade(isLeading: Bool) -> some View {
+        Group {
+            if #available(iOS 26, *) {
+                Color.clear
+            } else {
+                LinearGradient(
+                    colors: isLeading
+                        ? [regularWorkspaceChromeColor, regularWorkspaceChromeColor.opacity(0)]
+                        : [regularWorkspaceChromeColor.opacity(0), regularWorkspaceChromeColor],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
         }
+            .frame(width: regularTabOverlayEdgeFadeWidth)
+            .frame(maxHeight: regularWorkspaceTopHitHeight)
+            .allowsHitTesting(false)
+    }
+
+    private func regularToolbarTrailingReservedWidth(for metrics: RegularWorkspaceMetrics) -> CGFloat {
+        let actionLayout = regularToolbarActionLayout(for: metrics.previewWidth)
+        let iconSize: CGFloat = actionLayout == .full ? 44 : 40
+        let visibleActionCount: CGFloat
+        switch actionLayout {
+        case .full:
+            visibleActionCount = 5
+        case .compact:
+            visibleActionCount = 4
+        case .minimal:
+            visibleActionCount = 2
+        }
+        let iconSpacing = actionLayout == .full ? regularToolbarActionButtonSpacing : 0
+        let actionCapsuleWidth = visibleActionCount * iconSize
+            + max(visibleActionCount - 1, 0) * iconSpacing
+            + regularToolbarActionCapsuleHorizontalPadding
+        let showsStats = regularShouldShowPreviewStatistics(for: metrics.previewWidth)
+        let statsWidth: CGFloat
+        if showsStats {
+            statsWidth = metrics.previewWidth < regularPreviewStatsFullMinimumPreviewWidth
+                ? regularToolbarPreviewStatsCompactEstimatedWidth
+                : regularToolbarPreviewStatsFullEstimatedWidth
+        } else {
+            statsWidth = 0
+        }
+        let statsSpacing: CGFloat = showsStats ? 8 : 0
+        return 24 + statsWidth + statsSpacing + actionCapsuleWidth
     }
 
     private func regularWorkspaceMetrics(totalWidth: CGFloat) -> RegularWorkspaceMetrics {
         let expandedTreeWidth = min(max(totalWidth * 0.22, 240), 320)
         let treeWidth = isProjectFileTreeVisible ? expandedTreeWidth : 0
         let treeDividerWidth: CGFloat = isProjectFileTreeVisible ? 1 : 0
-        let projectHeaderWidth = isProjectFileTreeVisible
-            ? expandedTreeWidth
-            : min(max(totalWidth * 0.22, 220), 300)
+        let collapsedHeaderWidth = min(
+            max(totalWidth * 0.17, regularCollapsedProjectHeaderMinimumWidth),
+            regularCollapsedProjectHeaderMaximumWidth
+        )
+        let projectHeaderWidth = collapsedHeaderWidth
         let workspaceWidth = max(totalWidth - treeWidth - treeDividerWidth, 1)
         let maximumEditorWidth = max(workspaceWidth - regularSplitHandleWidth - 1, 1)
         let minimumEditorWidth = isProjectFileTreeVisible
@@ -1230,6 +1387,7 @@ extension DocumentEditorView {
             : min(projectHeaderWidth + regularTabOverlayLeadingInset, maximumEditorWidth)
         let editorWidth = min(max(workspaceWidth * editorFraction, minimumEditorWidth), maximumEditorWidth)
         return RegularWorkspaceMetrics(
+            totalWidth: totalWidth,
             treeWidth: treeWidth,
             treeDividerWidth: treeDividerWidth,
             projectHeaderWidth: projectHeaderWidth,
@@ -1301,14 +1459,26 @@ extension DocumentEditorView {
             && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private func regularShouldShowPreviewStatistics(for previewWidth: CGFloat) -> Bool {
+        sizeClass == .regular
+            && !previewRequiresExternalFolderLink
+            && previewWidth >= regularPreviewStatsCompactMinimumPreviewWidth
+            && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var toolbarPreviewStatisticsIncludesRenderedPages: Bool {
+        compiler.pdfDocument != nil
+    }
+
     private var toolbarPreviewStatistics: PreviewStatistics? {
         guard sizeClass == .regular,
               !previewRequiresExternalFolderLink,
-              let pdf = compiler.pdfDocument else {
+              previewStatsAreReady,
+              !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
         return PreviewStatistics(
-            pageCount: max(pdf.pageCount, 0),
+            pageCount: max(compiler.pdfDocument?.pageCount ?? 0, 0),
             wordCount: previewStatsWordCount,
             characterCount: previewStatsCharacterCount
         )
@@ -1317,6 +1487,13 @@ extension DocumentEditorView {
     private func recomputePreviewStatistics() {
         guard sizeClass == .regular else { return }
         let text = entrySource
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            previewStatsWordCount = 0
+            previewStatsCharacterCount = 0
+            previewStatsAreReady = false
+            return
+        }
+        previewStatsAreReady = false
         Task.detached(priority: .utility) {
             let wordCount = text.previewWordCount
             let characterCount = text.previewCharacterCount
@@ -1324,6 +1501,7 @@ extension DocumentEditorView {
                 guard entrySource == text else { return }
                 previewStatsWordCount = wordCount
                 previewStatsCharacterCount = characterCount
+                previewStatsAreReady = true
             }
         }
     }
@@ -1514,22 +1692,35 @@ extension DocumentEditorView {
     }
 
     private var compactNavigationTitle: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(document.title)
-                .font(.headline)
-                .foregroundStyle(compactNavigationTextColor)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if !navigationEditorSubtitle.isEmpty {
-                Text(navigationEditorSubtitle)
-                    .font(.caption2)
+        Menu {
+            editorToolbarMenuContent
+        } label: {
+            HStack(alignment: .center, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(document.title)
+                        .font(.headline)
+                        .foregroundStyle(compactNavigationTextColor)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if !navigationEditorSubtitle.isEmpty {
+                        Text(navigationEditorSubtitle)
+                            .font(.caption2)
+                            .foregroundStyle(compactNavigationSecondaryTextColor)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(compactNavigationSecondaryTextColor)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .symbolRenderingMode(.hierarchical)
             }
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: 160, alignment: .leading)
+        .buttonStyle(.plain)
+        .frame(maxWidth: 176, alignment: .leading)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(document.title)
     }
 
     @ToolbarContentBuilder
@@ -1558,12 +1749,11 @@ extension DocumentEditorView {
     }
 
     var regularEditorChrome: some View {
-        contentLayout
+        let editorChrome = contentLayout
             .navigationTitle(document.title)
             .navigationSubtitleCompat(usesSystemCompactToolbar ? "" : navigationEditorSubtitle)
             .navigationBarTitleDisplayMode(.inline)
             .modifier(ConditionalToolbarRoleModifier(usesEditorRole: !usesSystemCompactToolbar))
-            .modifier(RegularNavigationBarVisibilityModifier(hidesNavigationBar: !usesSystemCompactToolbar))
             .modifier(EditorNavigationBarBackgroundModifier(
                 usesCompactChrome: usesSystemCompactToolbar,
                 background: compactNavigationChromeColor,
@@ -1598,6 +1788,27 @@ extension DocumentEditorView {
                     compactTopBarTrailingItems
                 }
             }
+
+        let chrome: AnyView = if sizeClass == .regular {
+            AnyView(compactTabsTopChrome(editorChrome.toolbar(.hidden, for: .navigationBar)))
+        } else {
+            AnyView(compactTabsTopChrome(editorChrome))
+        }
+
+        return chrome
+    }
+
+    @ViewBuilder
+    private func compactTabsTopChrome<Content: View>(_ content: Content) -> some View {
+        if sizeClass != .regular, openTabs.count > 1, #available(iOS 26.0, *) {
+            content
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    compactProjectTabBar
+                }
+                .softScrollEdgeEffect(for: .top)
+        } else {
+            content
+        }
     }
 
     var editorPresentation: some View {

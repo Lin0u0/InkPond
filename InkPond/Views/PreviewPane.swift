@@ -10,16 +10,6 @@ import SwiftUI
 import PDFKit
 import NaturalLanguage
 
-private struct SoftScrollEdgeEffect: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.scrollEdgeEffectStyle(.soft, for: .all)
-        } else {
-            content
-        }
-    }
-}
-
 private struct CompilationErrorPresentation {
     let summary: String
     let detail: String
@@ -239,11 +229,15 @@ final class PDFContainerView: UIView {
     private func applyPreviewBackgroundColor() {
         backgroundColor = previewBackgroundColor
         pdfView.backgroundColor = previewBackgroundColor
-        findScrollView(in: pdfView)?.backgroundColor = previewBackgroundColor
+        if let scrollView = findScrollView(in: pdfView) {
+            scrollView.backgroundColor = previewBackgroundColor
+            scrollView.applySoftScrollEdgeEffects()
+        }
     }
 
     private func updateScrollInsetsIfNeeded(forcePinnedTop: Bool = false) {
         guard let scrollView = findScrollView(in: pdfView) else { return }
+        scrollView.applySoftScrollEdgeEffects()
 
         let previousAdjustedTop = scrollView.adjustedContentInset.top
         let wasPinnedToTop = forcePinnedTop || abs(scrollView.contentOffset.y + previousAdjustedTop) < 2
@@ -677,7 +671,7 @@ struct PreviewPane: View {
                     onCompactPreviewSwipe: onCompactPreviewSwipe
                 )
                 .ignoresSafeArea(.container, edges: .bottom)
-                .modifier(SoftScrollEdgeEffect())
+                .softScrollEdgeEffect()
                 .accessibilityLabel(L10n.a11yPreviewLabel)
                 .accessibilityHint(L10n.a11yPreviewHint)
                 .accessibilityValue(
@@ -1049,6 +1043,7 @@ struct PreviewPane: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
+                .softScrollEdgeEffect()
                 .frame(maxHeight: 160)
                 .padding(.top, 2)
             }

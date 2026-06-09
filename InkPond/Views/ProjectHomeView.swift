@@ -13,5 +13,7 @@ struct ProjectHomeView: View {
         DocumentListView(selectedDocument: $selectedDocument, searchText: $searchText)
             .navigationTitle(L10n.appName)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            .toolbar(.visible, for: .navigationBar)
     }
 }

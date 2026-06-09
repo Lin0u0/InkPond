@@ -88,6 +88,7 @@ struct DocumentEditorView: View {
     @State var pendingManualCompileFeedback = false
     @State var previewStatsWordCount = 0
     @State var previewStatsCharacterCount = 0
+    @State var previewStatsAreReady = false
     @State var showingPreviewStatsDetails = false
     @State var cachedBibEntries: [TypstBibliographyEntry] = []
     @State var cachedExternalLabels: [(name: String, kind: String)] = []

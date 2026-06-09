@@ -152,6 +152,7 @@ final class TypstTextView: UITextView {
         backgroundColor = .clear
         textColor = .label
         contentInsetAdjustmentBehavior = .never
+        applySoftScrollEdgeEffects()
         accessibilityTraits.insert(.allowsDirectInteraction)
         accessibilityLabel = L10n.a11yEditorLabel
         accessibilityHint = L10n.a11yEditorHint

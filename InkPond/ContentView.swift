@@ -71,11 +71,7 @@ private final class WindowUserInterfaceStyleSetterView: UIView {
 
     private func applyStyle() {
         guard let window else { return }
-        if let scene = window.windowScene {
-            scene.windows.forEach { $0.overrideUserInterfaceStyle = style }
-        } else {
-            window.overrideUserInterfaceStyle = style
-        }
+        window.overrideUserInterfaceStyle = style
     }
 }
 
@@ -103,6 +99,7 @@ struct ExternalTypFileOpenRequest: Equatable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(StorageManager.self) private var storageManager
     @State private var selectedDocument: InkPondDocument?
     @State private var externalFileDocument: InkPondDocument?
@@ -173,6 +170,19 @@ struct ContentView: View {
         appAppearanceManager.colorScheme ?? systemColorScheme
     }
 
+    private var rootChromeUIColor: UIColor {
+        if resolvedAppColorScheme == .dark {
+            return UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
+        }
+        return UIColor.secondarySystemGroupedBackground.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .light)
+        )
+    }
+
+    private var rootChromeColor: Color {
+        Color(uiColor: rootChromeUIColor)
+    }
+
     private var mainContent: some View {
         NavigationStack {
             ZStack {
@@ -195,21 +205,19 @@ struct ContentView: View {
                         }
                     )
                     .id(document.persistentModelID)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
-                    ))
+                    .transition(projectContentTransition)
                 } else {
                     ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
+                        .id("project-home")
+                        .transition(projectContentTransition)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(rootChromeColor.ignoresSafeArea())
             .animation(projectNavigationAnimation, value: selectedDocument?.projectID)
         }
+        .toolbar(selectedDocument != nil ? .hidden : .visible, for: .navigationBar)
+        .background(rootChromeColor.ignoresSafeArea())
         .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
         .environment(themeManager)
@@ -251,7 +259,14 @@ struct ContentView: View {
     }
 
     private var projectNavigationAnimation: Animation {
-        .snappy(duration: 0.28, extraBounce: 0.02)
+        .smooth(duration: 0.24, extraBounce: 0)
+    }
+
+    private var projectContentTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .center)),
+            removal: .opacity
+        )
     }
 
     private var documentListSelection: Binding<InkPondDocument?> {
@@ -297,31 +312,35 @@ struct ContentView: View {
 
     private func externalFileEditor(_ document: InkPondDocument) -> some View {
         NavigationStack {
-            DocumentEditorView(
-                document: document,
-                isSidebarVisible: false,
-                externalOpenRequest: externalOpenRequest,
-                onInitialOpenFailure: { message in
-                    if let projectID = externalFileDocument?.projectID {
-                        ExternalTypFileSessionStore.unregister(projectID: projectID)
+            ZStack {
+                DocumentEditorView(
+                    document: document,
+                    isSidebarVisible: false,
+                    externalOpenRequest: externalOpenRequest,
+                    onInitialOpenFailure: { message in
+                        if let projectID = externalFileDocument?.projectID {
+                            ExternalTypFileSessionStore.unregister(projectID: projectID)
+                        }
+                        externalFileDocument = nil
+                        externalOpenRequest = nil
+                        documentOpenError = message
                     }
-                    externalFileDocument = nil
-                    externalOpenRequest = nil
-                    documentOpenError = message
-                }
-            )
-            .id("external-cover-\(document.projectID)")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        externalFileEditorPresented.wrappedValue = false
-                    } label: {
-                        Image(systemName: "xmark")
+                )
+                .id("external-cover-\(document.projectID)")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            externalFileEditorPresented.wrappedValue = false
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel(L10n.tr("Done"))
                     }
-                    .accessibilityLabel(L10n.tr("Done"))
                 }
             }
+            .background(rootChromeColor.ignoresSafeArea())
         }
+        .background(rootChromeColor.ignoresSafeArea())
         .environment(appAppearanceManager)
         .environment(themeManager)
         .environment(editorFontSettings)

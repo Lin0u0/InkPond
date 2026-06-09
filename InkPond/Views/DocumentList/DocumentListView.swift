@@ -153,8 +153,6 @@ struct DocumentListView: View {
 
     private var baseContent: some View {
         documentList
-            .navigationTitle(L10n.appName)
-            .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,
                 placement: isIPad ? .automatic : .toolbar,
@@ -203,7 +201,11 @@ private struct ProjectHomeToolbarBackgroundModifier: ViewModifier {
     let background: Color
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
+        if #available(iOS 26.0, *) {
+            content
+                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.visible, for: .bottomBar)
+        } else if #available(iOS 18.0, *) {
             content
                 .toolbar(.visible, for: .navigationBar)
                 .toolbar(.visible, for: .bottomBar)

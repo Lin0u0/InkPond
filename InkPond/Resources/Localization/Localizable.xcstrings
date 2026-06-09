@@ -5880,35 +5880,6 @@
         }
       }
     },
-    "icloud.error.download_timeout" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Some files could not be downloaded from iCloud in time. Please check your network connection and try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分文件未能及时从 iCloud 下载。请检查网络连接后重试。"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網絡連線後重試。"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網路連線後重試。"
-          }
-        }
-      }
-    },
     "icloud.error.document_downloading" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5934,6 +5905,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此文件仍在從 iCloud 下載。請稍後再試開啟。"
+          }
+        }
+      }
+    },
+    "icloud.error.download_timeout" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some files could not be downloaded from iCloud in time. Please check your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分文件未能及时从 iCloud 下载。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網絡連線後重試。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網路連線後重試。"
           }
         }
       }
@@ -9178,6 +9178,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字元數"
+          }
+        }
+      }
+    },
+    "preview.stats.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calculating statistics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在计算统计"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在計算統計"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在計算統計"
           }
         }
       }

@@ -119,6 +119,7 @@ private final class ZoomableImagePreviewView: UIView, UIScrollViewDelegate {
         scrollView.maximumZoomScale = 8
         scrollView.bouncesZoom = true
         scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.applySoftScrollEdgeEffects()
 
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.contentMode = .scaleAspectFit
@@ -248,6 +249,7 @@ private final class ZoomablePDFPreviewView: PDFView {
 
     private func applyInsets() {
         guard let scrollView = findScrollView(in: self) else { return }
+        scrollView.applySoftScrollEdgeEffects()
         scrollView.contentInset.top = currentTopViewportInset
         var verticalInsets = scrollView.verticalScrollIndicatorInsets
         verticalInsets.top = currentTopViewportInset
@@ -287,6 +289,7 @@ private final class ZoomablePDFPreviewView: PDFView {
     private func applyBackgroundColor(_ color: UIColor) {
         currentBackgroundColor = color
         backgroundColor = color
+        findScrollView(in: self)?.applySoftScrollEdgeEffects()
     }
 
     private func findScrollView(in view: UIView) -> UIScrollView? {
@@ -355,6 +358,7 @@ private final class ZoomableWebFilePreviewView: UIView {
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.isOpaque = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.applySoftScrollEdgeEffects()
         webView.scrollView.minimumZoomScale = 0.25
         webView.scrollView.maximumZoomScale = 8
 
@@ -427,6 +431,7 @@ private final class ZoomableWebFilePreviewView: UIView {
     }
 
     private func applyInsets() {
+        webView.scrollView.applySoftScrollEdgeEffects()
         webView.scrollView.contentInset.top = currentTopViewportInset
         var verticalInsets = webView.scrollView.verticalScrollIndicatorInsets
         verticalInsets.top = currentTopViewportInset

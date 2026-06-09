@@ -12,9 +12,9 @@ struct ProjectFileTreeView: View {
     var openNode: (ProjectTreeNode) -> Void
     var setEntryFile: (String) -> Bool
     var onNodeDeleted: (ProjectTreeNode) -> Void
-    var editorTheme: EditorTheme = .system
     var closeAfterOpen: Bool = false
     var usesNavigationToolbar: Bool = true
+    var topContentInset: CGFloat = 0
     var refreshToken: UUID?
 
     @Environment(\.dismiss) private var dismiss
@@ -42,21 +42,13 @@ struct ProjectFileTreeView: View {
         }
     }
 
-    private var editorTextColor: Color {
-        Color(uiColor: editorTheme.text)
-    }
+    private var primaryTextColor: Color { .primary }
 
-    private var editorSecondaryTextColor: Color {
-        Color(uiColor: editorTheme.gutterForeground)
-    }
+    private var secondaryTextColor: Color { .secondary }
 
-    private var editorAccentColor: Color {
-        editorTextColor
-    }
+    private var entryBadgeColor: Color { .accentColor }
 
-    private var editorStringColor: Color {
-        Color(uiColor: editorTheme.string)
-    }
+    private var editingBadgeColor: Color { .green }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,9 +68,10 @@ struct ProjectFileTreeView: View {
                     }
                 }
                 .padding(.horizontal, usesNavigationToolbar ? 8 : 12)
-                .padding(.vertical, 8)
+                .padding(.top, 8 + topContentInset)
+                .padding(.bottom, 8)
             }
-            .scrollIndicators(.hidden)
+            .softScrollEdgeEffect()
             .background(Color.clear)
         }
         .accessibilityIdentifier("project-file-tree")
@@ -243,7 +236,7 @@ struct ProjectFileTreeView: View {
         } label: {
             rowLabel(for: row)
         }
-        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive, editorTheme: editorTheme))
+        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive))
         .contentShape(Rectangle())
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !node.isDirectory {
@@ -307,7 +300,7 @@ struct ProjectFileTreeView: View {
             if node.isDirectory {
                 Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isActive ? editorTextColor.opacity(0.72) : editorSecondaryTextColor.opacity(0.74))
+                    .foregroundStyle(isActive ? primaryTextColor.opacity(0.72) : secondaryTextColor.opacity(0.74))
                     .frame(width: 14, height: 20, alignment: .center)
             } else {
                 Color.clear
@@ -316,13 +309,13 @@ struct ProjectFileTreeView: View {
 
             Image(systemName: node.kind.iconName)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(isActive ? editorTextColor : editorSecondaryTextColor)
+                .foregroundStyle(isActive ? primaryTextColor : secondaryTextColor)
                 .frame(width: 22, height: 22, alignment: .center)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(node.displayName)
                     .font(.callout.weight(isActive ? .semibold : .regular))
-                    .foregroundStyle(isActive ? editorTextColor : editorTextColor.opacity(0.88))
+                    .foregroundStyle(isActive ? primaryTextColor : primaryTextColor.opacity(0.86))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -349,7 +342,7 @@ struct ProjectFileTreeView: View {
         case .notDownloaded:
             Image(systemName: "icloud.and.arrow.down")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(editorSecondaryTextColor)
+                .foregroundStyle(secondaryTextColor)
                 .onTapGesture {
                     let url = ProjectFileManager.projectDirectory(for: document)
                         .appendingPathComponent(relativePath)
@@ -384,16 +377,16 @@ struct ProjectFileTreeView: View {
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(editorAccentColor.opacity(0.16), in: Capsule())
-                    .foregroundStyle(editorAccentColor)
+                    .background(entryBadgeColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(entryBadgeColor)
             }
             if path == activePath {
                 Text(L10n.tr("Editing"))
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(editorStringColor.opacity(0.16), in: Capsule())
-                    .foregroundStyle(editorStringColor)
+                    .background(editingBadgeColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(editingBadgeColor)
             }
         }
     }
@@ -554,15 +547,10 @@ private struct VisibleProjectFileRow: Identifiable, Hashable {
 
 private struct ProjectFileRowButtonStyle: ButtonStyle {
     let isActive: Bool
-    let editorTheme: EditorTheme
 
-    private var editorTextColor: Color {
-        Color(uiColor: editorTheme.text)
-    }
+    private var activeColor: Color { .primary }
 
-    private var editorBorderColor: Color {
-        Color(uiColor: editorTheme.gutterForeground)
-    }
+    private var pressedColor: Color { .secondary }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -577,9 +565,9 @@ private struct ProjectFileRowButtonStyle: ButtonStyle {
     @ViewBuilder
     private func rowBackground(isPressed: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
-        let activeFill = editorTextColor.opacity(isPressed ? 0.12 : 0.08)
-        let activeBorder = editorTextColor.opacity(0.18)
-        let inactivePressedFill = editorBorderColor.opacity(0.14)
+        let activeFill = activeColor.opacity(isPressed ? 0.11 : 0.075)
+        let activeBorder = activeColor.opacity(0.16)
+        let inactivePressedFill = pressedColor.opacity(0.12)
         if isActive {
             if #available(iOS 26, *) {
                 shape
