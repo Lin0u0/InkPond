@@ -50,6 +50,18 @@ private struct ConditionalToolbarRoleModifier: ViewModifier {
     }
 }
 
+private struct ConditionalNavigationBarVisibilityModifier: ViewModifier {
+    let hidesNavigationBar: Bool
+
+    func body(content: Content) -> some View {
+        if hidesNavigationBar {
+            content.toolbar(.hidden, for: .navigationBar)
+        } else {
+            content
+        }
+    }
+}
+
 private enum ExternalFolderLinkError: LocalizedError {
     case missingSource
     case folderMismatch
@@ -631,6 +643,7 @@ extension DocumentEditorView {
             .navigationBarTitleDisplayMode(.inline)
             .modifier(ConditionalToolbarRoleModifier(usesEditorRole: !usesSystemCompactToolbar))
             .modifier(ConditionalNavigationBarBackgroundModifier(hidesBackground: usesSystemCompactToolbar))
+            .modifier(ConditionalNavigationBarVisibilityModifier(hidesNavigationBar: sizeClass == .regular))
             .toolbar {
                 if usesSystemCompactToolbar {
                     ToolbarItem(placement: .principal) {
