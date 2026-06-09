@@ -19,6 +19,11 @@ for output in "${EXPECTED_OUTPUTS[@]}"; do
   fi
 done
 
+if [[ -n "${CI:-}" || -n "${CI_XCODE_CLOUD:-}" ]]; then
+  echo "Using committed typst_ios.xcframework in CI."
+  exit 0
+fi
+
 if find \
   "$REPO_ROOT/rust-ffi/src" \
   "$REPO_ROOT/rust-ffi/Cargo.toml" \

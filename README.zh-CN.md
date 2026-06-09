@@ -91,13 +91,13 @@
    rustup show
    ```
    如果其中任一命令失败，请先安装 Xcode 命令行工具和 Rust 工具链。
-3. 构建 Rust FFI 框架：
+3. Rust 代码变化后重新构建 Rust FFI 框架：
    ```bash
    cd rust-ffi
    ./build-ios.sh
    cd ..
    ```
-   这会生成未提交到 git 的 `Frameworks/typst_ios.xcframework`。
+   这会更新已提交到 git 的 `Frameworks/typst_ios.xcframework`。
 4. 用 Xcode 打开并运行：
    ```bash
    open InkPond.xcodeproj
@@ -124,9 +124,9 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
 
 ## Rust FFI 说明
 
-- `Frameworks/typst_ios.xcframework` 由 `rust-ffi/build-ios.sh` 生成。
+- `Frameworks/typst_ios.xcframework` 由 `rust-ffi/build-ios.sh` 生成，并提交到仓库，便于 Xcode Cloud 无需 Rust bootstrap 直接构建。
 - `rust-ffi/build-ios.sh` 在打包 xcframework 后会删除 `rust-ffi/target/`，以尽量减少本地磁盘占用。
-- `Frameworks/typst_ios.xcframework/` 是本地构建产物，已在 git 中忽略。
+- Rust FFI 输出变化时，请重新构建并提交 `Frameworks/typst_ios.xcframework/`。
 - Swift 桥接层会把字体路径、项目根目录、`@preview` 包缓存目录以及本地包目录传给 Rust。
 - 以下情况请重新执行 `rust-ffi/build-ios.sh`：
   - 升级 Typst / Rust 依赖
@@ -218,7 +218,7 @@ InkPond/
 │   ├── Cargo.toml                      # Rust 依赖（Typst 引擎）
 │   └── build-ios.sh                    # XCFramework 构建（设备 + 模拟器）
 ├── Frameworks/
-│   └── typst_ios.xcframework/          # 生成的构建产物（不提交）
+│   └── typst_ios.xcframework/          # 已提交的 Typst FFI 产物
 ├── release/
 │   └── ExportOptions.plist
 └── InkPond.xcodeproj

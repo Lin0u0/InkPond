@@ -13,7 +13,7 @@ This repository is a native iOS/iPadOS Typst editor built with SwiftUI, SwiftDat
 
 ## Build Setup
 
-The app depends on a generated Rust xcframework. Build it before the first Xcode build or after Rust changes:
+The app depends on a generated Rust xcframework committed under `Frameworks/typst_ios.xcframework`. Rebuild it after Rust changes:
 
 ```bash
 cd rust-ffi
@@ -21,7 +21,7 @@ cd rust-ffi
 cd ..
 ```
 
-The xcframework output is generated locally into `Frameworks/typst_ios.xcframework` and is not committed. The build script produces three targets: `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` (M-series simulator), and `x86_64-apple-ios` (Intel simulator).
+The xcframework output is generated locally into `Frameworks/typst_ios.xcframework` and should be committed when Rust FFI output changes. The build script produces three targets: `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` (M-series simulator), and `x86_64-apple-ios` (Intel simulator).
 
 ## Build & Test Commands
 
