@@ -56,6 +56,7 @@ private typealias PreviewPackageReference = (name: String, version: String, spec
 @Observable
 final class TypstCompiler {
     nonisolated private static let compileDelay = Duration.milliseconds(350)
+    nonisolated private static let errorVisibilityDelay = Duration.seconds(1)
     nonisolated private static let compileTimeout = Duration.seconds(30)
     nonisolated private static let uncachedPreviewPackageCompileTimeout = Duration.seconds(120)
     nonisolated private static let logger = Logger(
@@ -83,6 +84,7 @@ final class TypstCompiler {
 
     private var debounceTask: Task<Void, Never>?
     private var activeTask: Task<Void, Never>?
+    private var delayedErrorTask: Task<Void, Never>?
     private var scheduledRequest: TypstCompileRequest?
     private var pendingRequest: TypstCompileRequest?
     private var compileGeneration: UInt64 = 0
@@ -141,6 +143,10 @@ final class TypstCompiler {
         // Invalidate the source map immediately so stale mappings are not used
         // while the new compilation is in flight.
         sourceMap = nil
+        if mode == .debounced {
+            cancelDelayedError()
+            errorMessage = nil
+        }
         let request = TypstCompileRequest(
             source: source,
             fontPaths: fontPaths,
@@ -183,6 +189,7 @@ final class TypstCompiler {
     func presentPreflightError(_ message: String) {
         cancelAllWork()
         sourceMap = nil
+        cancelDelayedError()
         errorMessage = message
     }
 
@@ -196,6 +203,7 @@ final class TypstCompiler {
         debounceTask = nil
         activeTask?.cancel()
         activeTask = nil
+        cancelDelayedError()
         scheduledRequest = nil
         pendingRequest = nil
         compileGeneration &+= 1
@@ -319,6 +327,7 @@ final class TypstCompiler {
             let applyInterval = Self.signposter.beginInterval("typst.preview_apply")
             switch result {
             case .success(let box, let data, let map, let loadedFromCache):
+                cancelDelayedError()
                 pdfDocument = box.document
                 pdfData = data
                 sourceMap = map
@@ -340,7 +349,12 @@ final class TypstCompiler {
                 }
             case .failure(let error):
                 // Keep the last successful PDF visible; only update the error banner.
-                errorMessage = error.localizedDescription
+                if request?.mode == .debounced {
+                    scheduleDelayedError(error.localizedDescription, generation: generation)
+                } else {
+                    cancelDelayedError()
+                    errorMessage = error.localizedDescription
+                }
             }
             Self.signposter.endInterval("typst.preview_apply", applyInterval)
         }
@@ -350,6 +364,31 @@ final class TypstCompiler {
         } else {
             isCompiling = false
         }
+    }
+
+    private func scheduleDelayedError(_ message: String, generation: UInt64) {
+        cancelDelayedError()
+        let sleep = self.sleep
+        delayedErrorTask = Task { [weak self] in
+            do {
+                try await sleep(Self.errorVisibilityDelay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.applyDelayedError(message, generation: generation)
+        }
+    }
+
+    private func applyDelayedError(_ message: String, generation: UInt64) {
+        guard generation == compileGeneration else { return }
+        errorMessage = message
+        delayedErrorTask = nil
+    }
+
+    private func cancelDelayedError() {
+        delayedErrorTask?.cancel()
+        delayedErrorTask = nil
     }
 
     nonisolated static func timeout(

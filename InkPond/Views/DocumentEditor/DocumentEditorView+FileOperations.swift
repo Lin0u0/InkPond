@@ -9,6 +9,13 @@ import SwiftData
 
 extension DocumentEditorView {
     func prepareDocumentForEditing() {
+        do {
+            try ProjectFileManager.validateDocumentCanOpen(document)
+        } catch {
+            reportInitialOpenFailure(error.localizedDescription)
+            return
+        }
+
         ProjectFileManager.ensureProjectRoot(for: document)
 
         if document.requiresImportConfiguration || document.requiresInitialEntrySelection {
@@ -40,7 +47,14 @@ extension DocumentEditorView {
         }
 
         ProjectFileManager.migrateContentIfNeeded(for: document)
-        _ = loadFile(named: document.entryFileName)
+        if !loadFile(named: document.entryFileName) {
+            reportInitialOpenFailure(fileSaveError ?? L10n.format("error.file.not_found", document.entryFileName))
+        }
+    }
+
+    func reportInitialOpenFailure(_ message: String) {
+        fileSaveError = message
+        onInitialOpenFailure?(message)
     }
 
     @discardableResult
@@ -364,12 +378,51 @@ extension DocumentEditorView {
             self.conflictFileName = fileName
             self.showingConflictWarning = true
         }
+        conflictMonitor.onPresentedItemChanged = {
+            self.reloadPresentedFileIfSafe(named: fileName)
+        }
         conflictMonitor.startMonitoring(url: fileURL)
     }
 
     /// Stop monitoring the current file. Called on file switch or view disappear.
     func stopConflictMonitoring() {
         conflictMonitor.stopMonitoring()
+    }
+
+    /// Reload disk changes delivered by iCloud/Files when there is no real
+    /// NSFileVersion conflict and the editor has no unsaved local text.
+    func reloadPresentedFileIfSafe(named fileName: String) {
+        guard fileName == currentFileName else { return }
+        guard saveTask == nil, editorText == lastPersistedText else { return }
+
+        conflictMonitor.refreshConflictState()
+        if conflictMonitor.hasConflict {
+            conflictFileName = fileName
+            showingConflictWarning = true
+            return
+        }
+
+        let diskText: String
+        do {
+            diskText = try ProjectFileManager.readTypFile(named: fileName, for: document)
+        } catch {
+            fileSaveError = error.localizedDescription
+            return
+        }
+        guard diskText != editorText else { return }
+
+        isLoadingFileContent = true
+        editorText = diskText
+        fileLoadToken = UUID()
+        isLoadingFileContent = false
+        lastPersistedText = diskText
+
+        if fileName == document.entryFileName {
+            entrySource = diskText
+            _ = refreshResolvedFonts(includeAvailableFamilies: false)
+            compileToken = UUID()
+        }
+        compilationErrorLines = recomputeCompilationErrorLines()
     }
 
     func handleEditorTextChange(_ content: String) {

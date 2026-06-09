@@ -9,6 +9,13 @@ import SwiftData
 import UIKit
 
 extension DocumentListView {
+    var guardedDocumentSelection: Binding<InkPondDocument?> {
+        Binding(
+            get: { selectedDocument },
+            set: { selectDocumentIfAvailable($0) }
+        )
+    }
+
     var documentList: some View {
         ScrollView {
             LazyVGrid(columns: projectGridColumns, spacing: 16) {
@@ -66,7 +73,7 @@ extension DocumentListView {
 
     func documentRow(_ document: InkPondDocument) -> some View {
         Button {
-            selectedDocument = document
+            selectDocumentIfAvailable(document)
         } label: {
             ProjectHomeCard(
                 document: document,

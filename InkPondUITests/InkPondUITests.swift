@@ -91,21 +91,77 @@ final class InkPondUITests: XCTestCase {
     func testSeededDocumentExposesEditorPrimaryControls() throws {
         let app = launchApp(seedDocument: true)
 
-        if !app.buttons["editor.more-menu"].waitForExistence(timeout: 3) {
-            let seededRow = app.descendants(matching: .any).matching(
-                NSPredicate(
-                    format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
-                    "project-home.card.",
-                    "document-list.row."
-                )
-            ).firstMatch
-            XCTAssertTrue(seededRow.waitForExistence(timeout: 5))
-            seededRow.tap()
+        openSeededDocumentIfNeeded(in: app)
+
+        XCTAssertTrue(waitForEditorShell(in: app, timeout: 5))
+        XCTAssertTrue(app.buttons["editor.more-menu"].exists)
+        XCTAssertTrue(
+            app.segmentedControls["editor.mode-picker"].exists
+                || app.otherElements["editor.preview"].exists
+                || app.textViews["editor.text-view"].exists
+        )
+    }
+
+    @MainActor
+    func testCompactSwipeSwitchesBetweenEditorAndPreview() throws {
+        let app = launchApp(seedDocument: true)
+        openSeededDocumentIfNeeded(in: app)
+
+        let modePicker = app.segmentedControls["editor.mode-picker"]
+        if !modePicker.waitForExistence(timeout: 3) {
+            throw XCTSkip("Compact mode picker is not visible on this simulator.")
         }
 
-        XCTAssertTrue(app.buttons["editor.more-menu"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["editor.share"].exists || app.buttons["editor.more-menu"].exists)
-        XCTAssertTrue(app.segmentedControls["editor.mode-picker"].exists || app.otherElements["editor.preview"].exists)
+        let preview = app.otherElements["editor.preview"]
+        app.swipeLeft()
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+
+        app.swipeRight()
+        XCTAssertTrue(app.textViews["editor.text-view"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForNonExistence(preview, timeout: 5))
+    }
+
+    @MainActor
+    func testCompactPreviewSurfaceSwipeReturnsToEditor() throws {
+        let app = launchApp(
+            seedDocument: true,
+            environment: ["UITEST_START_IN_PREVIEW": "1"]
+        )
+        openSeededDocumentIfNeeded(in: app)
+
+        let modePicker = app.segmentedControls["editor.mode-picker"]
+        if !modePicker.waitForExistence(timeout: 3) {
+            throw XCTSkip("Compact mode picker is not visible on this simulator.")
+        }
+
+        let preview = openPreview(in: app, requireRenderedPDF: true)
+
+        preview.swipeRight()
+        XCTAssertTrue(app.textViews["editor.text-view"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForNonExistence(preview, timeout: 5))
+    }
+
+    @MainActor
+    func testUnavailableDocumentRowDoesNotOpenEditor() throws {
+        let app = launchApp(environment: ["UITEST_SEED_STALE_DOCUMENT": "1"])
+        let staleRow = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                "project-home.card.ui-test-stale-",
+                "document-list.row.ui-test-stale-"
+            )
+        ).firstMatch
+
+        XCTAssertTrue(staleRow.waitForExistence(timeout: 5))
+        staleRow.tap()
+
+        let alert = app.alerts["Project Error"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textViews["editor.text-view"].exists)
+        XCTAssertFalse(app.otherElements["editor.preview"].exists)
+
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(app.buttons["document-list.add"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -118,7 +174,7 @@ final class InkPondUITests: XCTestCase {
             ]
         )
 
-        let preview = openPreview(in: app)
+        let preview = openPreview(in: app, requireRenderedPDF: true)
 
         let darkPixels = waitForVisibleInk(in: preview)
         XCTAssertGreaterThan(
@@ -142,7 +198,7 @@ final class InkPondUITests: XCTestCase {
             ]
         )
 
-        let preview = openPreview(in: app)
+        let preview = openPreview(in: app, requireRenderedPDF: true)
 
         let darkPixels = waitForVisibleInk(in: preview, minimumVisiblePixels: 1000)
         XCTAssertGreaterThan(
@@ -171,17 +227,86 @@ final class InkPondUITests: XCTestCase {
         return bestCount
     }
 
-    private func openPreview(in app: XCUIApplication) -> XCUIElement {
+    private func openPreview(
+        in app: XCUIApplication,
+        requireRenderedPDF: Bool = false
+    ) -> XCUIElement {
         let preview = app.otherElements["editor.preview"]
         if preview.waitForExistence(timeout: 2) {
+            if requireRenderedPDF {
+                XCTAssertTrue(waitForRenderedPreview(in: app))
+            }
             return preview
         }
 
         let modePicker = app.segmentedControls["editor.mode-picker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 5))
+        app.swipeLeft()
+        if preview.waitForExistence(timeout: 5) {
+            if requireRenderedPDF {
+                XCTAssertTrue(waitForRenderedPreview(in: app))
+            }
+            return preview
+        }
+
         tapPreviewSegment(in: modePicker)
         XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        if requireRenderedPDF {
+            XCTAssertTrue(waitForRenderedPreview(in: app))
+        }
         return preview
+    }
+
+    private func openSeededDocumentIfNeeded(in app: XCUIApplication) {
+        if waitForEditorShell(in: app, timeout: 10) {
+            return
+        }
+
+        let seededRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "document-list.row.")
+        ).firstMatch
+        XCTAssertTrue(seededRow.waitForExistence(timeout: 5))
+        seededRow.tap()
+        XCTAssertTrue(waitForEditorShell(in: app, timeout: 10))
+    }
+
+    private func waitForEditorShell(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.textViews["editor.text-view"].exists
+                || app.segmentedControls["editor.mode-picker"].exists
+                || app.buttons["editor.more-menu"].exists
+                || app.otherElements["editor.preview"].exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
+    }
+
+    private func waitForNonExistence(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !element.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return !element.exists
+    }
+
+    private func waitForRenderedPreview(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        let renderedMarker = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@", "editor.preview.stats"))
+            .firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if renderedMarker.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return renderedMarker.exists
     }
 
     private func tapPreviewSegment(in modePicker: XCUIElement) {

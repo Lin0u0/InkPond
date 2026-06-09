@@ -113,7 +113,9 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var searchText: String = ""
     @State private var didSeedUITestDocument = false
+    @State private var didSeedStaleUITestDocument = false
     @State private var externalOpenError: String?
+    @State private var documentOpenError: String?
     @State private var externalOpenRequest: ExternalTypFileOpenRequest?
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
@@ -144,6 +146,14 @@ struct ContentView: View {
         } message: {
             Text(externalOpenError ?? "")
         }
+        .alert(L10n.tr("Project Error"), isPresented: Binding(
+            get: { documentOpenError != nil },
+            set: { if !$0 { documentOpenError = nil } }
+        )) {
+            Button(L10n.tr("OK")) { documentOpenError = nil }
+        } message: {
+            Text(documentOpenError ?? "")
+        }
     }
 
     private var onboardingContent: some View {
@@ -171,6 +181,12 @@ struct ContentView: View {
                         document: document,
                         isSidebarVisible: false,
                         externalOpenRequest: externalOpenRequest,
+                        onInitialOpenFailure: { message in
+                            if selectedDocument == document {
+                                selectedDocument = nil
+                            }
+                            documentOpenError = message
+                        },
                         onCloseProject: {
                             withAnimation(projectNavigationAnimation) {
                                 selectedDocument = nil
@@ -207,6 +223,7 @@ struct ContentView: View {
             appFontLibrary.startMonitoring()
             try? LocalPackageStore().ensureRootDirectory()
             seedUITestDocumentIfNeeded()
+            seedStaleUITestDocumentIfNeeded()
         }
         .onChange(of: storageManager.mode) { _, _ in
             selectedDocument = nil
@@ -241,11 +258,24 @@ struct ContentView: View {
         Binding(
             get: { selectedDocument },
             set: { newValue in
-                withAnimation(projectNavigationAnimation) {
-                    selectedDocument = newValue
-                    if newValue != nil {
+                guard let newValue else {
+                    withAnimation(projectNavigationAnimation) {
+                        selectedDocument = nil
+                    }
+                    return
+                }
+
+                do {
+                    try ProjectFileManager.validateDocumentCanOpen(newValue)
+                    withAnimation(projectNavigationAnimation) {
+                        selectedDocument = newValue
                         externalFileDocument = nil
                     }
+                } catch {
+                    if selectedDocument == newValue {
+                        selectedDocument = nil
+                    }
+                    documentOpenError = error.localizedDescription
                 }
             }
         )
@@ -270,7 +300,15 @@ struct ContentView: View {
             DocumentEditorView(
                 document: document,
                 isSidebarVisible: false,
-                externalOpenRequest: externalOpenRequest
+                externalOpenRequest: externalOpenRequest,
+                onInitialOpenFailure: { message in
+                    if let projectID = externalFileDocument?.projectID {
+                        ExternalTypFileSessionStore.unregister(projectID: projectID)
+                    }
+                    externalFileDocument = nil
+                    externalOpenRequest = nil
+                    documentOpenError = message
+                }
             )
             .id("external-cover-\(document.projectID)")
             .toolbar {
@@ -297,6 +335,12 @@ struct ContentView: View {
         let processInfo = ProcessInfo.processInfo
         return processInfo.arguments.contains("UITEST_SEED_SAMPLE_DOCUMENT")
             || processInfo.environment["UITEST_SEED_SAMPLE_DOCUMENT"] == "1"
+    }
+
+    private var shouldSeedStaleUITestDocument: Bool {
+        let processInfo = ProcessInfo.processInfo
+        return processInfo.arguments.contains("UITEST_SEED_STALE_DOCUMENT")
+            || processInfo.environment["UITEST_SEED_STALE_DOCUMENT"] == "1"
     }
 
     private var uiTestSampleDocumentContent: String {
@@ -430,6 +474,23 @@ struct ContentView: View {
             )
             modelContext.insert(document)
             selectedDocument = document
+        } catch {
+            try? ProjectFileManager.deleteProjectDirectory(for: document)
+        }
+    }
+
+    @MainActor
+    private func seedStaleUITestDocumentIfNeeded() {
+        guard shouldSeedStaleUITestDocument, !didSeedStaleUITestDocument else { return }
+        didSeedStaleUITestDocument = true
+
+        let document = InkPondDocument(title: "Stale Test Document", content: "")
+        document.projectID = "ui-test-stale-\(UUID().uuidString)"
+        document.entryFileName = "main.typ"
+
+        do {
+            try ProjectFileManager.createProjectRoot(for: document)
+            modelContext.insert(document)
         } catch {
             try? ProjectFileManager.deleteProjectDirectory(for: document)
         }

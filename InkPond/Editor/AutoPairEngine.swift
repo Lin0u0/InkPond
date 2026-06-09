@@ -11,6 +11,7 @@ struct AutoPairEngine {
         ("{", "}"),
         ("[", "]"),
         ("(", ")"),
+        ("<", ">"),
         ("\"", "\""),
         ("$", "$"),
     ]
@@ -49,12 +50,12 @@ struct AutoPairEngine {
             }
         }
 
-        // Auto-close: if typing an opening char, insert the pair
+        // Auto-close/wrap: if typing an opening char, insert the pair.
         if let close = openToClose[text] {
-            guard shouldAutoClose(text, context: context) else { return false }
+            guard selectedRange.length > 0 || shouldAutoClose(text, context: context) else { return false }
 
             // For quotes and $, only auto-close if not already adjacent to same char
-            if text == "\"" || text == "$" {
+            if selectedRange.length == 0, (text == "\"" || text == "$") {
                 if cursorLocation > 0 {
                     let prevChar = nsString.substring(with: NSRange(location: cursorLocation - 1, length: 1))
                     if prevChar == text { return false }
@@ -65,13 +66,16 @@ struct AutoPairEngine {
                 }
             }
 
-            let pair = text + close
+            let originalContent = nsString.substring(with: selectedRange)
+            let insertion = text + originalContent + close
+            let insertedRange = NSRange(
+                location: selectedRange.location,
+                length: (insertion as NSString).length
+            )
 
-            // Capture original content for undo (handles both empty and non-empty selection)
-            let originalContent = (nsString.substring(with: selectedRange))
             textView.undoManager?.registerUndo(withTarget: textView) { tv in
                 tv.textStorage.replaceCharacters(
-                    in: NSRange(location: selectedRange.location, length: (pair as NSString).length),
+                    in: insertedRange,
                     with: originalContent
                 )
                 tv.selectedRange = selectedRange
@@ -79,8 +83,13 @@ struct AutoPairEngine {
             }
             textView.undoManager?.setActionName(L10n.tr("action.typing"))
 
-            storage.replaceCharacters(in: selectedRange, with: pair)
-            textView.selectedRange = NSRange(location: cursorLocation + 1, length: 0)
+            storage.replaceCharacters(in: selectedRange, with: insertion)
+            let openLength = (text as NSString).length
+            if selectedRange.length > 0 {
+                textView.selectedRange = NSRange(location: cursorLocation + openLength, length: selectedRange.length)
+            } else {
+                textView.selectedRange = NSRange(location: cursorLocation + openLength, length: 0)
+            }
             return true
         }
 
@@ -197,6 +206,11 @@ struct AutoPairEngine {
                 || context.contains(.named)
                 || context.contains(.moduleImport)
                 || context.contains(.moduleInclude)
+        case "<":
+            return context.contains(.markup)
+                && !context.contains(.equation)
+                && !context.contains(.math)
+                && !context.contains(.code)
         default:
             return true
         }

@@ -30,6 +30,7 @@ struct DocumentEditorView: View {
     var isSidebarVisible: Bool = false
     var externalOpenRequest: ExternalTypFileOpenRequest?
     var onCloseProject: (() -> Void)?
+    var onInitialOpenFailure: ((String) -> Void)?
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(\.horizontalSizeClass) var sizeClass
@@ -57,6 +58,7 @@ struct DocumentEditorView: View {
     let editorTab:Int = 0
     let previewTab:Int = 1
     @State var selectedTab:Int = ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" ? 1 : 0
+    @State var pendingCompactSwipeFeedback = false
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
     @State var showingPhotoPicker = false
@@ -170,12 +172,14 @@ struct DocumentEditorView: View {
         document: InkPondDocument,
         isSidebarVisible: Bool = false,
         externalOpenRequest: ExternalTypFileOpenRequest? = nil,
+        onInitialOpenFailure: ((String) -> Void)? = nil,
         onCloseProject: (() -> Void)? = nil
     ) {
         self.document = document
         self.isSidebarVisible = isSidebarVisible
         self.externalOpenRequest = externalOpenRequest
         self.onCloseProject = onCloseProject
+        self.onInitialOpenFailure = onInitialOpenFailure
     }
 
     var body: some View {

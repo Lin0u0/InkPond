@@ -78,12 +78,21 @@ final class PDFContainerView: UIView {
     var previewBackgroundColor: UIColor = .secondarySystemBackground {
         didSet { applyPreviewBackgroundColor() }
     }
+    private var horizontalSwipeRecognizers: [UIGestureRecognizer] = []
+    private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
+    private var horizontalPanStartLocation: CGPoint?
+    private let reservedNavigationEdgeWidth: CGFloat = 44
     /// Incremented on each `scrollToPosition` call so stale scroll-animation
     /// completion handlers don't fire `showMarker` for an outdated position.
     private var scrollGeneration: UInt = 0
     /// When true, `reloadDocument` skips scroll restoration so that
     /// a pending `scrollToPosition` call can take priority.
     var suppressScrollRestoration = false
+    var onHorizontalSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)? {
+        didSet {
+            horizontalSwipeRecognizers.forEach { $0.isEnabled = onHorizontalSwipe != nil }
+        }
+    }
     var topViewportInset: CGFloat = 0 {
         didSet {
             guard oldValue != topViewportInset else { return }
@@ -110,12 +119,26 @@ final class PDFContainerView: UIView {
         ])
         applyPreviewBackgroundColor()
 
+        installHorizontalSwipeRecognizers()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         updateScrollInsetsIfNeeded()
         alignShortDocumentToTopIfNeeded()
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === horizontalPanRecognizer,
+              let panRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+            return super.gestureRecognizerShouldBegin(gestureRecognizer)
+        }
+
+        let startLocation = panRecognizer.location(in: pdfView)
+        let velocity = panRecognizer.velocity(in: pdfView)
+        return startLocation.x > reservedNavigationEdgeWidth
+            && velocity.x > 0
+            && abs(velocity.x) > abs(velocity.y) * 1.35
     }
 
     @available(*, unavailable)
@@ -293,6 +316,49 @@ final class PDFContainerView: UIView {
         let maxScale = pdfView.maxScaleFactor > 0 ? pdfView.maxScaleFactor : scaleFactor
         return min(max(scaleFactor, minScale), maxScale)
     }
+
+    private func installHorizontalSwipeRecognizers() {
+        let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleHorizontalPan(_:)))
+        recognizer.delegate = self
+        recognizer.cancelsTouchesInView = true
+        recognizer.maximumNumberOfTouches = 1
+        recognizer.isEnabled = onHorizontalSwipe != nil
+        pdfView.addGestureRecognizer(recognizer)
+        horizontalPanRecognizer = recognizer
+        horizontalSwipeRecognizers.append(recognizer)
+    }
+
+    @objc private func handleHorizontalPan(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            horizontalPanStartLocation = recognizer.location(in: pdfView)
+        case .ended:
+            defer { horizontalPanStartLocation = nil }
+            let translation = recognizer.translation(in: pdfView)
+            guard let startLocation = horizontalPanStartLocation,
+                  startLocation.x > reservedNavigationEdgeWidth,
+                  translation.x >= 70,
+                  abs(translation.x) > abs(translation.y) * 1.35 else {
+                return
+            }
+            onHorizontalSwipe?(.right)
+        case .cancelled, .failed:
+            horizontalPanStartLocation = nil
+        default:
+            break
+        }
+    }
+}
+
+extension PDFContainerView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard gestureRecognizer === horizontalPanRecognizer else { return true }
+        guard let otherView = otherGestureRecognizer.view else { return false }
+        return otherView === pdfView || otherView.isDescendant(of: pdfView)
+    }
 }
 
 private final class PreviewSyncMarkerView: UIView {
@@ -359,6 +425,7 @@ struct PDFKitView: UIViewRepresentable {
     var scrollTarget: PreviewScrollTarget?
     var backgroundColor: UIColor = .secondarySystemBackground
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+    var onCompactPreviewSwipe: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onTapLocation: onTapLocation)
@@ -380,6 +447,7 @@ struct PDFKitView: UIViewRepresentable {
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
+        container.onHorizontalSwipe = horizontalSwipeHandler
 
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tapGesture.numberOfTapsRequired = 1
@@ -393,6 +461,7 @@ struct PDFKitView: UIViewRepresentable {
         context.coordinator.onTapLocation = onTapLocation
         context.coordinator.pdfView = container.pdfView
         container.previewBackgroundColor = backgroundColor
+        container.onHorizontalSwipe = horizontalSwipeHandler
         container.topViewportInset = topViewportInset
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
@@ -426,6 +495,14 @@ struct PDFKitView: UIViewRepresentable {
         if let target = scrollTarget, context.coordinator.lastAppliedScrollTarget != target {
             container.scrollToPosition(page: target.page, yPoints: target.yPoints, xPoints: target.xPoints)
             context.coordinator.lastAppliedScrollTarget = target
+        }
+    }
+
+    private var horizontalSwipeHandler: ((UISwipeGestureRecognizer.Direction) -> Void)? {
+        guard let onCompactPreviewSwipe else { return nil }
+        return { direction in
+            guard direction.contains(.right) else { return }
+            onCompactPreviewSwipe()
         }
     }
 
@@ -520,6 +597,7 @@ extension PDFContainerView {
             }
         }
     }
+
 }
 
 // MARK: - PreviewPane
@@ -544,6 +622,7 @@ struct PreviewPane: View {
     var entryFileName: String = "main.typ"
     var topViewportInset: CGFloat = 0
     var onGoToError: ((_ file: String, _ line: Int, _ column: Int) -> Void)? = nil
+    var onCompactPreviewSwipe: (() -> Void)? = nil
     var onLinkExternalFolder: (() -> Void)? = nil
     var showsStatisticsOverlay: Bool = true
     var backgroundColor: UIColor = .secondarySystemBackground
@@ -594,7 +673,8 @@ struct PreviewPane: View {
                             line: location.line,
                             column: location.column
                         )
-                    }
+                    },
+                    onCompactPreviewSwipe: onCompactPreviewSwipe
                 )
                 .ignoresSafeArea(.container, edges: .bottom)
                 .modifier(SoftScrollEdgeEffect())
@@ -782,7 +862,7 @@ struct PreviewPane: View {
         .accessibilityLabel(L10n.a11yPreviewPlaceholderLabel)
         .accessibilityHint(L10n.a11yPreviewPlaceholderHint)
         .accessibilityValue(compiler.errorMessage == nil ? L10n.a11yPreviewValueEmpty : L10n.a11yPreviewValueError)
-        .accessibilityIdentifier("editor.preview.placeholder")
+        .accessibilityIdentifier("editor.preview")
     }
 
     private var bottomStatusOverlay: some View {
