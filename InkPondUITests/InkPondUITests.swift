@@ -142,6 +142,25 @@ final class InkPondUITests: XCTestCase {
     }
 
     @MainActor
+    func testUnavailableDocumentRowDoesNotOpenEditor() throws {
+        let app = launchApp(environment: ["UITEST_SEED_STALE_DOCUMENT": "1"])
+        let staleRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "document-list.row.ui-test-stale-")
+        ).firstMatch
+
+        XCTAssertTrue(staleRow.waitForExistence(timeout: 5))
+        staleRow.tap()
+
+        let alert = app.alerts["Project Error"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textViews["editor.text-view"].exists)
+        XCTAssertFalse(app.otherElements["editor.preview"].exists)
+
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(app.buttons["document-list.add"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testChinesePreviewShowsVisibleInk() throws {
         let app = launchApp(
             seedDocument: true,

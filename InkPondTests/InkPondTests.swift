@@ -451,6 +451,41 @@ struct InkPondTests {
         #expect(!FileManager.default.fileExists(atPath: entryURL.path))
     }
 
+    @Test func validateDocumentCanOpenRejectsMissingEntryWithoutCreatingIt() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        try ProjectFileManager.createProjectRoot(for: doc)
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: doc) }
+
+        let entryURL = ProjectFileManager.entryFileURL(for: doc)
+        #expect(!FileManager.default.fileExists(atPath: entryURL.path))
+
+        do {
+            try ProjectFileManager.validateDocumentCanOpen(doc)
+            Issue.record("Expected missing entry validation to fail")
+        } catch let error as InkPondFileError {
+            guard case .fileNotFound = error else {
+                Issue.record("Expected fileNotFound, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected InkPondFileError.fileNotFound, got \(error)")
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: entryURL.path))
+    }
+
+    @Test func validateDocumentCanOpenAllowsLegacyStoredContentMigration() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        doc.content = "= Legacy"
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: doc) }
+
+        let projectRoot = ProjectFileManager.projectDirectory(for: doc)
+        #expect(!FileManager.default.fileExists(atPath: projectRoot.path))
+
+        try ProjectFileManager.validateDocumentCanOpen(doc)
+        #expect(!FileManager.default.fileExists(atPath: projectRoot.path))
+    }
+
     @Test func projectFileManagerSupportsNestedTypPaths() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         ProjectFileManager.ensureProjectStructure(for: doc)

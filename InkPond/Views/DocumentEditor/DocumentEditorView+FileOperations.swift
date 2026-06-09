@@ -9,6 +9,13 @@ import SwiftData
 
 extension DocumentEditorView {
     func prepareDocumentForEditing() {
+        do {
+            try ProjectFileManager.validateDocumentCanOpen(document)
+        } catch {
+            reportInitialOpenFailure(error.localizedDescription)
+            return
+        }
+
         ProjectFileManager.ensureProjectRoot(for: document)
 
         if document.requiresImportConfiguration || document.requiresInitialEntrySelection {
@@ -40,7 +47,14 @@ extension DocumentEditorView {
         }
 
         ProjectFileManager.migrateContentIfNeeded(for: document)
-        _ = loadFile(named: document.entryFileName)
+        if !loadFile(named: document.entryFileName) {
+            reportInitialOpenFailure(fileSaveError ?? L10n.format("error.file.not_found", document.entryFileName))
+        }
+    }
+
+    func reportInitialOpenFailure(_ message: String) {
+        fileSaveError = message
+        onInitialOpenFailure?(message)
     }
 
     @discardableResult

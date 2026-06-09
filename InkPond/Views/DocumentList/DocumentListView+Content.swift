@@ -7,8 +7,15 @@ import SwiftUI
 import SwiftData
 
 extension DocumentListView {
+    var guardedDocumentSelection: Binding<InkPondDocument?> {
+        Binding(
+            get: { selectedDocument },
+            set: { selectDocumentIfAvailable($0) }
+        )
+    }
+
     var documentList: some View {
-        List(selection: $selectedDocument) {
+        List(selection: guardedDocumentSelection) {
             ForEach(sortedDocuments) { document in
                 documentRow(document)
             }
@@ -45,7 +52,9 @@ extension DocumentListView {
     }
 
     func documentRow(_ document: InkPondDocument) -> some View {
-        NavigationLink(value: document) {
+        Button {
+            selectDocumentIfAvailable(document)
+        } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if document.isExternalFolder {
@@ -65,7 +74,10 @@ extension DocumentListView {
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             L10n.a11yDocumentRowLabel(

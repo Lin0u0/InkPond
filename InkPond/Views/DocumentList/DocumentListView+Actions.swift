@@ -83,6 +83,23 @@ extension DocumentListView {
         }
     }
 
+    func selectDocumentIfAvailable(_ document: InkPondDocument?) {
+        guard let document else {
+            selectedDocument = nil
+            return
+        }
+
+        do {
+            try ProjectFileManager.validateDocumentCanOpen(document)
+            selectedDocument = document
+        } catch {
+            if selectedDocument == document {
+                selectedDocument = nil
+            }
+            projectActionError = error.localizedDescription
+        }
+    }
+
     func deduplicateDocumentsByProjectID() {
         let groupedDocuments = Dictionary(grouping: documents, by: \.projectID)
 

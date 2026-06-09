@@ -5994,6 +5994,35 @@
         }
       }
     },
+    "icloud.error.document_downloading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This document is still downloading from iCloud. Try opening it again in a moment."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文档仍在从 iCloud 下载。请稍后再试打开。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件仍在從 iCloud 下載。請稍後再試開啟。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件仍在從 iCloud 下載。請稍後再試開啟。"
+          }
+        }
+      }
+    },
     "icloud.error.no_network" : {
       "extractionState" : "stale",
       "localizations" : {
