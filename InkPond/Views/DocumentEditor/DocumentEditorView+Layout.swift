@@ -95,6 +95,18 @@ private struct ConditionalToolbarRoleModifier: ViewModifier {
     }
 }
 
+private struct ConditionalNavigationBarVisibilityModifier: ViewModifier {
+    let hidesNavigationBar: Bool
+
+    func body(content: Content) -> some View {
+        if hidesNavigationBar {
+            content.toolbar(.hidden, for: .navigationBar)
+        } else {
+            content
+        }
+    }
+}
+
 private enum ExternalFolderLinkError: LocalizedError {
     case missingSource
     case folderMismatch
@@ -1759,6 +1771,7 @@ extension DocumentEditorView {
                 background: compactNavigationChromeColor,
                 colorScheme: compactNavigationColorScheme
             ))
+            .modifier(ConditionalNavigationBarVisibilityModifier(hidesNavigationBar: sizeClass == .regular))
             .tint(usesSystemCompactToolbar ? compactNavigationTextColor : regularToolbarForegroundColor)
             .toolbar {
                 if let onCloseProject {

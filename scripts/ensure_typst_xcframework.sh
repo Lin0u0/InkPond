@@ -5,9 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_MARKER="$REPO_ROOT/Frameworks/typst_ios.xcframework/Info.plist"
 
-if [[ ! -f "$OUTPUT_MARKER" ]]; then
-  echo "typst_ios.xcframework is missing. Building Rust FFI..."
-  "$REPO_ROOT/rust-ffi/build-ios.sh"
+EXPECTED_OUTPUTS=(
+  "$OUTPUT_MARKER"
+  "$REPO_ROOT/Frameworks/typst_ios.xcframework/ios-arm64/libtypst_ios.a"
+  "$REPO_ROOT/Frameworks/typst_ios.xcframework/ios-arm64_x86_64-simulator/libtypst_ios.a"
+)
+
+for output in "${EXPECTED_OUTPUTS[@]}"; do
+  if [[ ! -f "$output" ]]; then
+    echo "typst_ios.xcframework is missing or incomplete. Building Rust FFI..."
+    "$REPO_ROOT/rust-ffi/build-ios.sh"
+    exit 0
+  fi
+done
+
+if [[ -n "${CI:-}" || -n "${CI_XCODE_CLOUD:-}" ]]; then
+  echo "Using committed typst_ios.xcframework in CI."
   exit 0
 fi
 
