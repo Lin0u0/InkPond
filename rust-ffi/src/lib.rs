@@ -1067,7 +1067,28 @@ pub unsafe extern "C" fn typst_compile_preview(
     session_key: *const c_char,
 ) -> TypstPreviewResult {
     match catch_unwind(AssertUnwindSafe(|| unsafe {
-        typst_compile_preview_impl(source, options, session_key)
+        typst_compile_preview_impl(source, options, session_key, true)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_result_preview("Typst compiler panicked"),
+    }
+}
+
+/// Compile Typst source once into a live-preview artifact containing SVG pages
+/// and source-map entries. PDF export is intentionally skipped so live preview
+/// can become visible before compatibility export work is needed.
+///
+/// # Safety
+/// Same requirements as `typst_compile_preview`; `session_key` may be null.
+/// Free the result with `typst_free_preview_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_compile_preview_svg(
+    source: *const c_char,
+    options: *const TypstOptions,
+    session_key: *const c_char,
+) -> TypstPreviewResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_compile_preview_impl(source, options, session_key, false)
     })) {
         Ok(result) => result,
         Err(_) => error_result_preview("Typst compiler panicked"),
@@ -1078,6 +1099,7 @@ unsafe fn typst_compile_preview_impl(
     source: *const c_char,
     options: *const TypstOptions,
     session_key: *const c_char,
+    include_pdf: bool,
 ) -> TypstPreviewResult {
     if source.is_null() {
         return error_result_preview("null source pointer");
@@ -1094,7 +1116,7 @@ unsafe fn typst_compile_preview_impl(
     let world = preview_world(source_str, options, session_key);
 
     match typst::compile::<PagedDocument>(&*world).output {
-        Ok(document) => preview_result_from_document(&world, document),
+        Ok(document) => preview_result_from_document(&world, document, include_pdf),
         Err(e) => error_result_preview(&format_diagnostics(&world, &e)),
     }
 }
@@ -1134,19 +1156,27 @@ unsafe fn preview_world(
     world
 }
 
-fn preview_result_from_document(world: &SimpleWorld, document: PagedDocument) -> TypstPreviewResult {
+fn preview_result_from_document(
+    world: &SimpleWorld,
+    document: PagedDocument,
+    include_pdf: bool,
+) -> TypstPreviewResult {
     let main_source = world.main_source();
     let map_entries = extract_source_map(&document, &main_source);
 
-    let bytes = match pdf(&document, &PdfOptions::default()) {
-        Ok(bytes) => bytes,
-        Err(e) => return error_result_preview(&format_diagnostics(world, &e)),
+    let (pdf_ptr, pdf_len) = if include_pdf {
+        let bytes = match pdf(&document, &PdfOptions::default()) {
+            Ok(bytes) => bytes,
+            Err(e) => return error_result_preview(&format_diagnostics(world, &e)),
+        };
+        let pdf_len = bytes.len();
+        let mut pdf_boxed = bytes.into_boxed_slice();
+        let pdf_ptr = pdf_boxed.as_mut_ptr();
+        std::mem::forget(pdf_boxed);
+        (pdf_ptr, pdf_len)
+    } else {
+        (std::ptr::null_mut(), 0)
     };
-
-    let pdf_len = bytes.len();
-    let mut pdf_boxed = bytes.into_boxed_slice();
-    let pdf_ptr = pdf_boxed.as_mut_ptr();
-    std::mem::forget(pdf_boxed);
 
     let map_len = map_entries.len();
     let (map_ptr, map_len) = if map_len > 0 {
@@ -3185,7 +3215,7 @@ mod tests {
         let session_key = CString::new("preview-test-session").unwrap();
 
         let result = unsafe {
-            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr())
+            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), true)
         };
         assert!(result.success);
         assert!(!result.pdf_data.is_null());
@@ -3200,6 +3230,28 @@ mod tests {
             .to_str()
             .expect("SVG should be UTF-8");
         assert!(first_svg.contains("<svg"));
+
+        unsafe {
+            typst_free_preview_result(result);
+            typst_clear_preview_session(session_key.as_ptr());
+        }
+    }
+
+    #[test]
+    fn preview_svg_compile_omits_pdf_but_keeps_svg_and_source_map() {
+        let source = CString::new("= Hello\n\nThis is an SVG-first preview artifact.").unwrap();
+        let session_key = CString::new("preview-svg-test-session").unwrap();
+
+        let result = unsafe {
+            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), false)
+        };
+        assert!(result.success);
+        assert!(result.pdf_data.is_null());
+        assert_eq!(result.pdf_len, 0);
+        assert!(!result.svg_pages.is_null());
+        assert!(result.svg_page_len > 0);
+        assert!(!result.source_map.is_null());
+        assert!(result.source_map_len > 0);
 
         unsafe {
             typst_free_preview_result(result);

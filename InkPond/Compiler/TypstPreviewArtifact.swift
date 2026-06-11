@@ -13,7 +13,7 @@ struct TypstPreviewPage: Equatable, Sendable {
 
 struct TypstPreviewArtifact: Equatable, Sendable {
     nonisolated let svgPages: [TypstPreviewPage]
-    nonisolated let pdfData: Data
+    nonisolated let pdfData: Data?
     nonisolated let sourceMap: SourceMap?
 
     nonisolated var pageCount: Int {

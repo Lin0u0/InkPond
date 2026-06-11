@@ -13,7 +13,7 @@ import UIKit
 @testable import InkPond
 
 private func makePreviewArtifact(
-    pdfData: Data,
+    pdfData: Data? = Data("pdf".utf8),
     sourceMap: SourceMap? = nil,
     svgPages: [TypstPreviewPage] = [
         TypstPreviewPage(svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", widthPoints: 100, heightPoints: 100)
@@ -1289,7 +1289,7 @@ struct InkPondTests {
         let compiler = TypstCompiler(
             compileWorker: { _, _, _, _ in
                 .success(makePreviewArtifact(
-                    pdfData: Data("pdf".utf8),
+                    pdfData: nil,
                     svgPages: [
                         TypstPreviewPage(
                             svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>Preview</text></svg>",
@@ -1310,7 +1310,7 @@ struct InkPondTests {
         }
 
         #expect(compiler.previewArtifact?.svgPages.count == 1)
-        #expect(compiler.pdfData == Data("pdf".utf8))
+        #expect(compiler.pdfData == nil)
         #expect(compiler.pdfDocument == nil)
         #expect(compiler.pageCount == 1)
     }

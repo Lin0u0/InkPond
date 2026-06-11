@@ -160,25 +160,69 @@ struct TypstBridge {
         sessionKey: String? = nil
     ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
+        compilePreviewArtifact(
+            source: source,
+            fontPaths: fontPaths,
+            rootDir: rootDir,
+            sessionKey: sessionKey,
+            includePDF: true
+        )
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+    /// Compile Typst source once into the fastest live-preview artifact:
+    /// SVG pages for rendering and source map for editor-preview sync. PDF
+    /// bytes are intentionally omitted and export paths compile PDF directly.
+    nonisolated static func compilePreviewSVG(
+        source: String,
+        fontPaths: [String],
+        rootDir: String? = nil,
+        sessionKey: String? = nil
+    ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+#if TYPST_FFI_AVAILABLE
+        compilePreviewArtifact(
+            source: source,
+            fontPaths: fontPaths,
+            rootDir: rootDir,
+            sessionKey: sessionKey,
+            includePDF: false
+        )
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+#if TYPST_FFI_AVAILABLE
+    nonisolated private static func compilePreviewArtifact(
+        source: String,
+        fontPaths: [String],
+        rootDir: String?,
+        sessionKey: String?,
+        includePDF: Bool
+    ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
         withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir) { cSource, opts in
             if let sessionKey, !sessionKey.isEmpty {
                 return sessionKey.withCString { cSessionKey in
-                    let result = typst_compile_preview(cSource, &opts, cSessionKey)
+                    let result = includePDF
+                        ? typst_compile_preview(cSource, &opts, cSessionKey)
+                        : typst_compile_preview_svg(cSource, &opts, cSessionKey)
                     defer { typst_free_preview_result(result) }
 
                     return Self.previewArtifact(from: result)
                 }
             } else {
-                let result = typst_compile_preview(cSource, &opts, nil)
+                let result = includePDF
+                    ? typst_compile_preview(cSource, &opts, nil)
+                    : typst_compile_preview_svg(cSource, &opts, nil)
                 defer { typst_free_preview_result(result) }
 
                 return Self.previewArtifact(from: result)
             }
         }
-#else
-        return .failure(.compilerNotLinked)
-#endif
     }
+#endif
 
     /// Parse Typst source and return syntax-highlight tokens in UTF-16 offsets.
     nonisolated static func syntaxHighlightTokens(source: String) -> [TypstSyntaxToken]? {
@@ -480,8 +524,8 @@ struct TypstBridge {
     }
 
     nonisolated private static func previewArtifact(from result: TypstPreviewResult) -> Result<TypstPreviewArtifact, TypstBridgeError> {
-        if result.success, let pdfPtr = result.pdf_data {
-            let pdfData = Data(bytes: pdfPtr, count: Int(result.pdf_len))
+        if result.success {
+            let pdfData = result.pdf_data.map { Data(bytes: $0, count: Int(result.pdf_len)) }
             let sourceMap = Self.parseSourceMap(pointer: result.source_map, count: Int(result.source_map_len))
             let svgPages = Self.parseSVGPages(pointer: result.svg_pages, count: Int(result.svg_page_len))
             return .success(TypstPreviewArtifact(

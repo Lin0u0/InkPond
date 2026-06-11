@@ -92,6 +92,12 @@ TypstPreviewResult typst_compile_preview(const char *source,
                                           const TypstOptions *options,
                                           const char *session_key);
 
+/// Compile Typst source once to SVG pages and source-map entries.
+/// PDF bytes are omitted so live preview can display faster.
+TypstPreviewResult typst_compile_preview_svg(const char *source,
+                                              const TypstOptions *options,
+                                              const char *session_key);
+
 /// Free a TypstPreviewResult.
 void typst_free_preview_result(TypstPreviewResult result);
 

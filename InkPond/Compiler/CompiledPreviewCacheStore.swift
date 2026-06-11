@@ -235,6 +235,7 @@ struct CompiledPreviewCacheStore: Sendable {
     nonisolated func save(artifact: TypstPreviewArtifact, for input: CompiledPreviewCacheInput) throws {
         let fileManager = FileManager.default
         guard let rootURL else { return }
+        guard let pdfData = artifact.pdfData else { return }
 
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
@@ -266,12 +267,12 @@ struct CompiledPreviewCacheStore: Sendable {
             typstVersion: input.typstVersion,
             cacheSchemaVersion: Self.cacheSchemaVersion,
             inputFingerprint: try inputFingerprint(for: input),
-            pdfByteSize: Int64(artifact.pdfData.count),
+            pdfByteSize: Int64(pdfData.count),
             svgPages: svgPageManifests,
             updatedAt: Date()
         )
 
-        try artifact.pdfData.write(to: cacheDirectory.appendingPathComponent(Self.previewFileName), options: .atomic)
+        try pdfData.write(to: cacheDirectory.appendingPathComponent(Self.previewFileName), options: .atomic)
         try encodeManifest(manifest, to: cacheDirectory.appendingPathComponent(Self.manifestFileName))
     }
 

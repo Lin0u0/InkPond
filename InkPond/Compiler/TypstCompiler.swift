@@ -88,7 +88,7 @@ final class TypstCompiler {
 
     init(
         compileWorker: @escaping TypstCompileWorker = { source, fontPaths, rootDir, sessionKey in
-            TypstBridge.compilePreview(
+            TypstBridge.compilePreviewSVG(
                 source: source,
                 fontPaths: fontPaths,
                 rootDir: rootDir,
@@ -524,7 +524,7 @@ final class TypstCompiler {
 
         switch result {
         case .success(let artifact):
-            if let cacheInput {
+            if let cacheInput, artifact.pdfData != nil {
                 do {
                     try previewCacheStore.save(artifact: artifact, for: cacheInput)
                 } catch {
