@@ -871,14 +871,14 @@ extension DocumentEditorView {
             ? regularToolbarPreviewStatsCompactEstimatedWidth
             : regularToolbarPreviewStatsFullEstimatedWidth
         let hasStats = stats != nil
-        let isCompiling = compiler.isCompiling
+        let isUpdatingPreview = compiler.isPreviewUpdating
 
         return Button {
             guard hasStats else { return }
             showingPreviewStatsDetails.toggle()
         } label: {
             HStack(spacing: 5) {
-                if isCompiling {
+                if isUpdatingPreview {
                     ProgressView()
                         .controlSize(.mini)
                         .tint(regularToolbarForegroundColor)
@@ -896,12 +896,12 @@ extension DocumentEditorView {
                     )
                         .transition(.opacity)
                 } else if usesCompactLabel {
-                    if !isCompiling {
+                    if !isUpdatingPreview {
                         ProgressView()
                             .controlSize(.mini)
                     }
                 } else {
-                    if !isCompiling {
+                    if !isUpdatingPreview {
                         ProgressView()
                             .controlSize(.mini)
                     }
@@ -934,7 +934,7 @@ extension DocumentEditorView {
         .frame(width: pillWidth)
         .regularToolbarCapsuleSurface()
         .animation(.easeInOut(duration: 0.18), value: hasStats)
-        .animation(.easeInOut(duration: 0.18), value: isCompiling)
+        .animation(.easeInOut(duration: 0.18), value: isUpdatingPreview)
     }
 
     private func regularPreviewStatsCompactLabel(_ wordCount: Int) -> String {
@@ -999,17 +999,24 @@ extension DocumentEditorView {
 
     @ViewBuilder
     private func regularShareToolbarLabel(size: CGFloat = 44) -> some View {
-        switch exporter.exportButtonPhase {
-        case .idle:
+        ZStack {
             regularToolbarIconLabel("square.and.arrow.up", size: size)
-        case .exporting:
+                .opacity(exporter.exportButtonPhase == .idle ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .idle ? 1 : 0.84)
+
             ProgressView()
                 .controlSize(.small)
                 .tint(regularToolbarForegroundColor)
                 .frame(width: size, height: regularToolbarControlHeight - 4)
-        case .completed:
+                .opacity(exporter.exportButtonPhase == .exporting ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .exporting ? 1 : 0.84)
+
             regularToolbarIconLabel("checkmark", size: size)
+                .opacity(exporter.exportButtonPhase == .completed ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .completed ? 1 : 0.84)
         }
+        .frame(width: size, height: regularToolbarControlHeight - 4)
+        .animation(.easeInOut(duration: 0.18), value: exporter.exportButtonPhase)
     }
 
     @ViewBuilder

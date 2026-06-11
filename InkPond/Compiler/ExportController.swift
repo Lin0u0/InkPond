@@ -21,6 +21,7 @@ final class ExportController {
     var exportButtonPhase: ExportButtonPhase = .idle
     var exportError: String?
     var exportURL: URL?
+    private var exportCompletionTask: Task<Void, Never>?
 
     /// Export using already-compiled PDF bytes from the live preview.
     /// Falls back to a fresh compile if no cached data is provided.
@@ -119,7 +120,9 @@ final class ExportController {
 
     @discardableResult
     private func beginExport() -> Bool {
-        guard !isExporting else { return false }
+        guard !isExporting, exportButtonPhase == .idle else { return false }
+        exportCompletionTask?.cancel()
+        exportCompletionTask = nil
         exportError = nil
         isExporting = true
         exportButtonPhase = .exporting
@@ -128,16 +131,24 @@ final class ExportController {
 
     private func finishExport(with url: URL) {
         exportButtonPhase = .completed
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(260))
+        exportCompletionTask?.cancel()
+        exportCompletionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
             guard let self else { return }
+            guard !Task.isCancelled else { return }
             exportURL = url
             isExporting = false
+
+            try? await Task.sleep(for: .milliseconds(520))
+            guard !Task.isCancelled else { return }
             exportButtonPhase = .idle
+            exportCompletionTask = nil
         }
     }
 
     private func failExport(_ error: Error) {
+        exportCompletionTask?.cancel()
+        exportCompletionTask = nil
         isExporting = false
         exportButtonPhase = .idle
         exportError = error.localizedDescription

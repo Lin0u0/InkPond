@@ -635,6 +635,7 @@ final class SVGPreviewContainerView: UIView {
     private var pendingPageIDs: Set<ObjectIdentifier> = []
     private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
     private var horizontalPanStartLocation: CGPoint?
+    private var isLoadingPages = false
     private let reservedNavigationEdgeWidth: CGFloat = 44
     private let pageGap: CGFloat = 12
     private let pageMargin: CGFloat = 16
@@ -658,6 +659,7 @@ final class SVGPreviewContainerView: UIView {
     }
 
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+    var onLoadingStateChange: ((Bool) -> Void)?
     var onHorizontalSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)? {
         didSet {
             horizontalPanRecognizer?.isEnabled = onHorizontalSwipe != nil
@@ -729,14 +731,16 @@ final class SVGPreviewContainerView: UIView {
     func reloadPages(_ newPages: [TypstPreviewPage]) {
         guard pages != newPages else {
             layoutPagesIfNeeded()
+            setLoadingPages(false)
             return
         }
         guard pendingPages != newPages else {
             layoutPagesIfNeeded()
+            setLoadingPages(true)
             return
         }
 
-        cancelPendingPageLoad()
+        cancelPendingPageLoad(notify: false)
         guard !newPages.isEmpty else {
             pageViews.forEach { $0.removeFromSuperview() }
             pageViews = []
@@ -751,9 +755,11 @@ final class SVGPreviewContainerView: UIView {
             updateTransientZoomScaleLimits()
             scrollView.setZoomScale(fitZoomScale, animated: false)
             layoutPagesIfNeeded(force: true)
+            setLoadingPages(false)
             return
         }
 
+        setLoadingPages(true)
         let loadID = UUID()
         pendingLoadID = loadID
         pendingPages = newPages
@@ -1020,10 +1026,11 @@ final class SVGPreviewContainerView: UIView {
             oldPageViews.forEach { $0.alpha = 0 }
         } completion: { _ in
             oldPageViews.forEach { $0.removeFromSuperview() }
+            self.setLoadingPages(false)
         }
     }
 
-    private func cancelPendingPageLoad() {
+    private func cancelPendingPageLoad(notify: Bool = true) {
         pendingPageViews.forEach { webView in
             webView.navigationDelegate = nil
             webView.stopLoading()
@@ -1033,6 +1040,15 @@ final class SVGPreviewContainerView: UIView {
         pendingPages = nil
         pendingLoadID = nil
         pendingPageIDs = []
+        if notify {
+            setLoadingPages(false)
+        }
+    }
+
+    private func setLoadingPages(_ isLoading: Bool) {
+        guard isLoadingPages != isLoading else { return }
+        isLoadingPages = isLoading
+        onLoadingStateChange?(isLoading)
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
@@ -1191,6 +1207,7 @@ extension SVGPreviewContainerView: WKNavigationDelegate {
 
 struct SVGPreviewView: UIViewRepresentable {
     let pages: [TypstPreviewPage]
+    @Binding var isRendering: Bool
     var topViewportInset: CGFloat = 0
     var bottomViewportInset: CGFloat = 0
     var scrollTarget: PreviewScrollTarget?
@@ -1204,6 +1221,7 @@ struct SVGPreviewView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SVGPreviewContainerView {
         let container = SVGPreviewContainerView()
+        container.onLoadingStateChange = loadingStateHandler
         container.previewBackgroundColor = backgroundColor
         container.isAccessibilityElement = true
         container.accessibilityIdentifier = "editor.preview"
@@ -1218,6 +1236,7 @@ struct SVGPreviewView: UIViewRepresentable {
         container.topViewportInset = topViewportInset
         container.bottomViewportInset = bottomViewportInset
         container.onTapLocation = onTapLocation
+        container.onLoadingStateChange = loadingStateHandler
         container.onHorizontalSwipe = horizontalSwipeHandler
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
@@ -1235,6 +1254,14 @@ struct SVGPreviewView: UIViewRepresentable {
         return { direction in
             guard direction.contains(.right) else { return }
             onCompactPreviewSwipe()
+        }
+    }
+
+    private var loadingStateHandler: (Bool) -> Void {
+        { isLoading in
+            Task { @MainActor in
+                isRendering = isLoading
+            }
         }
     }
 
@@ -1282,7 +1309,8 @@ struct PreviewPane: View {
     @State private var cachedCharacterCount: Int = 0
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
-    @State private var isPreviewCompileScheduled = false
+    @State private var isSVGPreviewRendering = false
+    @State private var hasPresentedRenderablePreview = false
 
     private var previewStatistics: PreviewStatistics? {
         guard compiler.compiledOnce else { return nil }
@@ -1301,8 +1329,12 @@ struct PreviewPane: View {
     }
 
     private var isPreviewLoading: Bool {
-        (isPreviewCompileScheduled || compiler.isCompiling)
+        (compiler.isPreviewUpdating || isSVGPreviewRendering)
             && !requiresExternalFolderLink
+    }
+
+    private var showsInitialPreviewLoadingCover: Bool {
+        isPreviewLoading && !hasPresentedRenderablePreview
     }
 
     private var visibleFontWarnings: [CompileFontWarning] {
@@ -1320,6 +1352,7 @@ struct PreviewPane: View {
             } else if let artifact = compiler.previewArtifact, !artifact.svgPages.isEmpty {
                 SVGPreviewView(
                     pages: artifact.svgPages,
+                    isRendering: $isSVGPreviewRendering,
                     topViewportInset: topViewportInset,
                     bottomViewportInset: previewBottomViewportInset,
                     scrollTarget: syncCoordinator?.previewScrollTarget,
@@ -1386,7 +1419,12 @@ struct PreviewPane: View {
                     .padding(.top, topViewportInset)
             }
 
-            if showsCompilingIndicatorOverlay && isPreviewLoading && hasRenderablePreview {
+            if showsInitialPreviewLoadingCover && hasRenderablePreview {
+                compilingPlaceholderView
+                    .padding(.top, topViewportInset)
+                    .transition(.opacity)
+                    .zIndex(4)
+            } else if showsCompilingIndicatorOverlay && isPreviewLoading && hasRenderablePreview {
                 compilingIndicatorOverlay
             }
 
@@ -1427,18 +1465,29 @@ struct PreviewPane: View {
             }
             .onChange(of: hasRenderablePreview) { _, hasPreview in
                 if hasPreview {
-                    isPreviewCompileScheduled = false
+                    let isSVGArtifact = compiler.previewArtifact?.svgPages.isEmpty == false
+                    if !isPreviewLoading && !isSVGArtifact {
+                        hasPresentedRenderablePreview = true
+                    }
                 } else {
+                    hasPresentedRenderablePreview = false
+                    isSVGPreviewRendering = false
                     isShowingStatsDetails = false
                 }
             }
-            .onChange(of: compiler.isCompiling, initial: true) { _, isCompiling in
-                guard isCompiling || hasRenderablePreview || compiler.errorMessage != nil else { return }
-                isPreviewCompileScheduled = false
+            .onChange(of: compiler.previewArtifact) { _, artifact in
+                if artifact?.svgPages.isEmpty == false {
+                    isSVGPreviewRendering = true
+                }
+            }
+            .onChange(of: isPreviewLoading, initial: true) { _, isLoading in
+                if !isLoading, hasRenderablePreview {
+                    hasPresentedRenderablePreview = true
+                }
             }
             .onChange(of: compiler.errorMessage, initial: true) { _, newValue in
                 if newValue != nil {
-                    isPreviewCompileScheduled = false
+                    isSVGPreviewRendering = false
                 }
                 let shouldExpand = (newValue != nil) && !hasRenderablePreview
                 guard shouldExpand != isShowingErrorDetails else { return }
@@ -1555,23 +1604,25 @@ struct PreviewPane: View {
     /// Only compile when the source contains meaningful content.
     private func compileIfNeeded() {
         if requiresExternalFolderLink {
-            isPreviewCompileScheduled = false
+            isSVGPreviewRendering = false
+            hasPresentedRenderablePreview = false
             compiler.cancel()
             compiler.clearPreview()
             return
         }
         let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            isPreviewCompileScheduled = false
+            isSVGPreviewRendering = false
+            hasPresentedRenderablePreview = false
             compiler.clearPreview()
             return
         }
         if let preflightError {
-            isPreviewCompileScheduled = false
+            isSVGPreviewRendering = false
+            hasPresentedRenderablePreview = false
             compiler.presentPreflightError(preflightError)
             return
         }
-        isPreviewCompileScheduled = true
         compiler.compile(
             source: effectiveCompileSource,
             fontPaths: fontPaths,

@@ -1202,6 +1202,27 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func typstCompilerReportsPreviewUpdatingDuringDebounce() async {
+        let compiler = TypstCompiler(
+            compileWorker: { source, _, _, _ in
+                .success(makePreviewArtifact(pdfData: Data(source.utf8)))
+            },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(50)) }
+        )
+
+        compiler.compile(source: "= Preview", fontPaths: [], rootDir: nil)
+
+        #expect(compiler.isCompileQueued)
+        #expect(compiler.isPreviewUpdating)
+        #expect(!compiler.isCompiling)
+
+        await waitUntil {
+            compiler.compiledOnce && !compiler.isPreviewUpdating
+        }
+    }
+
+    @MainActor
     @Test func typstCompilerDropsIntermediateDebouncedRequests() async {
         let probe = CompileProbe()
         probe.block("first")

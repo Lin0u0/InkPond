@@ -61,6 +61,7 @@ final class TypstCompiler {
     private(set) var pdfDocument: PDFDocument?
     private(set) var pdfData: Data?
     private(set) var errorMessage: String?
+    private(set) var isCompileQueued: Bool = false
     private(set) var isCompiling: Bool = false
     /// Tracks whether a compiled preview artifact is currently available.
     private(set) var compiledOnce: Bool = false
@@ -69,6 +70,10 @@ final class TypstCompiler {
 
     var pageCount: Int {
         previewArtifact?.pageCount ?? pdfDocument?.pageCount ?? 0
+    }
+
+    var isPreviewUpdating: Bool {
+        isCompileQueued || isCompiling
     }
 
     private let compileWorker: TypstCompileWorker
@@ -221,6 +226,7 @@ final class TypstCompiler {
         scheduledRequest = nil
         pendingRequest = nil
         compileGeneration &+= 1
+        refreshCompileQueuedState()
         isCompiling = false
     }
 
@@ -228,6 +234,7 @@ final class TypstCompiler {
         switch mode {
         case .debounced:
             scheduledRequest = request
+            refreshCompileQueuedState()
             debounceTask?.cancel()
             let sleep = self.sleep
             debounceTask = Task { [weak self] in
@@ -245,6 +252,7 @@ final class TypstCompiler {
             debounceTask = nil
             scheduledRequest = nil
             pendingRequest = request
+            refreshCompileQueuedState()
             startNextCompileIfNeeded()
         }
     }
@@ -254,6 +262,7 @@ final class TypstCompiler {
         pendingRequest = scheduledRequest
         scheduledRequest = nil
         debounceTask = nil
+        refreshCompileQueuedState()
         startNextCompileIfNeeded()
     }
 
@@ -261,6 +270,7 @@ final class TypstCompiler {
         guard activeTask == nil, let request = pendingRequest else { return }
 
         pendingRequest = nil
+        refreshCompileQueuedState()
         isCompiling = true
 
         let compileWorker = self.compileWorker
@@ -377,8 +387,13 @@ final class TypstCompiler {
         if pendingRequest != nil {
             startNextCompileIfNeeded()
         } else {
+            refreshCompileQueuedState()
             isCompiling = false
         }
+    }
+
+    private func refreshCompileQueuedState() {
+        isCompileQueued = scheduledRequest != nil || pendingRequest != nil
     }
 
     private func scheduleDelayedError(_ message: String, generation: UInt64) {
