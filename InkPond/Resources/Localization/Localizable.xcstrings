@@ -12544,6 +12544,7 @@
       }
     },
     "This removes all cached compiled PDF previews. Documents will recompile the next time they open." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12561,6 +12562,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這會移除所有已快取的編譯 PDF 預覽。文件下次打開時會重新編譯。"
+          }
+        }
+      }
+    },
+    "This removes all cached compiled previews. Documents will recompile the next time they open." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会移除所有已缓存的编译预览。文档下次打开时会重新编译。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會移除所有已快取的編譯預覽。文件下次打開時會重新編譯。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會移除所有已快取的編譯預覽。文件下次開啟時會重新編譯。"
           }
         }
       }

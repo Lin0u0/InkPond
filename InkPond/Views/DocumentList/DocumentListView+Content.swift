@@ -7,6 +7,7 @@ import PDFKit
 import SwiftUI
 import SwiftData
 import UIKit
+import WebKit
 
 extension DocumentListView {
     var guardedDocumentSelection: Binding<InkPondDocument?> {
@@ -351,7 +352,7 @@ private struct ProjectHomeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ProjectHomeThumbnail(pdfURL: cacheEntry?.pdfURL, backgroundColor: thumbnailBackgroundColor)
+            ProjectHomeThumbnail(cacheEntry: cacheEntry, backgroundColor: thumbnailBackgroundColor)
                 .aspectRatio(4.0 / 3.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: thumbnailCornerRadius, style: .continuous))
                 .overlay(
@@ -395,9 +396,16 @@ private struct ProjectHomeCard: View {
 }
 
 private struct ProjectHomeThumbnail: View {
-    let pdfURL: URL?
+    let cacheEntry: CompiledPreviewCacheEntry?
     let backgroundColor: UIColor
     @State private var thumbnail: UIImage?
+    @State private var svgHTML: String?
+
+    private var thumbnailID: String {
+        guard let cacheEntry else { return "empty" }
+        let sourcePath = cacheEntry.pdfURL?.path ?? cacheEntry.firstSVGPageURL?.path ?? "empty"
+        return "\(sourcePath)-\(cacheEntry.updatedAt.timeIntervalSinceReferenceDate)"
+    }
 
     var body: some View {
         ZStack {
@@ -410,6 +418,9 @@ private struct ProjectHomeThumbnail: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(10)
+            } else if let svgHTML {
+                ProjectHomeSVGThumbnailView(html: svgHTML)
+                    .padding(10)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.richtext")
@@ -421,19 +432,103 @@ private struct ProjectHomeThumbnail: View {
                 }
             }
         }
-        .task(id: pdfURL) {
-            loadThumbnail()
+        .task(id: thumbnailID) {
+            await loadThumbnail()
         }
         .accessibilityHidden(true)
     }
 
-    private func loadThumbnail() {
-        guard let pdfURL,
-              let document = PDFDocument(url: pdfURL),
-              let page = document.page(at: 0) else {
-            thumbnail = nil
+    @MainActor
+    private func loadThumbnail() async {
+        thumbnail = nil
+        svgHTML = nil
+
+        if let pdfURL = cacheEntry?.pdfURL,
+           let document = PDFDocument(url: pdfURL),
+           let page = document.page(at: 0) {
+            thumbnail = page.thumbnail(of: CGSize(width: 520, height: 680), for: .mediaBox)
             return
         }
-        thumbnail = page.thumbnail(of: CGSize(width: 520, height: 680), for: .mediaBox)
+
+        guard let svgURL = cacheEntry?.firstSVGPageURL else {
+            return
+        }
+
+        let html = try? await Task.detached(priority: .utility) {
+            let svg = try String(contentsOf: svgURL, encoding: .utf8)
+            return ProjectHomeThumbnail.svgHTML(for: svg)
+        }.value
+        svgHTML = html
+    }
+
+    nonisolated private static func svgHTML(for svg: String) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
+        body {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .page {
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
+        .page > svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        </style>
+        </head>
+        <body>
+        <div class="page">
+        \(svg)
+        </div>
+        </body>
+        </html>
+        """
+    }
+}
+
+private struct ProjectHomeSVGThumbnailView: UIViewRepresentable {
+    let html: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.isUserInteractionEnabled = false
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastHTML != html else { return }
+        context.coordinator.lastHTML = html
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    final class Coordinator {
+        var lastHTML: String?
     }
 }

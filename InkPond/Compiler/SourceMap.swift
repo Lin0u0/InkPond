@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct SourceMapLocation: Sendable, Equatable {
+nonisolated struct SourceMapLocation: Sendable, Equatable, Codable {
     let page: Int
     let yPoints: Float
     let xPoints: Float
@@ -17,7 +17,7 @@ struct SourceMapLocation: Sendable, Equatable {
     let sourceLength: Int
 }
 
-struct SourceMap: Sendable, Equatable {
+nonisolated struct SourceMap: Sendable, Equatable, Codable {
     /// Entries sorted by source offset (for editor -> preview lookup).
     let byOffset: [SourceMapLocation]
     /// Entries sorted by (page, yPoints) (for preview -> editor lookup).

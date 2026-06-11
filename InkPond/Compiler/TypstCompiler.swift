@@ -358,8 +358,8 @@ final class TypstCompiler {
                 sourceMap = artifact.sourceMap
                 errorMessage = nil
                 compiledOnce = true
-                // Cached SVG/PDF artifacts do not carry a source map. Refresh
-                // once from the compiler so editor↔preview sync and outline
+                // Older cached SVG/PDF artifacts may not carry a source map.
+                // Refresh those once so editor↔preview sync and outline
                 // navigation can use the latest mappings without looping
                 // forever when a regular compile also returns no source map.
                 if loadedFromCache, artifact.sourceMap == nil, request?.mode == .debounced, let request {
@@ -539,7 +539,7 @@ final class TypstCompiler {
 
         switch result {
         case .success(let artifact):
-            if let cacheInput, artifact.pdfData != nil {
+            if let cacheInput, !artifact.svgPages.isEmpty {
                 do {
                     try previewCacheStore.save(artifact: artifact, for: cacheInput)
                 } catch {

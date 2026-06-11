@@ -22,6 +22,18 @@ private func makePreviewArtifact(
     TypstPreviewArtifact(svgPages: svgPages, pdfData: pdfData, sourceMap: sourceMap)
 }
 
+private func makeSourceMap() -> SourceMap {
+    let entries = [
+        SourceMapLocation(page: 0, yPoints: 24, xPoints: 12, line: 1, column: 1, sourceOffset: 0, sourceLength: 4),
+        SourceMapLocation(page: 0, yPoints: 48, xPoints: 12, line: 2, column: 1, sourceOffset: 5, sourceLength: 4)
+    ]
+    return SourceMap(byOffset: entries, byPosition: entries)
+}
+
+private enum TestRequirementError: Error {
+    case missingCacheEntry
+}
+
 @Suite(.serialized)
 @MainActor
 struct InkPondTests {
@@ -1547,6 +1559,68 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func typstCompilerUsesSVGOnlyCompiledPreviewCacheWhenSourceMapMatches() async throws {
+        let doc = makeDocument(projectID: "compiler-svg-cache-hit")
+        let cacheRoot = makeTempDirectory()
+        let source = "= Cached SVG"
+        let sourceMap = makeSourceMap()
+        let cachedArtifact = makePreviewArtifact(
+            pdfData: nil,
+            sourceMap: sourceMap,
+            svgPages: [
+                TypstPreviewPage(svg: "<svg><text>cached</text></svg>", widthPoints: 100, heightPoints: 120)
+            ]
+        )
+        defer {
+            try? FileManager.default.removeItem(at: cacheRoot)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: source, for: doc)
+
+        let descriptor = CompiledPreviewCacheDescriptor(
+            projectID: doc.projectID,
+            documentTitle: doc.title,
+            entryFileName: doc.entryFileName
+        )
+        let store = CompiledPreviewCacheStore(rootURL: cacheRoot)
+        try store.save(
+            artifact: cachedArtifact,
+            for: makeCompiledPreviewCacheInput(for: doc, source: source)
+        )
+
+        let compileCounter = LockedCounter()
+        let compiler = TypstCompiler(
+            compileWorker: { _, _, _, _ in
+                compileCounter.increment()
+                return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
+            },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in },
+            previewCacheStore: store,
+            typstVersionProvider: { "1.0" }
+        )
+
+        compiler.compile(
+            source: source,
+            fontPaths: [],
+            rootDir: ProjectFileManager.projectDirectory(for: doc).path,
+            previewCachePolicy: .useCacheIfValid,
+            previewCacheDescriptor: descriptor
+        )
+
+        await waitUntil {
+            compiler.compiledOnce && !compiler.isCompiling && !compiler.isCompileQueued
+        }
+
+        #expect(compileCounter.value == 0)
+        #expect(compiler.pdfData == nil)
+        #expect(compiler.previewArtifact?.svgPages == cachedArtifact.svgPages)
+        #expect(compiler.sourceMap == sourceMap)
+    }
+
+    @MainActor
     @Test func typstCompilerMissesCacheWhenSourceChanges() async throws {
         let doc = makeDocument(projectID: "compiler-cache-miss")
         let cacheRoot = makeTempDirectory()
@@ -2432,8 +2506,10 @@ struct InkPondTests {
 
         let store = CompiledPreviewCacheStore(rootURL: root)
         let input = makeCompiledPreviewCacheInput(for: doc, source: "= V2")
+        let sourceMap = makeSourceMap()
         let artifact = makePreviewArtifact(
             pdfData: Data("pdf-v2".utf8),
+            sourceMap: sourceMap,
             svgPages: [
                 TypstPreviewPage(svg: "<svg><text>1</text></svg>", widthPoints: 100, heightPoints: 120),
                 TypstPreviewPage(svg: "<svg><text>2</text></svg>", widthPoints: 200, heightPoints: 240)
@@ -2445,7 +2521,42 @@ struct InkPondTests {
 
         #expect(loaded.pdfData == artifact.pdfData)
         #expect(loaded.svgPages == artifact.svgPages)
-        #expect(loaded.sourceMap == nil)
+        #expect(loaded.sourceMap == sourceMap)
+    }
+
+    @Test func compiledPreviewCacheV2RoundTripsSVGOnlyArtifact() throws {
+        let root = makeTempDirectory()
+        let doc = makeDocument(projectID: "cached-v2-svg-only")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: "= SVG", for: doc)
+
+        let store = CompiledPreviewCacheStore(rootURL: root)
+        let input = makeCompiledPreviewCacheInput(for: doc, source: "= SVG")
+        let sourceMap = makeSourceMap()
+        let artifact = makePreviewArtifact(
+            pdfData: nil,
+            sourceMap: sourceMap,
+            svgPages: [
+                TypstPreviewPage(svg: "<svg><text>svg</text></svg>", widthPoints: 100, heightPoints: 120)
+            ]
+        )
+        try store.save(artifact: artifact, for: input)
+
+        let loaded = try #require(try store.loadArtifactIfValid(for: input))
+        let entry = try requireFirstCompiledPreviewCacheEntry(in: store)
+
+        #expect(loaded.pdfData == nil)
+        #expect(loaded.svgPages == artifact.svgPages)
+        #expect(loaded.sourceMap == sourceMap)
+        #expect(entry.pdfURL == nil)
+        #expect(entry.firstSVGPageURL != nil)
+        #expect(FileManager.default.fileExists(atPath: entry.firstSVGPageURL?.path ?? ""))
+        #expect(try store.loadIfValid(for: input) == nil)
     }
 
     @Test func compiledPreviewCacheRemoveDeletesSingleDocumentCache() throws {
@@ -2465,7 +2576,7 @@ struct InkPondTests {
             for: makeCompiledPreviewCacheInput(for: doc, source: "= Remove")
         )
 
-        let entry = try #require(store.snapshot().entries.first)
+        let entry = try requireFirstCompiledPreviewCacheEntry(in: store)
         try store.remove(entry)
 
         #expect(try store.snapshot().entries.isEmpty)
@@ -2515,7 +2626,7 @@ struct InkPondTests {
 
         try store.moveCache(from: "cached-old", to: "cached-new", documentTitle: "Renamed")
 
-        let entry = try #require(store.snapshot().entries.first)
+        let entry = try requireFirstCompiledPreviewCacheEntry(in: store)
         #expect(entry.projectID == "cached-new")
         #expect(entry.documentTitle == "Renamed")
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("cached-old").path))
@@ -2613,6 +2724,17 @@ struct InkPondTests {
             .appendingPathComponent("InkPondTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private func requireFirstCompiledPreviewCacheEntry(
+        in store: CompiledPreviewCacheStore
+    ) throws -> CompiledPreviewCacheEntry {
+        let entries = try store.snapshot().entries
+        guard let entry = entries.first else {
+            Issue.record("Expected a compiled preview cache entry")
+            throw TestRequirementError.missingCacheEntry
+        }
+        return entry
     }
 
     private func makeIsolatedDefaults() -> (suiteName: String, defaults: UserDefaults) {

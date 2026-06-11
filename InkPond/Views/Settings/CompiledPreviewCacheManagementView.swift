@@ -40,7 +40,7 @@ struct CompiledPreviewCacheManagementView: View {
                 Task { await clearAll() }
             }
         } message: {
-            Text("This removes all cached compiled PDF previews. Documents will recompile the next time they open.")
+            Text("This removes all cached compiled previews. Documents will recompile the next time they open.")
         }
     }
 
@@ -79,7 +79,7 @@ struct CompiledPreviewCacheManagementView: View {
                             Text(displayTitle(for: entry))
                                 .font(.body.weight(.medium))
                             Spacer()
-                            Text(formattedSize(entry.pdfSizeInBytes))
+                            Text(formattedSize(totalSize(for: entry)))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -171,5 +171,9 @@ struct CompiledPreviewCacheManagementView: View {
 
     private func formattedSize(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func totalSize(for entry: CompiledPreviewCacheEntry) -> Int64 {
+        entry.pdfSizeInBytes + entry.svgSizeInBytes + entry.sourceMapSizeInBytes
     }
 }

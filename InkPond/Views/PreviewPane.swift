@@ -641,12 +641,12 @@ final class SVGPreviewContainerView: UIView {
     private let visualFitZoomScale: CGFloat = 1
     private let minimumVisualZoomScale: CGFloat = 0.35
     private let maximumVisualZoomScale: CGFloat = 4
-    private let preRenderedZoomScale: CGFloat = 2
+    private let preRenderedZoomScale: CGFloat = 1
     private let reloadFadeDuration: TimeInterval = 0.12
     private let firstPaintDelay: TimeInterval = 0.08
     private var lastLaidOutWidth: CGFloat = 0
     private var lastLaidOutRenderZoomScale: CGFloat = 0
-    private var renderZoomScale: CGFloat = 2
+    private var renderZoomScale: CGFloat = 1
     private var scrollGeneration: UInt = 0
 
     private struct PageLayout {
