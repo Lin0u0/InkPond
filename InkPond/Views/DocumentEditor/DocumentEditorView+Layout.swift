@@ -1501,7 +1501,7 @@ extension DocumentEditorView {
                     exporter.exportError = fontResolutionError
                     return
                 }
-                exporter.exportPDF(for: document, cachedPDF: compiler.pdfDocument)
+                exporter.exportPDF(for: document, cachedPDFData: compiler.pdfData)
             }
         }
         return {
@@ -1529,7 +1529,7 @@ extension DocumentEditorView {
     }
 
     private var toolbarPreviewStatisticsIncludesRenderedPages: Bool {
-        compiler.pdfDocument != nil
+        compiler.compiledOnce
     }
 
     private var toolbarPreviewStatistics: PreviewStatistics? {
@@ -1540,7 +1540,7 @@ extension DocumentEditorView {
             return nil
         }
         return PreviewStatistics(
-            pageCount: max(compiler.pdfDocument?.pageCount ?? 0, 0),
+            pageCount: max(compiler.pageCount, 0),
             wordCount: previewStatsWordCount,
             characterCount: previewStatsCharacterCount
         )
@@ -2065,10 +2065,10 @@ extension DocumentEditorView {
                 InteractionFeedback.notify(.error)
                 AccessibilitySupport.announce(newValue)
             }
-            .onChange(of: compiler.pdfDocument) { _, newValue in
-                if newValue != nil {
+            .onChange(of: compiler.previewArtifact) { _, newValue in
+                if newValue != nil, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
                     syncCursorToPreviewIfPending()
-                } else {
+                } else if newValue == nil {
                     showingPreviewStatsDetails = false
                 }
                 guard pendingManualCompileFeedback, newValue != nil, compiler.errorMessage == nil else { return }
@@ -2175,7 +2175,7 @@ extension DocumentEditorView {
                 handleProjectFileImportFromMenu(result)
             }
             .fullScreenCover(isPresented: $showingSlideshow) {
-                if let pdf = compiler.pdfDocument {
+                if let pdf = compiler.pdfDocumentForCurrentData() {
                     SlideshowView(document: pdf)
                 }
             }

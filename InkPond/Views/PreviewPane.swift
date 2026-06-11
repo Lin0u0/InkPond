@@ -9,6 +9,7 @@
 import SwiftUI
 import PDFKit
 import NaturalLanguage
+import WebKit
 
 private struct CompilationErrorPresentation {
     let summary: String
@@ -619,6 +620,499 @@ extension PDFContainerView {
 
 }
 
+// MARK: - SVG wrapper
+
+final class SVGPreviewContainerView: UIView {
+    private let scrollView = UIScrollView()
+    private let contentView = UIView()
+    private let syncMarkerView = PreviewSyncMarkerView()
+    private var pageViews: [WKWebView] = []
+    private var pendingPageViews: [WKWebView] = []
+    private var pageFrames: [CGRect] = []
+    private var pages: [TypstPreviewPage] = []
+    private var pendingPages: [TypstPreviewPage]?
+    private var pendingLoadID: UUID?
+    private var pendingPageIDs: Set<ObjectIdentifier> = []
+    private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
+    private var horizontalPanStartLocation: CGPoint?
+    private let reservedNavigationEdgeWidth: CGFloat = 44
+    private let pageGap: CGFloat = 12
+    private let pageMargin: CGFloat = 16
+    private let maximumZoomScale: CGFloat = 4
+    private var lastLaidOutWidth: CGFloat = 0
+    private var scrollGeneration: UInt = 0
+
+    var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+    var onHorizontalSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)? {
+        didSet {
+            horizontalPanRecognizer?.isEnabled = onHorizontalSwipe != nil
+        }
+    }
+    var previewBackgroundColor: UIColor = .secondarySystemBackground {
+        didSet { applyPreviewBackgroundColor() }
+    }
+    var topViewportInset: CGFloat = 0 {
+        didSet { updateScrollInsetsIfNeeded() }
+    }
+    var bottomViewportInset: CGFloat = 0 {
+        didSet { updateScrollInsetsIfNeeded() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+
+        scrollView.delegate = self
+        scrollView.alwaysBounceVertical = true
+        scrollView.alwaysBounceHorizontal = true
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = maximumZoomScale
+        scrollView.zoomScale = 1
+        scrollView.applySoftScrollEdgeEffects()
+        addSubview(scrollView)
+        scrollView.addSubview(contentView)
+        addSubview(syncMarkerView)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        syncMarkerView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            syncMarkerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            syncMarkerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            syncMarkerView.topAnchor.constraint(equalTo: topAnchor),
+            syncMarkerView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tapGesture.numberOfTapsRequired = 1
+        tapGesture.cancelsTouchesInView = false
+        scrollView.addGestureRecognizer(tapGesture)
+
+        let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTapGesture.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTapGesture)
+        tapGesture.require(toFail: doubleTapGesture)
+
+        installHorizontalSwipeRecognizer()
+        applyPreviewBackgroundColor()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutPagesIfNeeded()
+        updateScrollInsetsIfNeeded()
+    }
+
+    func reloadPages(_ newPages: [TypstPreviewPage]) {
+        guard pages != newPages else {
+            layoutPagesIfNeeded()
+            return
+        }
+        guard pendingPages != newPages else {
+            layoutPagesIfNeeded()
+            return
+        }
+
+        cancelPendingPageLoad()
+        guard !newPages.isEmpty else {
+            pageViews.forEach { $0.removeFromSuperview() }
+            pageViews = []
+            pages = []
+            pageFrames = []
+            pendingPages = nil
+            pendingLoadID = nil
+            pendingPageIDs = []
+            lastLaidOutWidth = 0
+            layoutPagesIfNeeded(force: true)
+            return
+        }
+
+        let loadID = UUID()
+        pendingLoadID = loadID
+        pendingPages = newPages
+        pendingPageViews = newPages.map { page in
+            let webView = Self.makePageWebView()
+            webView.isHidden = true
+            webView.navigationDelegate = self
+            contentView.addSubview(webView)
+            pendingPageIDs.insert(ObjectIdentifier(webView))
+            webView.loadHTMLString(Self.html(forSVG: page.svg), baseURL: nil)
+            return webView
+        }
+    }
+
+    func scrollToPosition(page: Int, yPoints: Float, xPoints: Float) {
+        layoutIfNeeded()
+        layoutPagesIfNeeded()
+        guard page >= 0, page < pageFrames.count else { return }
+
+        let pageFrame = pageFrames[page]
+        let scale = scaleForPage(at: page)
+        let target = CGPoint(
+            x: pageFrame.minX + CGFloat(xPoints) * scale,
+            y: pageFrame.minY + CGFloat(yPoints) * scale
+        )
+        let zoomedTarget = CGPoint(
+            x: target.x * scrollView.zoomScale,
+            y: target.y * scrollView.zoomScale
+        )
+        let desiredOffset = CGPoint(
+            x: scrollView.contentOffset.x,
+            y: zoomedTarget.y - scrollView.bounds.height * 0.33
+        )
+        let clampedOffset = clampedContentOffset(desiredOffset)
+        let needsScroll = abs(scrollView.contentOffset.y - clampedOffset.y) > 2
+
+        scrollGeneration &+= 1
+        let currentGeneration = scrollGeneration
+        let showMarker = { [weak self] in
+            guard let self, self.scrollGeneration == currentGeneration else { return }
+            let markerPoint = self.convert(target, from: self.contentView)
+            self.syncMarkerView.show(at: markerPoint)
+        }
+
+        if needsScroll {
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
+                self.scrollView.contentOffset = clampedOffset
+            } completion: { _ in
+                showMarker()
+            }
+        } else {
+            showMarker()
+        }
+    }
+
+    private func layoutPagesIfNeeded(force: Bool = false) {
+        let layoutWidth = max(bounds.width, 1)
+        guard force
+                || abs(layoutWidth - lastLaidOutWidth) > 0.5
+                || pageFrames.count != pages.count else {
+            return
+        }
+
+        let savedZoomScale = scrollView.zoomScale
+        let savedOffset = scrollView.contentOffset
+        if savedZoomScale != scrollView.minimumZoomScale {
+            scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        }
+
+        let availableWidth = max(layoutWidth - pageMargin * 2, 1)
+        var y = pageMargin
+        pageFrames = []
+        pageFrames.reserveCapacity(pages.count)
+
+        for (index, page) in pages.enumerated() {
+            let sourceWidth = max(CGFloat(page.widthPoints), 1)
+            let sourceHeight = max(CGFloat(page.heightPoints), 1)
+            let width = availableWidth
+            let height = max(sourceHeight * (width / sourceWidth), 1)
+            let frame = CGRect(x: pageMargin, y: y, width: width, height: height)
+            pageFrames.append(frame)
+            if index < pageViews.count {
+                pageViews[index].frame = frame
+            }
+            y += height + pageGap
+        }
+
+        if !pageFrames.isEmpty {
+            y -= pageGap
+        }
+        y += pageMargin
+        contentView.frame = CGRect(x: 0, y: 0, width: layoutWidth, height: max(y, bounds.height + 1))
+        scrollView.contentSize = contentView.frame.size
+        lastLaidOutWidth = layoutWidth
+
+        if savedZoomScale != scrollView.minimumZoomScale {
+            scrollView.setZoomScale(min(savedZoomScale, scrollView.maximumZoomScale), animated: false)
+            scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
+        }
+    }
+
+    private func scaleForPage(at index: Int) -> CGFloat {
+        guard index >= 0, index < pages.count, index < pageFrames.count else { return 1 }
+        return pageFrames[index].width / max(CGFloat(pages[index].widthPoints), 1)
+    }
+
+    private func updateScrollInsetsIfNeeded() {
+        if scrollView.contentInset.top != topViewportInset
+            || scrollView.contentInset.bottom != bottomViewportInset {
+            var insets = scrollView.contentInset
+            insets.top = topViewportInset
+            insets.bottom = bottomViewportInset
+            scrollView.contentInset = insets
+        }
+        scrollView.verticalScrollIndicatorInsets.top = topViewportInset
+        scrollView.verticalScrollIndicatorInsets.bottom = bottomViewportInset
+    }
+
+    private func clampedContentOffset(_ contentOffset: CGPoint) -> CGPoint {
+        let inset = scrollView.adjustedContentInset
+        let minY = -inset.top
+        let maxY = max(minY, scrollView.contentSize.height - scrollView.bounds.height + inset.bottom)
+        return CGPoint(
+            x: 0,
+            y: min(max(contentOffset.y, minY), maxY)
+        )
+    }
+
+    private func applyPreviewBackgroundColor() {
+        backgroundColor = previewBackgroundColor
+        scrollView.backgroundColor = previewBackgroundColor
+        contentView.backgroundColor = previewBackgroundColor
+        (pageViews + pendingPageViews).forEach { webView in
+            webView.backgroundColor = .clear
+            webView.scrollView.backgroundColor = .clear
+        }
+    }
+
+    private func completePendingPageLoad(for webView: WKWebView) {
+        let pageID = ObjectIdentifier(webView)
+        guard pendingPageIDs.remove(pageID) != nil,
+              let loadID = pendingLoadID,
+              pendingPageIDs.isEmpty else {
+            return
+        }
+        commitPendingPages(loadID: loadID)
+    }
+
+    private func commitPendingPages(loadID: UUID) {
+        guard pendingLoadID == loadID,
+              let nextPages = pendingPages else {
+            return
+        }
+
+        let oldPageViews = pageViews
+        let loadedPageViews = pendingPageViews
+        let savedOffset = scrollView.contentOffset
+
+        pageViews = loadedPageViews
+        pages = nextPages
+        pendingPageViews = []
+        pendingPages = nil
+        pendingLoadID = nil
+        pendingPageIDs = []
+        lastLaidOutWidth = 0
+
+        setNeedsLayout()
+        layoutIfNeeded()
+        layoutPagesIfNeeded(force: true)
+        scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
+
+        loadedPageViews.forEach { webView in
+            webView.isHidden = false
+            webView.navigationDelegate = nil
+        }
+        oldPageViews.forEach { $0.removeFromSuperview() }
+    }
+
+    private func cancelPendingPageLoad() {
+        pendingPageViews.forEach { webView in
+            webView.navigationDelegate = nil
+            webView.stopLoading()
+            webView.removeFromSuperview()
+        }
+        pendingPageViews = []
+        pendingPages = nil
+        pendingLoadID = nil
+        pendingPageIDs = []
+    }
+
+    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        let location = recognizer.location(in: contentView)
+        guard let pageIndex = pageFrames.firstIndex(where: { $0.contains(location) }) else {
+            return
+        }
+        let pageFrame = pageFrames[pageIndex]
+        let scale = scaleForPage(at: pageIndex)
+        guard scale > 0 else { return }
+        let yPoints = (location.y - pageFrame.minY) / scale
+        onTapLocation?(pageIndex, Float(yPoints))
+    }
+
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        if scrollView.zoomScale > scrollView.minimumZoomScale + 0.05 {
+            scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            return
+        }
+
+        let targetScale = min(maximumZoomScale, 2.5)
+        let center = recognizer.location(in: contentView)
+        let zoomSize = CGSize(
+            width: scrollView.bounds.width / targetScale,
+            height: scrollView.bounds.height / targetScale
+        )
+        let zoomRect = CGRect(
+            x: center.x - zoomSize.width / 2,
+            y: center.y - zoomSize.height / 2,
+            width: zoomSize.width,
+            height: zoomSize.height
+        )
+        scrollView.zoom(to: zoomRect, animated: true)
+    }
+
+    private func installHorizontalSwipeRecognizer() {
+        let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleHorizontalPan(_:)))
+        recognizer.delegate = self
+        recognizer.cancelsTouchesInView = true
+        recognizer.maximumNumberOfTouches = 1
+        recognizer.isEnabled = onHorizontalSwipe != nil
+        addGestureRecognizer(recognizer)
+        horizontalPanRecognizer = recognizer
+    }
+
+    @objc private func handleHorizontalPan(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            horizontalPanStartLocation = recognizer.location(in: self)
+        case .ended:
+            defer { horizontalPanStartLocation = nil }
+            let translation = recognizer.translation(in: self)
+            guard let startLocation = horizontalPanStartLocation,
+                  startLocation.x > reservedNavigationEdgeWidth,
+                  translation.x >= 70,
+                  abs(translation.x) > abs(translation.y) * 1.35 else {
+                return
+            }
+            onHorizontalSwipe?(.right)
+        case .cancelled, .failed:
+            horizontalPanStartLocation = nil
+        default:
+            break
+        }
+    }
+
+    private static func html(forSVG svg: String) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        svg { display: block; width: 100%; height: 100%; }
+        </style>
+        </head>
+        <body>
+        \(svg)
+        </body>
+        </html>
+        """
+    }
+
+    private static func makePageWebView() -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.backgroundColor = .clear
+        webView.isUserInteractionEnabled = false
+        return webView
+    }
+}
+
+extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === horizontalPanRecognizer,
+              let panRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+            return true
+        }
+        let startLocation = panRecognizer.location(in: self)
+        let velocity = panRecognizer.velocity(in: self)
+        return startLocation.x > reservedNavigationEdgeWidth
+            && velocity.x > 0
+            && abs(velocity.x) > abs(velocity.y) * 1.35
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+}
+
+extension SVGPreviewContainerView: UIScrollViewDelegate {
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        contentView
+    }
+}
+
+extension SVGPreviewContainerView: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        completePendingPageLoad(for: webView)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        completePendingPageLoad(for: webView)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        completePendingPageLoad(for: webView)
+    }
+}
+
+struct SVGPreviewView: UIViewRepresentable {
+    let pages: [TypstPreviewPage]
+    var topViewportInset: CGFloat = 0
+    var bottomViewportInset: CGFloat = 0
+    var scrollTarget: PreviewScrollTarget?
+    var backgroundColor: UIColor = .secondarySystemBackground
+    var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
+    var onCompactPreviewSwipe: (() -> Void)? = nil
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> SVGPreviewContainerView {
+        let container = SVGPreviewContainerView()
+        container.previewBackgroundColor = backgroundColor
+        container.isAccessibilityElement = true
+        container.accessibilityIdentifier = "editor.preview"
+        container.accessibilityLabel = L10n.a11yPreviewLabel
+        container.accessibilityHint = L10n.a11yPreviewHint
+        container.accessibilityValue = L10n.a11yPreviewValueReady
+        return container
+    }
+
+    func updateUIView(_ container: SVGPreviewContainerView, context: Context) {
+        container.previewBackgroundColor = backgroundColor
+        container.topViewportInset = topViewportInset
+        container.bottomViewportInset = bottomViewportInset
+        container.onTapLocation = onTapLocation
+        container.onHorizontalSwipe = horizontalSwipeHandler
+        container.accessibilityLabel = L10n.a11yPreviewLabel
+        container.accessibilityHint = L10n.a11yPreviewHint
+        container.accessibilityValue = L10n.a11yPreviewValueReady
+        container.reloadPages(pages)
+
+        if let target = scrollTarget, context.coordinator.lastAppliedScrollTarget != target {
+            container.scrollToPosition(page: target.page, yPoints: target.yPoints, xPoints: target.xPoints)
+            context.coordinator.lastAppliedScrollTarget = target
+        }
+    }
+
+    private var horizontalSwipeHandler: ((UISwipeGestureRecognizer.Direction) -> Void)? {
+        guard let onCompactPreviewSwipe else { return nil }
+        return { direction in
+            guard direction.contains(.right) else { return }
+            onCompactPreviewSwipe()
+        }
+    }
+
+    final class Coordinator {
+        var lastAppliedScrollTarget: PreviewScrollTarget?
+    }
+}
+
 // MARK: - PreviewPane
 
 struct PreviewPane: View {
@@ -660,12 +1154,19 @@ struct PreviewPane: View {
     @State private var keyboardOverlap: CGFloat = 0
 
     private var previewStatistics: PreviewStatistics? {
-        guard let pdf = compiler.pdfDocument else { return nil }
+        guard compiler.compiledOnce else { return nil }
         return PreviewStatistics(
-            pageCount: max(pdf.pageCount, 0),
+            pageCount: max(compiler.pageCount, 0),
             wordCount: cachedWordCount,
             characterCount: cachedCharacterCount
         )
+    }
+
+    private var hasRenderablePreview: Bool {
+        if let artifact = compiler.previewArtifact, !artifact.svgPages.isEmpty {
+            return true
+        }
+        return compiler.pdfDocument != nil
     }
 
     private var visibleFontWarnings: [CompileFontWarning] {
@@ -680,6 +1181,36 @@ struct PreviewPane: View {
             if requiresExternalFolderLink {
                 externalFolderLinkRequiredPlaceholder
                     .padding(.top, topViewportInset)
+            } else if let artifact = compiler.previewArtifact, !artifact.svgPages.isEmpty {
+                SVGPreviewView(
+                    pages: artifact.svgPages,
+                    topViewportInset: topViewportInset,
+                    bottomViewportInset: previewBottomViewportInset,
+                    scrollTarget: syncCoordinator?.previewScrollTarget,
+                    backgroundColor: backgroundColor,
+                    onTapLocation: { page, yPoints in
+                        guard let syncCoordinator,
+                              let sourceMap,
+                              let location = sourceMap.sourceLocation(forPage: page, yPoints: yPoints),
+                              syncCoordinator.beginSync(.previewToEditor) else {
+                            return
+                        }
+
+                        syncCoordinator.editorScrollTarget = EditorScrollTarget(
+                            line: location.line,
+                            column: location.column
+                        )
+                    },
+                    onCompactPreviewSwipe: onCompactPreviewSwipe
+                )
+                .ignoresSafeArea(.container, edges: .bottom)
+                .softScrollEdgeEffect()
+                .accessibilityLabel(L10n.a11yPreviewLabel)
+                .accessibilityHint(L10n.a11yPreviewHint)
+                .accessibilityValue(
+                    compiler.errorMessage == nil ? L10n.a11yPreviewValueReady : L10n.a11yPreviewValueError
+                )
+                .accessibilityIdentifier("editor.preview")
             } else if let pdf = compiler.pdfDocument {
                 PDFKitView(
                     document: pdf,
@@ -755,12 +1286,12 @@ struct PreviewPane: View {
                 guard drivesCompilation else { return }
                 compileIfNeeded()
             }
-            .onChange(of: compiler.pdfDocument != nil) { _, hasPreview in
+            .onChange(of: hasRenderablePreview) { _, hasPreview in
                 guard !hasPreview else { return }
                 isShowingStatsDetails = false
             }
             .onChange(of: compiler.errorMessage, initial: true) { _, newValue in
-                let shouldExpand = (newValue != nil) && (compiler.pdfDocument == nil)
+                let shouldExpand = (newValue != nil) && !hasRenderablePreview
                 guard shouldExpand != isShowingErrorDetails else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isShowingErrorDetails = shouldExpand

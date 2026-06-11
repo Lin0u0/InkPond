@@ -2,7 +2,7 @@
 //  TypstCompiler.swift
 //  InkPond
 //
-//  Debounced compile pipeline: source → Rust FFI → PDFKit document.
+//  Debounced compile pipeline: source → Rust FFI → SVG preview artifact.
 //
 
 import Observation
@@ -20,7 +20,7 @@ enum TypstPreviewCachePolicy: Sendable {
     case bypassCache
 }
 
-typealias TypstCompileWorker = @Sendable (String, [String], String?) -> Result<(Data, SourceMap?), TypstBridgeError>
+typealias TypstCompileWorker = @Sendable (String, [String], String?, String?) -> Result<TypstPreviewArtifact, TypstBridgeError>
 typealias TypstDocumentBuilder = @Sendable (Data) -> PDFDocument?
 typealias TypstCompilerSleep = @Sendable (Duration) async throws -> Void
 typealias PreviewPackagePrefetcher = @Sendable ([String]) -> Result<Void, TypstBridgeError>
@@ -35,16 +35,8 @@ private struct TypstCompileRequest: Sendable {
     let generation: UInt64
 }
 
-private struct TypstPDFDocumentBox: @unchecked Sendable {
-    nonisolated(unsafe) let document: PDFDocument
-
-    nonisolated init(document: PDFDocument) {
-        self.document = document
-    }
-}
-
 private enum TypstWorkerResult: Sendable {
-    case success(TypstPDFDocumentBox, Data, SourceMap?, loadedFromCache: Bool)
+    case success(TypstPreviewArtifact, loadedFromCache: Bool)
     case failure(TypstBridgeError)
 }
 
@@ -65,14 +57,19 @@ final class TypstCompiler {
     )
     nonisolated private static let signposter = OSSignposter(logger: logger)
 
+    private(set) var previewArtifact: TypstPreviewArtifact?
     private(set) var pdfDocument: PDFDocument?
     private(set) var pdfData: Data?
     private(set) var errorMessage: String?
     private(set) var isCompiling: Bool = false
-    /// Tracks whether a compiled PDF is currently available.
+    /// Tracks whether a compiled preview artifact is currently available.
     private(set) var compiledOnce: Bool = false
     /// Source map from the most recent successful compilation.
     private(set) var sourceMap: SourceMap?
+
+    var pageCount: Int {
+        previewArtifact?.pageCount ?? pdfDocument?.pageCount ?? 0
+    }
 
     private let compileWorker: TypstCompileWorker
     private let documentBuilder: TypstDocumentBuilder
@@ -90,9 +87,13 @@ final class TypstCompiler {
     private var compileGeneration: UInt64 = 0
 
     init(
-        compileWorker: @escaping TypstCompileWorker = { source, fontPaths, rootDir in
-            TypstBridge.compileWithSourceMap(source: source, fontPaths: fontPaths, rootDir: rootDir)
-                .map { ($0.0, $0.1) }
+        compileWorker: @escaping TypstCompileWorker = { source, fontPaths, rootDir, sessionKey in
+            TypstBridge.compilePreview(
+                source: source,
+                fontPaths: fontPaths,
+                rootDir: rootDir,
+                sessionKey: sessionKey
+            )
         },
         documentBuilder: @escaping TypstDocumentBuilder = { PDFDocument(data: $0) },
         sleep: @escaping TypstCompilerSleep = { try await Task.sleep(for: $0) },
@@ -179,6 +180,7 @@ final class TypstCompiler {
     /// Clear current preview content and cancel any in-flight compilation.
     func clearPreview() {
         cancelAllWork()
+        previewArtifact = nil
         pdfDocument = nil
         pdfData = nil
         errorMessage = nil
@@ -191,6 +193,18 @@ final class TypstCompiler {
         sourceMap = nil
         cancelDelayedError()
         errorMessage = message
+    }
+
+    func pdfDocumentForCurrentData() -> PDFDocument? {
+        if let pdfDocument {
+            return pdfDocument
+        }
+        guard let pdfData,
+              let document = documentBuilder(pdfData) else {
+            return nil
+        }
+        pdfDocument = document
+        return document
     }
 
     /// Cancel any in-flight compilation (e.g. when document is closed).
@@ -326,18 +340,19 @@ final class TypstCompiler {
         if generation == compileGeneration {
             let applyInterval = Self.signposter.beginInterval("typst.preview_apply")
             switch result {
-            case .success(let box, let data, let map, let loadedFromCache):
+            case .success(let artifact, let loadedFromCache):
                 cancelDelayedError()
-                pdfDocument = box.document
-                pdfData = data
-                sourceMap = map
+                previewArtifact = artifact
+                pdfDocument = nil
+                pdfData = artifact.pdfData
+                sourceMap = artifact.sourceMap
                 errorMessage = nil
                 compiledOnce = true
-                // Cache hits do not carry a source map. Refresh once from the
-                // compiler so editor↔preview sync and outline navigation can
-                // use the latest mappings without looping forever when a
-                // regular compile also returns no source map.
-                if loadedFromCache, map == nil, request?.mode == .debounced, let request {
+                // Cached SVG/PDF artifacts do not carry a source map. Refresh
+                // once from the compiler so editor↔preview sync and outline
+                // navigation can use the latest mappings without looping
+                // forever when a regular compile also returns no source map.
+                if loadedFromCache, artifact.sourceMap == nil, request?.mode == .debounced, let request {
                     compile(
                         source: request.source,
                         fontPaths: request.fontPaths,
@@ -473,23 +488,29 @@ final class TypstCompiler {
         typstVersionProvider: @escaping @Sendable () -> String?
     ) -> TypstWorkerResult {
         let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: request.fontPaths)
+        let typstVersion = typstVersionProvider()
         let cacheInput = request.previewCacheDescriptor.map {
             CompiledPreviewCacheInput(
                 descriptor: $0,
                 source: request.source,
                 fontPaths: materializedFontPaths,
                 rootDir: request.rootDir,
-                typstVersion: typstVersionProvider()
+                typstVersion: typstVersion
             )
         }
+        let previewSessionKey = previewSessionKey(
+            for: request,
+            materializedFontPaths: materializedFontPaths,
+            typstVersion: typstVersion
+        )
+        _ = documentBuilder
 
         switch request.previewCachePolicy {
         case .useCacheIfValid:
             if let cacheInput,
                let cachedResult = loadCachedPreview(
                 using: previewCacheStore,
-                cacheInput: cacheInput,
-                documentBuilder: documentBuilder
+                cacheInput: cacheInput
                ) {
                 return cachedResult
             }
@@ -498,25 +519,19 @@ final class TypstCompiler {
         }
 
         let compileInterval = signposter.beginInterval("typst.compile")
-        let result = compileWorker(request.source, materializedFontPaths, request.rootDir)
+        let result = compileWorker(request.source, materializedFontPaths, request.rootDir, previewSessionKey)
         signposter.endInterval("typst.compile", compileInterval)
 
         switch result {
-        case .success(let (pdfData, sourceMap)):
-            let decodeInterval = signposter.beginInterval("typst.pdf_decode")
-            defer { signposter.endInterval("typst.pdf_decode", decodeInterval) }
-
-            guard let document = documentBuilder(pdfData) else {
-                return .failure(.compilationFailed("Failed to decode compiled PDF."))
-            }
+        case .success(let artifact):
             if let cacheInput {
                 do {
-                    try previewCacheStore.save(pdfData: pdfData, for: cacheInput)
+                    try previewCacheStore.save(artifact: artifact, for: cacheInput)
                 } catch {
                     logger.error("Failed to store compiled preview cache: \(error.localizedDescription, privacy: .public)")
                 }
             }
-            return .success(TypstPDFDocumentBox(document: document), pdfData, sourceMap, loadedFromCache: false)
+            return .success(artifact, loadedFromCache: false)
         case .failure(let error):
             return .failure(error)
         }
@@ -524,21 +539,38 @@ final class TypstCompiler {
 
     nonisolated private static func loadCachedPreview(
         using previewCacheStore: CompiledPreviewCacheStore,
-        cacheInput: CompiledPreviewCacheInput,
-        documentBuilder: TypstDocumentBuilder
+        cacheInput: CompiledPreviewCacheInput
     ) -> TypstWorkerResult? {
         do {
-            guard let cachedPDFData = try previewCacheStore.loadIfValid(for: cacheInput) else {
+            guard let cachedArtifact = try previewCacheStore.loadArtifactIfValid(for: cacheInput) else {
                 return nil
             }
-            guard let document = documentBuilder(cachedPDFData) else {
-                logger.error("Failed to decode cached preview PDF for \(cacheInput.descriptor.projectID, privacy: .public)")
-                return nil
-            }
-            return .success(TypstPDFDocumentBox(document: document), cachedPDFData, nil, loadedFromCache: true)
+            return .success(cachedArtifact, loadedFromCache: true)
         } catch {
             logger.error("Failed to load compiled preview cache: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    nonisolated private static func previewSessionKey(
+        for request: TypstCompileRequest,
+        materializedFontPaths: [String],
+        typstVersion: String?
+    ) -> String? {
+        guard request.mode == .debounced,
+              let descriptor = request.previewCacheDescriptor else {
+            return nil
+        }
+
+        let fontKey = materializedFontPaths.joined(separator: "\u{1F}")
+        let localPackageRoot = TypstBridge.localPackagesDirectoryURL?.standardizedFileURL.path ?? ""
+        return [
+            descriptor.projectID,
+            descriptor.entryFileName,
+            request.rootDir ?? "",
+            localPackageRoot,
+            typstVersion ?? "",
+            fontKey
+        ].joined(separator: "\u{1E}")
     }
 }

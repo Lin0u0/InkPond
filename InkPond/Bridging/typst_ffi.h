@@ -65,6 +65,40 @@ TypstResultWithMap typst_compile_with_source_map(const char *source,
 /// Free a TypstResultWithMap.
 void typst_free_result_with_map(TypstResultWithMap result);
 
+/// A single SVG preview page.
+typedef struct {
+    char  *svg;       ///< Null-terminated UTF-8 SVG document.
+    float  width_pt;  ///< Page width in Typst/PDF points.
+    float  height_pt; ///< Page height in Typst/PDF points.
+} TypstSvgPage;
+
+/// Preview artifact containing SVG pages, PDF data, and source map entries.
+/// Free with typst_free_preview_result.
+typedef struct {
+    uint8_t        *pdf_data;
+    size_t          pdf_len;
+    char           *error_message;
+    bool            success;
+    SourceMapEntry *source_map;
+    size_t          source_map_len;
+    TypstSvgPage   *svg_pages;
+    size_t          svg_page_len;
+} TypstPreviewResult;
+
+/// Compile Typst source once to SVG pages, PDF bytes, and source-map entries.
+/// When session_key is non-null/non-empty, Rust reuses the preview world for
+/// that key and updates the main source incrementally.
+TypstPreviewResult typst_compile_preview(const char *source,
+                                          const TypstOptions *options,
+                                          const char *session_key);
+
+/// Free a TypstPreviewResult.
+void typst_free_preview_result(TypstPreviewResult result);
+
+/// Clear one preview session, or all preview sessions.
+void typst_clear_preview_session(const char *session_key);
+void typst_clear_all_preview_sessions(void);
+
 /// Syntax-highlight tag IDs returned by typst_highlight.
 enum {
     TypstHighlightTagComment = 0,

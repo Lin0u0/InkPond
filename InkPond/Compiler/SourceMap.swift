@@ -17,7 +17,7 @@ struct SourceMapLocation: Sendable, Equatable {
     let sourceLength: Int
 }
 
-struct SourceMap: Sendable {
+struct SourceMap: Sendable, Equatable {
     /// Entries sorted by source offset (for editor -> preview lookup).
     let byOffset: [SourceMapLocation]
     /// Entries sorted by (page, yPoints) (for preview -> editor lookup).

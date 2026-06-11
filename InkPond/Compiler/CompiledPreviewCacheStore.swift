@@ -20,6 +20,12 @@ struct CompiledPreviewCacheInput: Equatable, Sendable {
     nonisolated let typstVersion: String?
 }
 
+struct CompiledPreviewCacheSVGPageManifest: Equatable, Sendable {
+    nonisolated let fileName: String
+    nonisolated let widthPoints: Double
+    nonisolated let heightPoints: Double
+}
+
 struct CompiledPreviewCacheManifest: Equatable, Sendable {
     nonisolated let projectID: String
     nonisolated let documentTitle: String
@@ -28,6 +34,7 @@ struct CompiledPreviewCacheManifest: Equatable, Sendable {
     nonisolated let cacheSchemaVersion: Int
     nonisolated let inputFingerprint: String
     nonisolated let pdfByteSize: Int64
+    nonisolated let svgPages: [CompiledPreviewCacheSVGPageManifest]
     nonisolated let updatedAt: Date
 }
 
@@ -36,6 +43,7 @@ struct CompiledPreviewCacheEntry: Identifiable, Equatable, Sendable {
     nonisolated let pdfURL: URL
     nonisolated let manifestURL: URL
     nonisolated let pdfSizeInBytes: Int64
+    nonisolated let svgSizeInBytes: Int64
 
     nonisolated var id: String { manifest.projectID }
     nonisolated var projectID: String { manifest.projectID }
@@ -48,13 +56,14 @@ struct CompiledPreviewCacheSnapshot: Equatable, Sendable {
     nonisolated let entries: [CompiledPreviewCacheEntry]
 
     nonisolated var totalSizeInBytes: Int64 {
-        entries.reduce(0) { $0 + $1.pdfSizeInBytes }
+        entries.reduce(0) { $0 + $1.pdfSizeInBytes + $1.svgSizeInBytes }
     }
 }
 
 struct CompiledPreviewCacheStore: Sendable {
-    nonisolated static let cacheSchemaVersion = 1
+    nonisolated static let cacheSchemaVersion = 2
     nonisolated static let previewFileName = "preview.pdf"
+    nonisolated static let svgPagesDirectoryName = "svg-pages"
     nonisolated static let manifestFileName = "manifest.json"
 
     nonisolated let rootURL: URL?
@@ -97,12 +106,14 @@ struct CompiledPreviewCacheStore: Sendable {
 
             let manifest = try decodeManifest(at: manifestURL)
             let pdfSize = try fileSize(at: pdfURL)
+            let svgSize = try svgDirectorySize(for: manifest, cacheDirectory: directoryURL)
             entries.append(
                 CompiledPreviewCacheEntry(
                     manifest: manifest,
                     pdfURL: pdfURL,
                     manifestURL: manifestURL,
-                    pdfSizeInBytes: pdfSize
+                    pdfSizeInBytes: pdfSize,
+                    svgSizeInBytes: svgSize
                 )
             )
         }
@@ -133,7 +144,7 @@ struct CompiledPreviewCacheStore: Sendable {
         let fingerprint = try inputFingerprint(for: input)
         guard manifest.projectID == input.descriptor.projectID,
               manifest.entryFileName == input.descriptor.entryFileName,
-              manifest.cacheSchemaVersion == Self.cacheSchemaVersion,
+              (manifest.cacheSchemaVersion == 1 || manifest.cacheSchemaVersion == Self.cacheSchemaVersion),
               manifest.inputFingerprint == fingerprint else {
             return nil
         }
@@ -145,6 +156,53 @@ struct CompiledPreviewCacheStore: Sendable {
         return pdfData
     }
 
+    nonisolated func loadArtifactIfValid(for input: CompiledPreviewCacheInput) throws -> TypstPreviewArtifact? {
+        guard let rootURL else { return nil }
+
+        let cacheDirectory = cacheDirectory(for: input.descriptor.projectID, rootURL: rootURL)
+        let manifestURL = cacheDirectory.appendingPathComponent(Self.manifestFileName)
+        let pdfURL = cacheDirectory.appendingPathComponent(Self.previewFileName)
+        let fileManager = FileManager.default
+
+        guard fileManager.fileExists(atPath: manifestURL.path),
+              fileManager.fileExists(atPath: pdfURL.path) else {
+            return nil
+        }
+
+        let manifest = try decodeManifest(at: manifestURL)
+        let fingerprint = try inputFingerprint(for: input)
+        guard manifest.projectID == input.descriptor.projectID,
+              manifest.entryFileName == input.descriptor.entryFileName,
+              manifest.cacheSchemaVersion == Self.cacheSchemaVersion,
+              manifest.inputFingerprint == fingerprint,
+              !manifest.svgPages.isEmpty else {
+            return nil
+        }
+
+        let pdfData = try Data(contentsOf: pdfURL)
+        guard Int64(pdfData.count) == manifest.pdfByteSize else {
+            return nil
+        }
+
+        let svgDirectory = cacheDirectory.appendingPathComponent(Self.svgPagesDirectoryName, isDirectory: true)
+        var pages: [TypstPreviewPage] = []
+        pages.reserveCapacity(manifest.svgPages.count)
+        for page in manifest.svgPages {
+            let fileURL = svgDirectory.appendingPathComponent(page.fileName)
+            guard fileManager.fileExists(atPath: fileURL.path) else {
+                return nil
+            }
+            let svg = try String(contentsOf: fileURL, encoding: .utf8)
+            pages.append(TypstPreviewPage(
+                svg: svg,
+                widthPoints: page.widthPoints,
+                heightPoints: page.heightPoints
+            ))
+        }
+
+        return TypstPreviewArtifact(svgPages: pages, pdfData: pdfData, sourceMap: nil)
+    }
+
     nonisolated func save(pdfData: Data, for input: CompiledPreviewCacheInput) throws {
         let fileManager = FileManager.default
         guard let rootURL else { return }
@@ -153,6 +211,53 @@ struct CompiledPreviewCacheStore: Sendable {
 
         let cacheDirectory = cacheDirectory(for: input.descriptor.projectID, rootURL: rootURL)
         try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        let svgDirectory = cacheDirectory.appendingPathComponent(Self.svgPagesDirectoryName, isDirectory: true)
+        if fileManager.fileExists(atPath: svgDirectory.path) {
+            try fileManager.removeItem(at: svgDirectory)
+        }
+
+        let manifest = CompiledPreviewCacheManifest(
+            projectID: input.descriptor.projectID,
+            documentTitle: input.descriptor.documentTitle,
+            entryFileName: input.descriptor.entryFileName,
+            typstVersion: input.typstVersion,
+            cacheSchemaVersion: 1,
+            inputFingerprint: try inputFingerprint(for: input),
+            pdfByteSize: Int64(pdfData.count),
+            svgPages: [],
+            updatedAt: Date()
+        )
+
+        try pdfData.write(to: cacheDirectory.appendingPathComponent(Self.previewFileName), options: .atomic)
+        try encodeManifest(manifest, to: cacheDirectory.appendingPathComponent(Self.manifestFileName))
+    }
+
+    nonisolated func save(artifact: TypstPreviewArtifact, for input: CompiledPreviewCacheInput) throws {
+        let fileManager = FileManager.default
+        guard let rootURL else { return }
+
+        try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let cacheDirectory = cacheDirectory(for: input.descriptor.projectID, rootURL: rootURL)
+        let svgDirectory = cacheDirectory.appendingPathComponent(Self.svgPagesDirectoryName, isDirectory: true)
+        try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: svgDirectory.path) {
+            try fileManager.removeItem(at: svgDirectory)
+        }
+        try fileManager.createDirectory(at: svgDirectory, withIntermediateDirectories: true)
+
+        var svgPageManifests: [CompiledPreviewCacheSVGPageManifest] = []
+        svgPageManifests.reserveCapacity(artifact.svgPages.count)
+        for (index, page) in artifact.svgPages.enumerated() {
+            let fileName = String(format: "page-%04d.svg", index + 1)
+            let fileURL = svgDirectory.appendingPathComponent(fileName)
+            try page.svg.write(to: fileURL, atomically: true, encoding: .utf8)
+            svgPageManifests.append(CompiledPreviewCacheSVGPageManifest(
+                fileName: fileName,
+                widthPoints: page.widthPoints,
+                heightPoints: page.heightPoints
+            ))
+        }
 
         let manifest = CompiledPreviewCacheManifest(
             projectID: input.descriptor.projectID,
@@ -161,11 +266,12 @@ struct CompiledPreviewCacheStore: Sendable {
             typstVersion: input.typstVersion,
             cacheSchemaVersion: Self.cacheSchemaVersion,
             inputFingerprint: try inputFingerprint(for: input),
-            pdfByteSize: Int64(pdfData.count),
+            pdfByteSize: Int64(artifact.pdfData.count),
+            svgPages: svgPageManifests,
             updatedAt: Date()
         )
 
-        try pdfData.write(to: cacheDirectory.appendingPathComponent(Self.previewFileName), options: .atomic)
+        try artifact.pdfData.write(to: cacheDirectory.appendingPathComponent(Self.previewFileName), options: .atomic)
         try encodeManifest(manifest, to: cacheDirectory.appendingPathComponent(Self.manifestFileName))
     }
 
@@ -223,6 +329,7 @@ struct CompiledPreviewCacheStore: Sendable {
             cacheSchemaVersion: manifest.cacheSchemaVersion,
             inputFingerprint: manifest.inputFingerprint,
             pdfByteSize: manifest.pdfByteSize,
+            svgPages: manifest.svgPages,
             updatedAt: manifest.updatedAt
         )
         try encodeManifest(manifest, to: manifestURL)
@@ -307,6 +414,7 @@ struct CompiledPreviewCacheStore: Sendable {
         let updatedAtString = object["updatedAt"] as? String
         let cacheSchemaNumber = object["cacheSchemaVersion"] as? NSNumber
         let pdfByteSizeNumber = object["pdfByteSize"] as? NSNumber
+        let svgPages = decodeSVGPageManifests(object["svgPages"])
         guard let projectID = object["projectID"] as? String,
               let documentTitle = object["documentTitle"] as? String,
               let entryFileName = object["entryFileName"] as? String,
@@ -326,6 +434,7 @@ struct CompiledPreviewCacheStore: Sendable {
             cacheSchemaVersion: cacheSchemaNumber.intValue,
             inputFingerprint: inputFingerprint,
             pdfByteSize: pdfByteSizeNumber.int64Value,
+            svgPages: svgPages,
             updatedAt: updatedAt
         )
     }
@@ -339,6 +448,13 @@ struct CompiledPreviewCacheStore: Sendable {
             "cacheSchemaVersion": manifest.cacheSchemaVersion,
             "inputFingerprint": manifest.inputFingerprint,
             "pdfByteSize": manifest.pdfByteSize,
+            "svgPages": manifest.svgPages.map { page in
+                [
+                    "fileName": page.fileName,
+                    "widthPoints": page.widthPoints,
+                    "heightPoints": page.heightPoints
+                ]
+            },
             "updatedAt": Self.makeISO8601Formatter().string(from: manifest.updatedAt)
         ]
         let sanitizedObject = jsonObject.reduce(into: [String: Any]()) { partialResult, item in
@@ -348,6 +464,39 @@ struct CompiledPreviewCacheStore: Sendable {
         }
         let data = try JSONSerialization.data(withJSONObject: sanitizedObject, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url, options: .atomic)
+    }
+
+    private nonisolated func decodeSVGPageManifests(_ value: Any?) -> [CompiledPreviewCacheSVGPageManifest] {
+        guard let array = value as? [[String: Any]] else { return [] }
+
+        return array.compactMap { object in
+            guard let fileName = object["fileName"] as? String,
+                  let widthNumber = object["widthPoints"] as? NSNumber,
+                  let heightNumber = object["heightPoints"] as? NSNumber else {
+                return nil
+            }
+            return CompiledPreviewCacheSVGPageManifest(
+                fileName: fileName,
+                widthPoints: widthNumber.doubleValue,
+                heightPoints: heightNumber.doubleValue
+            )
+        }
+    }
+
+    private nonisolated func svgDirectorySize(
+        for manifest: CompiledPreviewCacheManifest,
+        cacheDirectory: URL
+    ) throws -> Int64 {
+        guard !manifest.svgPages.isEmpty else { return 0 }
+
+        let svgDirectory = cacheDirectory.appendingPathComponent(Self.svgPagesDirectoryName, isDirectory: true)
+        var total: Int64 = 0
+        for page in manifest.svgPages {
+            let fileURL = svgDirectory.appendingPathComponent(page.fileName)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+            total += try fileSize(at: fileURL)
+        }
+        return total
     }
 
     private nonisolated func fileSize(at url: URL) throws -> Int64 {

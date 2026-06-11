@@ -12,6 +12,16 @@ import Testing
 import UIKit
 @testable import InkPond
 
+private func makePreviewArtifact(
+    pdfData: Data,
+    sourceMap: SourceMap? = nil,
+    svgPages: [TypstPreviewPage] = [
+        TypstPreviewPage(svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", widthPoints: 100, heightPoints: 100)
+    ]
+) -> TypstPreviewArtifact {
+    TypstPreviewArtifact(svgPages: svgPages, pdfData: pdfData, sourceMap: sourceMap)
+}
+
 @Suite(.serialized)
 @MainActor
 struct InkPondTests {
@@ -1197,7 +1207,7 @@ struct InkPondTests {
         probe.block("first")
 
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in probe.compile(source: source) },
+            compileWorker: { source, _, _, _ in probe.compile(source: source) },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in }
         )
@@ -1226,7 +1236,7 @@ struct InkPondTests {
         probe.block("first")
 
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in probe.compile(source: source) },
+            compileWorker: { source, _, _, _ in probe.compile(source: source) },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in }
         )
@@ -1255,7 +1265,7 @@ struct InkPondTests {
         probe.block("first")
 
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in probe.compile(source: source) },
+            compileWorker: { source, _, _, _ in probe.compile(source: source) },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in }
         )
@@ -1275,10 +1285,41 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func typstCompilerAppliesSVGPreviewWithoutRequiringPDFDocument() async {
+        let compiler = TypstCompiler(
+            compileWorker: { _, _, _, _ in
+                .success(makePreviewArtifact(
+                    pdfData: Data("pdf".utf8),
+                    svgPages: [
+                        TypstPreviewPage(
+                            svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>Preview</text></svg>",
+                            widthPoints: 200,
+                            heightPoints: 300
+                        )
+                    ]
+                ))
+            },
+            documentBuilder: { _ in nil },
+            sleep: { _ in }
+        )
+
+        compiler.compileNow(source: "= Preview", fontPaths: [], rootDir: nil)
+
+        await waitUntil {
+            compiler.compiledOnce && !compiler.isCompiling
+        }
+
+        #expect(compiler.previewArtifact?.svgPages.count == 1)
+        #expect(compiler.pdfData == Data("pdf".utf8))
+        #expect(compiler.pdfDocument == nil)
+        #expect(compiler.pageCount == 1)
+    }
+
+    @MainActor
     @Test func typstCompilerDelaysDebouncedErrorVisibility() async {
         let compileCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { _, _, _ in
+            compileWorker: { _, _, _, _ in
                 compileCounter.increment()
                 return .failure(.compilationFailed("temporary syntax error"))
             },
@@ -1307,12 +1348,12 @@ struct InkPondTests {
     @Test func typstCompilerSuccessfulDebouncedCompileCancelsPendingError() async {
         let compileCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in
+            compileWorker: { source, _, _, _ in
                 compileCounter.increment()
                 if source == "bad" {
                     return .failure(.compilationFailed("stale error"))
                 }
-                return .success((Data(source.utf8), nil))
+                return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { duration in
@@ -1403,9 +1444,9 @@ struct InkPondTests {
         let compileCounter = LockedCounter()
         let prefetchCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { _, _, _ in
+            compileWorker: { _, _, _, _ in
                 compileCounter.increment()
-                return .success((Data("compiled".utf8), nil))
+                return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -1452,15 +1493,15 @@ struct InkPondTests {
         )
         let store = CompiledPreviewCacheStore(rootURL: cacheRoot)
         try store.save(
-            pdfData: Data("cached-pdf".utf8),
+            artifact: makePreviewArtifact(pdfData: Data("cached-pdf".utf8)),
             for: makeCompiledPreviewCacheInput(for: doc, source: source)
         )
 
         let compileCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { _, _, _ in
+            compileWorker: { _, _, _, _ in
                 compileCounter.increment()
-                return .success((Data("compiled".utf8), nil))
+                return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -1509,9 +1550,9 @@ struct InkPondTests {
 
         let compileCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in
+            compileWorker: { source, _, _, _ in
                 compileCounter.increment()
-                return .success((Data(source.utf8), nil))
+                return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -1561,9 +1602,9 @@ struct InkPondTests {
 
         let compileCounter = LockedCounter()
         let compiler = TypstCompiler(
-            compileWorker: { source, _, _ in
+            compileWorker: { source, _, _, _ in
                 compileCounter.increment()
-                return .success((Data(source.utf8), nil))
+                return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -1614,7 +1655,7 @@ struct InkPondTests {
         )
 
         let compiler = TypstCompiler(
-            compileWorker: { _, _, _ in
+            compileWorker: { _, _, _, _ in
                 .failure(.compilationFailed("boom"))
             },
             documentBuilder: { _ in PDFDocument() },
@@ -2338,6 +2379,54 @@ struct InkPondTests {
         #expect(snapshot.totalSizeInBytes == 11)
     }
 
+    @Test func compiledPreviewCacheV1PDFOnlyEntryRemainsReadableButNotLivePreviewArtifact() throws {
+        let root = makeTempDirectory()
+        let doc = makeDocument(projectID: "cached-v1")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: "= V1", for: doc)
+
+        let store = CompiledPreviewCacheStore(rootURL: root)
+        let input = makeCompiledPreviewCacheInput(for: doc, source: "= V1")
+        try store.save(pdfData: Data("pdf-v1".utf8), for: input)
+
+        #expect(try store.loadIfValid(for: input) == Data("pdf-v1".utf8))
+        #expect(try store.loadArtifactIfValid(for: input) == nil)
+    }
+
+    @Test func compiledPreviewCacheV2RoundTripsPDFAndSVGPages() throws {
+        let root = makeTempDirectory()
+        let doc = makeDocument(projectID: "cached-v2")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: "= V2", for: doc)
+
+        let store = CompiledPreviewCacheStore(rootURL: root)
+        let input = makeCompiledPreviewCacheInput(for: doc, source: "= V2")
+        let artifact = makePreviewArtifact(
+            pdfData: Data("pdf-v2".utf8),
+            svgPages: [
+                TypstPreviewPage(svg: "<svg><text>1</text></svg>", widthPoints: 100, heightPoints: 120),
+                TypstPreviewPage(svg: "<svg><text>2</text></svg>", widthPoints: 200, heightPoints: 240)
+            ]
+        )
+        try store.save(artifact: artifact, for: input)
+
+        let loaded = try #require(try store.loadArtifactIfValid(for: input))
+
+        #expect(loaded.pdfData == artifact.pdfData)
+        #expect(loaded.svgPages == artifact.svgPages)
+        #expect(loaded.sourceMap == nil)
+    }
+
     @Test func compiledPreviewCacheRemoveDeletesSingleDocumentCache() throws {
         let root = makeTempDirectory()
         let doc = makeDocument(projectID: "cached-remove")
@@ -2806,7 +2895,7 @@ private final class CompileProbe: @unchecked Sendable {
         blocker?.signal()
     }
 
-    func compile(source: String) -> Result<(Data, SourceMap?), TypstBridgeError> {
+    func compile(source: String) -> Result<TypstPreviewArtifact, TypstBridgeError> {
         let blocker = lock.withLock { () -> DispatchSemaphore? in
             started.append(source)
             activeCount += 1
@@ -2819,7 +2908,7 @@ private final class CompileProbe: @unchecked Sendable {
         lock.withLock {
             activeCount -= 1
         }
-        return .success((Data(source.utf8), nil))
+        return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
     }
 }
 

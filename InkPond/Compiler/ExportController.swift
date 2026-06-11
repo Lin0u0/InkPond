@@ -15,12 +15,22 @@ final class ExportController {
     var exportError: String?
     var exportURL: URL?
 
-    /// Export using an already-compiled PDFDocument from the live preview.
-    /// Falls back to a fresh compile if no cached document is provided.
-    func exportPDF(for document: InkPondDocument, cachedPDF: PDFDocument? = nil) {
+    /// Export using already-compiled PDF bytes from the live preview.
+    /// Falls back to a fresh compile if no cached data is provided.
+    func exportPDF(
+        for document: InkPondDocument,
+        cachedPDFData: Data? = nil,
+        cachedPDF: PDFDocument? = nil
+    ) {
         guard !isExporting else { return }
 
-        // If we have a cached PDF from the preview pane, write it directly — no recompile needed.
+        if let cachedPDFData {
+            do { exportURL = try ExportManager.temporaryPDFURL(data: cachedPDFData, title: document.title) }
+            catch { exportError = error.localizedDescription }
+            return
+        }
+
+        // Keep PDFDocument compatibility for older call sites and fallback flows.
         if let pdf = cachedPDF, let data = pdf.dataRepresentation() {
             do { exportURL = try ExportManager.temporaryPDFURL(data: data, title: document.title) }
             catch { exportError = error.localizedDescription }
