@@ -7,6 +7,7 @@ final class EditorFocusCoordinator {
     private var suppressionCount = 0
     private var shouldRestoreFocus = false
     private var restoreTask: Task<Void, Never>?
+    private(set) var isTextSelectionDragActive = false
 
     var isEditorFocused: Bool {
         textView?.isFirstResponder == true
@@ -15,6 +16,9 @@ final class EditorFocusCoordinator {
     func register(_ textView: TypstTextView) {
         self.textView = textView
         textView.suppressResignFirstResponder = suppressionCount > 0
+        textView.onTextSelectionDragActiveChanged = { [weak self] isActive in
+            self?.isTextSelectionDragActive = isActive
+        }
     }
 
     func setResignSuppressed(_ isSuppressed: Bool) {

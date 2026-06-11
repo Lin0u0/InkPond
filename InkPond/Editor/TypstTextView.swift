@@ -64,6 +64,7 @@ final class TypstTextView: UITextView {
     private var completionPopup: CompletionPopupView?
     /// The `#`-prefixed text that is being completed (e.g. "#se").
     private var completionPrefix: String?
+    private static let hardwareArrowModifierMask: UIKeyModifierFlags = [.command, .control, .alternate, .shift]
     /// When true, the next `textViewDidChangeSelection` call should not re-trigger completion.
     /// Set after a tap-to-dismiss so the selection change from the same tap doesn't re-show the popup.
     private(set) var suppressNextSelectionCompletion = false
@@ -87,6 +88,7 @@ final class TypstTextView: UITextView {
     }
     var onImagePasted: ((Data, NSRange) -> Void)?
     var onRichPaste: (([PasteFragment], NSRange) -> Void)?
+    var onTextSelectionDragActiveChanged: ((Bool) -> Void)?
     private let pasteImageTypes: [UTType] = [.png, .jpeg, .heic, .heif, .tiff, .gif, .webP]
 
     private var editorTypingAttributes: [NSAttributedString.Key: Any] {
@@ -118,6 +120,7 @@ final class TypstTextView: UITextView {
         setupAppearanceObservation()
         setupKeyboardAvoidance()
         setupCompletionDismissTap()
+        setupTextSelectionControlPan()
     }
 
     required init?(coder: NSCoder) {
@@ -129,6 +132,7 @@ final class TypstTextView: UITextView {
         setupAppearanceObservation()
         setupKeyboardAvoidance()
         setupCompletionDismissTap()
+        setupTextSelectionControlPan()
     }
 
     deinit {
@@ -276,11 +280,12 @@ final class TypstTextView: UITextView {
         findCommand.discoverabilityTitle = L10n.tr("action.find_replace")
         commands.append(findCommand)
 
-        // Completion keyboard navigation (only when popup is visible)
+        // Completion keyboard navigation (only when popup is visible). Plain arrows
+        // must remain available for hardware-keyboard cursor movement.
         if isCompletionVisible {
-            let up = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(completionMoveUp))
+            let up = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: .control, action: #selector(completionMoveUp))
             up.wantsPriorityOverSystemBehavior = true
-            let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(completionMoveDown))
+            let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: .control, action: #selector(completionMoveDown))
             down.wantsPriorityOverSystemBehavior = true
             let escape = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(completionDismiss))
             escape.wantsPriorityOverSystemBehavior = true
@@ -322,9 +327,33 @@ final class TypstTextView: UITextView {
         completionPopup?.isHidden == false
     }
 
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: isEditorNavigationArrowPress) {
+            suppressCompletionForNextSelectionChange()
+            dismissCompletion()
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
+    private func isEditorNavigationArrowPress(_ press: UIPress) -> Bool {
+        guard let key = press.key else { return false }
+        switch key.keyCode {
+        case .keyboardUpArrow, .keyboardDownArrow:
+            let modifiers = key.modifierFlags.intersection(Self.hardwareArrowModifierMask)
+            return !(isCompletionVisible && modifiers == .control)
+        case .keyboardLeftArrow, .keyboardRightArrow:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: - Tap-to-Dismiss Completion (iOS touch)
 
     private var completionDismissTap: UITapGestureRecognizer?
+    private var textSelectionControlPan: UIPanGestureRecognizer?
+    private var isTextSelectionControlDragActive = false
+    private var pendingTextSelectionControlDragReset: DispatchWorkItem?
 
     private func setupCompletionDismissTap() {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapToDismissCompletion(_:)))
@@ -332,6 +361,17 @@ final class TypstTextView: UITextView {
         tap.delegate = self
         addGestureRecognizer(tap)
         completionDismissTap = tap
+    }
+
+    private func setupTextSelectionControlPan() {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleTextSelectionControlPan(_:)))
+        pan.cancelsTouchesInView = false
+        pan.delaysTouchesBegan = false
+        pan.delaysTouchesEnded = false
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = self
+        addGestureRecognizer(pan)
+        textSelectionControlPan = pan
     }
 
     @objc private func handleTapToDismissCompletion(_ gesture: UITapGestureRecognizer) {
@@ -343,6 +383,62 @@ final class TypstTextView: UITextView {
         }
         suppressNextSelectionCompletion = true
         dismissCompletion()
+    }
+
+    @objc private func handleTextSelectionControlPan(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began, .changed:
+            guard isLocationNearTextSelectionControl(gesture.location(in: self)) else { return }
+            setTextSelectionControlDragActive(true)
+        case .ended, .cancelled, .failed:
+            scheduleTextSelectionControlDragReset()
+        default:
+            break
+        }
+    }
+
+    private func isLocationNearTextSelectionControl(_ location: CGPoint) -> Bool {
+        guard isFirstResponder, let selectedTextRange else { return false }
+
+        var controlRects: [CGRect] = []
+        let selectionRects = selectionRects(for: selectedTextRange)
+            .map(\.rect)
+            .filter { !$0.isNull && !$0.isEmpty }
+
+        if selectedRange.length == 0 {
+            controlRects.append(caretRect(for: selectedTextRange.start))
+        } else {
+            if let firstRect = selectionRects.first {
+                controlRects.append(CGRect(x: firstRect.minX, y: firstRect.minY, width: 2, height: firstRect.height))
+            }
+            if let lastRect = selectionRects.last {
+                controlRects.append(CGRect(x: lastRect.maxX - 2, y: lastRect.minY, width: 2, height: lastRect.height))
+            }
+            controlRects.append(caretRect(for: selectedTextRange.start))
+            controlRects.append(caretRect(for: selectedTextRange.end))
+        }
+
+        return controlRects.contains { rect in
+            rect.insetBy(dx: -36, dy: -52).contains(location)
+        }
+    }
+
+    private func setTextSelectionControlDragActive(_ isActive: Bool) {
+        pendingTextSelectionControlDragReset?.cancel()
+        pendingTextSelectionControlDragReset = nil
+        guard isTextSelectionControlDragActive != isActive else { return }
+        isTextSelectionControlDragActive = isActive
+        onTextSelectionDragActiveChanged?(isActive)
+    }
+
+    private func scheduleTextSelectionControlDragReset() {
+        guard isTextSelectionControlDragActive else { return }
+        pendingTextSelectionControlDragReset?.cancel()
+        let reset = DispatchWorkItem { [weak self] in
+            self?.setTextSelectionControlDragActive(false)
+        }
+        pendingTextSelectionControlDragReset = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: reset)
     }
 
     func consumeSelectionSuppression() -> Bool {
@@ -1215,10 +1311,20 @@ private extension String {
 // MARK: - UIGestureRecognizerDelegate
 
 extension TypstTextView: UIGestureRecognizerDelegate {
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === textSelectionControlPan {
+            return isLocationNearTextSelectionControl(gestureRecognizer.location(in: self))
+        }
+        return true
+    }
+
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
+        if gestureRecognizer === textSelectionControlPan || otherGestureRecognizer === textSelectionControlPan {
+            return true
+        }
         // Allow the completion-dismiss tap to coexist with the text view's own gestures
         if gestureRecognizer === completionDismissTap { return true }
         return false

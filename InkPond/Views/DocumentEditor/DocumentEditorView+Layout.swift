@@ -340,7 +340,11 @@ extension DocumentEditorView {
         sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemGroupedBackground
     }
 
-    func previewPane(topViewportInset: CGFloat = 0) -> some View {
+    func previewPane(
+        topViewportInset: CGFloat = 0,
+        overlayTopInset: CGFloat = 0,
+        overlayBottomInset: CGFloat = 0
+    ) -> some View {
         PreviewPane(
             compiler: compiler,
             source: entrySource,
@@ -359,6 +363,8 @@ extension DocumentEditorView {
             syncCoordinator: syncCoordinator,
             entryFileName: document.entryFileName,
             topViewportInset: topViewportInset,
+            overlayTopInset: overlayTopInset,
+            overlayBottomInset: overlayBottomInset,
             onGoToError: { file, line, column in
                 navigateToError(file: file, line: line, column: column)
             },
@@ -372,6 +378,7 @@ extension DocumentEditorView {
                 showingExternalFolderLinkImporter = true
             } : nil,
             showsStatisticsOverlay: sizeClass != .regular,
+            showsCompilingIndicatorOverlay: sizeClass != .regular,
             backgroundColor: sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemBackground
         )
         .environment(\.colorScheme, sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
@@ -902,15 +909,23 @@ extension DocumentEditorView {
             ? regularToolbarPreviewStatsCompactEstimatedWidth
             : regularToolbarPreviewStatsFullEstimatedWidth
         let hasStats = stats != nil
+        let isCompiling = compiler.isCompiling
 
         return Button {
             guard hasStats else { return }
             showingPreviewStatsDetails.toggle()
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "doc.text")
-                    .font(.caption.weight(.semibold))
-                    .accessibilityHidden(true)
+                if isCompiling {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(regularToolbarForegroundColor)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: "doc.text")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
                 if let stats {
                     Text(
                         usesCompactLabel
@@ -919,11 +934,15 @@ extension DocumentEditorView {
                     )
                         .transition(.opacity)
                 } else if usesCompactLabel {
-                    ProgressView()
-                        .controlSize(.mini)
+                    if !isCompiling {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
                 } else {
-                    ProgressView()
-                        .controlSize(.mini)
+                    if !isCompiling {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
                     Text(L10n.tr("preview.stats.words.label"))
                         .foregroundStyle(regularToolbarSecondaryForegroundColor)
                 }
@@ -953,6 +972,7 @@ extension DocumentEditorView {
         .frame(width: pillWidth)
         .regularToolbarCapsuleSurface()
         .animation(.easeInOut(duration: 0.18), value: hasStats)
+        .animation(.easeInOut(duration: 0.18), value: isCompiling)
     }
 
     private func regularPreviewStatsCompactLabel(_ wordCount: Int) -> String {
@@ -1042,8 +1062,16 @@ extension DocumentEditorView {
         }
     }
 
-    private func regularPreviewColumn(topViewportInset: CGFloat = 0) -> some View {
-        previewPane(topViewportInset: topViewportInset)
+    private func regularPreviewColumn(
+        topViewportInset: CGFloat = 0,
+        overlayTopInset: CGFloat = 0,
+        overlayBottomInset: CGFloat = 0
+    ) -> some View {
+        previewPane(
+            topViewportInset: topViewportInset,
+            overlayTopInset: overlayTopInset,
+            overlayBottomInset: overlayBottomInset
+        )
     }
 
     private var usesCompactTabsInTopChrome: Bool {
@@ -1203,7 +1231,14 @@ extension DocumentEditorView {
         if sizeClass == .regular {
             if #available(iOS 26, *) {
                 GeometryReader { geo in
-                    regularWorkspaceContent(topViewportInset: 0)
+                    let overlayTopInset = geo.safeAreaInsets.top + regularWorkspaceTopBarHeight
+                    let overlayBottomInset = geo.safeAreaInsets.bottom
+
+                    regularWorkspaceContent(
+                        topViewportInset: 0,
+                        overlayTopInset: overlayTopInset,
+                        overlayBottomInset: overlayBottomInset
+                    )
                         .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                         .safeAreaBar(edge: .top, spacing: 0) {
                             regularWorkspaceTopBar
@@ -1227,6 +1262,8 @@ extension DocumentEditorView {
         } else {
             GeometryReader { geo in
                 let topViewportInset = geo.safeAreaInsets.top
+                let overlayTopInset = topViewportInset + 56
+                let overlayBottomInset = geo.safeAreaInsets.bottom
                 ZStack {
                     PreviewCompileDriver(
                         compiler: compiler,
@@ -1246,7 +1283,11 @@ extension DocumentEditorView {
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
                     if selectedTab == previewTab {
-                        previewPane(topViewportInset: topViewportInset)
+                        previewPane(
+                            topViewportInset: topViewportInset,
+                            overlayTopInset: overlayTopInset,
+                            overlayBottomInset: overlayBottomInset
+                        )
                             .ignoresSafeArea(edges: .top)
                             .softScrollEdgeEffect()
                             .transition(.identity)
@@ -1259,7 +1300,11 @@ extension DocumentEditorView {
         }
     }
 
-    private func regularWorkspaceContent(topViewportInset: CGFloat) -> some View {
+    private func regularWorkspaceContent(
+        topViewportInset: CGFloat,
+        overlayTopInset: CGFloat = 0,
+        overlayBottomInset: CGFloat = 0
+    ) -> some View {
         GeometryReader { geo in
             let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
             HStack(spacing: 0) {
@@ -1276,7 +1321,11 @@ extension DocumentEditorView {
                         .frame(width: metrics.editorWidth)
                         .clipped()
                     splitHandle(totalWidth: metrics.workspaceWidth)
-                    regularPreviewColumn(topViewportInset: topViewportInset)
+                    regularPreviewColumn(
+                        topViewportInset: topViewportInset,
+                        overlayTopInset: overlayTopInset,
+                        overlayBottomInset: overlayBottomInset
+                    )
                         .softScrollEdgeEffect()
                 }
                 .coordinateSpace(name: "splitContainer")
@@ -1422,6 +1471,7 @@ extension DocumentEditorView {
     private var compactModeSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 35, coordinateSpace: .local)
             .onEnded { value in
+                guard !(selectedTab == editorTab && focusCoordinator.isTextSelectionDragActive) else { return }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 let startsAwayFromLeadingEdge = value.startLocation.x > 44

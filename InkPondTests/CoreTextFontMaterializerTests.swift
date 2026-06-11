@@ -211,6 +211,7 @@ struct CoreTextFontMaterializerTests {
             Issue.record("PingFang SC not available on simulator")
             return
         }
+        try CoreTextFontMaterializer.clearPersistentCache()
         #expect(CoreTextFontMaterializer.canMaterialize(postScriptName: "PingFangSC-Regular"))
 
         guard let path = CoreTextFontMaterializer.materializedPath(

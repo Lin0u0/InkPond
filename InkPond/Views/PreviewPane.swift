@@ -89,6 +89,13 @@ final class PDFContainerView: UIView {
             updateScrollInsetsIfNeeded()
         }
     }
+    var bottomViewportInset: CGFloat = 0 {
+        didSet {
+            guard oldValue != bottomViewportInset else { return }
+            updateScrollInsetsIfNeeded()
+            alignShortDocumentToTopIfNeeded()
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -149,7 +156,9 @@ final class PDFContainerView: UIView {
         // Prevent PDFKit from dismissing the software keyboard while it
         // tears down / rebuilds page views for the new document.
         focusCoordinator?.setResignSuppressed(true)
-        pdfView.document = document
+        UIView.performWithoutAnimation {
+            pdfView.document = document
+        }
 
         guard let savedState else {
             // First load: let PDFView pick the initial scale automatically.
@@ -171,32 +180,42 @@ final class PDFContainerView: UIView {
         pdfView.autoScales = false
         pdfView.scaleFactor = savedState.scaleFactor
 
+        // PDFKit resets its internal scroll view when the document changes.
+        // Restore once synchronously so the reset position is not visible for
+        // one frame, then keep the async pass below as a layout-safe correction.
+        restoreScrollState(savedState)
+
         DispatchQueue.main.async { [weak self, weak focusCoordinator] in
             guard let self, self.pdfView.document === document else { return }
 
-            self.layoutIfNeeded()
-            self.pdfView.layoutIfNeeded()
-            self.pdfView.scaleFactor = self.clampedScaleFactor(savedState.scaleFactor)
-
-            // Skip scroll restoration when a sync-driven scroll is pending —
-            // scrollToPosition will handle positioning instead.
-            if !self.suppressScrollRestoration {
-                if let scrollView = self.findScrollView(in: self.pdfView) {
-                    scrollView.layoutIfNeeded()
-                    let clampedOffset = self.clampedContentOffset(
-                        savedState.contentOffset,
-                        in: scrollView
-                    )
-                    if scrollView.contentOffset != clampedOffset {
-                        scrollView.setContentOffset(clampedOffset, animated: false)
-                    }
-                }
-            }
+            self.restoreScrollState(savedState)
             self.updateScrollInsetsIfNeeded()
             self.alignShortDocumentToTopIfNeeded()
             self.suppressScrollRestoration = false
 
             focusCoordinator?.setResignSuppressed(false)
+        }
+    }
+
+    private func restoreScrollState(_ savedState: PDFPreviewScrollState) {
+        layoutIfNeeded()
+        pdfView.layoutIfNeeded()
+        pdfView.scaleFactor = clampedScaleFactor(savedState.scaleFactor)
+
+        // Skip scroll restoration when a sync-driven scroll is pending —
+        // scrollToPosition will handle positioning instead.
+        guard !suppressScrollRestoration,
+              let scrollView = findScrollView(in: pdfView) else {
+            return
+        }
+
+        scrollView.layoutIfNeeded()
+        let clampedOffset = clampedContentOffset(
+            savedState.contentOffset,
+            in: scrollView
+        )
+        if scrollView.contentOffset != clampedOffset {
+            scrollView.setContentOffset(clampedOffset, animated: false)
         }
     }
 
@@ -238,19 +257,24 @@ final class PDFContainerView: UIView {
     private func updateScrollInsetsIfNeeded(forcePinnedTop: Bool = false) {
         guard let scrollView = findScrollView(in: pdfView) else { return }
         scrollView.applySoftScrollEdgeEffects()
+        scrollView.alwaysBounceVertical = true
 
         let previousAdjustedTop = scrollView.adjustedContentInset.top
         let wasPinnedToTop = forcePinnedTop || abs(scrollView.contentOffset.y + previousAdjustedTop) < 2
 
-        if scrollView.contentInset.top != topViewportInset {
+        if scrollView.contentInset.top != topViewportInset
+            || scrollView.contentInset.bottom != bottomViewportInset {
             var insets = scrollView.contentInset
             insets.top = topViewportInset
+            insets.bottom = bottomViewportInset
             scrollView.contentInset = insets
         }
 
-        if scrollView.verticalScrollIndicatorInsets.top != topViewportInset {
+        if scrollView.verticalScrollIndicatorInsets.top != topViewportInset
+            || scrollView.verticalScrollIndicatorInsets.bottom != bottomViewportInset {
             var indicatorInsets = scrollView.verticalScrollIndicatorInsets
             indicatorInsets.top = topViewportInset
+            indicatorInsets.bottom = bottomViewportInset
             scrollView.verticalScrollIndicatorInsets = indicatorInsets
         }
 
@@ -416,6 +440,7 @@ struct PDFKitView: UIViewRepresentable {
     let document: PDFDocument
     let focusCoordinator: EditorFocusCoordinator?
     var topViewportInset: CGFloat = 0
+    var bottomViewportInset: CGFloat = 0
     var scrollTarget: PreviewScrollTarget?
     var backgroundColor: UIColor = .secondarySystemBackground
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
@@ -457,6 +482,7 @@ struct PDFKitView: UIViewRepresentable {
         container.previewBackgroundColor = backgroundColor
         container.onHorizontalSwipe = horizontalSwipeHandler
         container.topViewportInset = topViewportInset
+        container.bottomViewportInset = bottomViewportInset
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
@@ -473,7 +499,6 @@ struct PDFKitView: UIViewRepresentable {
         let documentChanged = context.coordinator.lastDocument !== document
         if documentChanged {
             context.coordinator.lastDocument = document
-            context.coordinator.lastAppliedScrollTarget = nil
         }
 
         let hasScrollTarget = scrollTarget != nil
@@ -615,10 +640,13 @@ struct PreviewPane: View {
     /// The actual entry file name — Typst FFI internally reports it as "main.typ".
     var entryFileName: String = "main.typ"
     var topViewportInset: CGFloat = 0
+    var overlayTopInset: CGFloat = 0
+    var overlayBottomInset: CGFloat = 0
     var onGoToError: ((_ file: String, _ line: Int, _ column: Int) -> Void)? = nil
     var onCompactPreviewSwipe: (() -> Void)? = nil
     var onLinkExternalFolder: (() -> Void)? = nil
     var showsStatisticsOverlay: Bool = true
+    var showsCompilingIndicatorOverlay: Bool = true
     var backgroundColor: UIColor = .secondarySystemBackground
     @ScaledMetric(relativeTo: .caption2) private var previewStatsCardWidth = 126
     @ScaledMetric(relativeTo: .caption2) private var previewStatsMinHeight = 34
@@ -629,6 +657,7 @@ struct PreviewPane: View {
     @State private var cachedWordCount: Int = 0
     @State private var cachedCharacterCount: Int = 0
     @State private var dismissedFontWarningIDs: Set<String> = []
+    @State private var keyboardOverlap: CGFloat = 0
 
     private var previewStatistics: PreviewStatistics? {
         guard let pdf = compiler.pdfDocument else { return nil }
@@ -642,6 +671,9 @@ struct PreviewPane: View {
     private var visibleFontWarnings: [CompileFontWarning] {
         fontWarnings.filter { !dismissedFontWarningIDs.contains($0.id) }
     }
+
+    private var keyboardAccessoryClearance: CGFloat { 80 }
+    private var minimumBottomOverlayClearance: CGFloat { 96 }
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -653,6 +685,7 @@ struct PreviewPane: View {
                     document: pdf,
                     focusCoordinator: focusCoordinator,
                     topViewportInset: topViewportInset,
+                    bottomViewportInset: previewBottomViewportInset,
                     scrollTarget: syncCoordinator?.previewScrollTarget,
                     backgroundColor: backgroundColor,
                     onTapLocation: { page, yPoints in
@@ -683,29 +716,12 @@ struct PreviewPane: View {
                     .padding(.top, topViewportInset)
             }
 
-            if compiler.isCompiling && !requiresExternalFolderLink {
-                GeometryReader { geometry in
-                    let topPadding = topViewportInset > 0
-                        ? topViewportInset + 8
-                        : geometry.safeAreaInsets.top + 12
-                    ProgressView()
-                        .padding(8)
-                        .systemFloatingSurface(cornerRadius: 8)
-                        .padding(.top, topPadding)
-                        .padding(.trailing, 16)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                }
-                .allowsHitTesting(false)
-                .zIndex(1)
+            if showsCompilingIndicatorOverlay && compiler.isCompiling && !requiresExternalFolderLink {
+                compilingIndicatorOverlay
             }
 
-            if !requiresExternalFolderLink
-                && (
-                    (showsStatisticsOverlay && previewStatistics != nil)
-                    || compiler.errorMessage != nil
-                    || !visibleFontWarnings.isEmpty
-                ) {
-                bottomStatusOverlay
+            if showsBottomStatusOverlay {
+                statusOverlay
             }
         }
             .background(Color(uiColor: backgroundColor))
@@ -754,6 +770,12 @@ struct PreviewPane: View {
                 let activeIDs = Set(newValue.map(\.id))
                 dismissedFontWarningIDs.formIntersection(activeIDs)
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                updateKeyboardOverlap(from: notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
+                updateKeyboardOverlap(from: notification, forcedOverlap: 0)
+            }
             .onDisappear {
                 focusCoordinator?.clearFocusPreservation()
                 if cancelsCompilerOnDisappear {
@@ -763,6 +785,79 @@ struct PreviewPane: View {
             .animation(.easeInOut(duration: 0.2), value: compiler.errorMessage)
             .animation(.easeInOut(duration: 0.2), value: isShowingErrorDetails)
             .animation(.easeInOut(duration: 0.2), value: fontWarnings)
+    }
+
+    private var showsBottomStatusOverlay: Bool {
+        !requiresExternalFolderLink
+            && (
+                (showsStatisticsOverlay && previewStatistics != nil)
+                || compiler.errorMessage != nil
+                || !visibleFontWarnings.isEmpty
+            )
+    }
+
+    private var compilingIndicatorOverlay: some View {
+        GeometryReader { geometry in
+            ProgressView()
+                .controlSize(.small)
+                .padding(8)
+                .systemFloatingSurface(cornerRadius: 8)
+                .padding(.top, topOverlayPadding(safeAreaTop: geometry.safeAreaInsets.top))
+                .padding(.trailing, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+        .allowsHitTesting(false)
+        .zIndex(3)
+    }
+
+    private var statusOverlay: some View {
+        GeometryReader { geometry in
+            bottomStatusOverlay(bottomAvoidanceInset: bottomAvoidanceInset(safeAreaBottom: geometry.safeAreaInsets.bottom))
+        }
+        .zIndex(2)
+    }
+
+    private func topOverlayPadding(safeAreaTop: CGFloat) -> CGFloat {
+        max(topViewportInset, overlayTopInset, safeAreaTop) + 14
+    }
+
+    private var previewBottomViewportInset: CGFloat {
+        max(overlayBottomInset, keyboardAvoidanceInset, keyboardAccessoryClearance)
+    }
+
+    private func bottomAvoidanceInset(safeAreaBottom: CGFloat) -> CGFloat {
+        max(safeAreaBottom, overlayBottomInset, keyboardAvoidanceInset, minimumBottomOverlayClearance)
+    }
+
+    private var keyboardAvoidanceInset: CGFloat {
+        keyboardOverlap > 0 ? keyboardOverlap + keyboardAccessoryClearance : 0
+    }
+
+    private func updateKeyboardOverlap(from notification: Notification, forcedOverlap: CGFloat? = nil) {
+        let nextOverlap = forcedOverlap ?? keyboardOverlap(from: notification)
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+
+        withAnimation(.easeInOut(duration: duration)) {
+            keyboardOverlap = nextOverlap
+        }
+    }
+
+    private func keyboardOverlap(from notification: Notification) -> CGFloat {
+        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let windowFrame = activeWindowFrameInScreenCoordinates() else {
+            return 0
+        }
+
+        let overlap = windowFrame.maxY - endFrame.minY
+        return max(0, overlap)
+    }
+
+    private func activeWindowFrameInScreenCoordinates() -> CGRect? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+            .map { $0.convert($0.bounds, to: nil) }
     }
 
     private func recomputeTextStatistics() {
@@ -859,8 +954,10 @@ struct PreviewPane: View {
         .accessibilityIdentifier("editor.preview")
     }
 
-    private var bottomStatusOverlay: some View {
-        VStack(alignment: .trailing, spacing: 10) {
+    private func bottomStatusOverlay(bottomAvoidanceInset: CGFloat) -> some View {
+        let bottomPadding = bottomAvoidanceInset + 18
+
+        return VStack(alignment: .trailing, spacing: 10) {
             if showsStatisticsOverlay, let stats = previewStatistics {
                 previewStatisticsButton(stats)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -877,7 +974,7 @@ struct PreviewPane: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 16)
+        .padding(.bottom, bottomPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
 

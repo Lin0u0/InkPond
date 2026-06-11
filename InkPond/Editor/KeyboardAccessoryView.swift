@@ -44,8 +44,12 @@ final class KeyboardAccessoryView: UIView {
         InteractionFeedback.impact(.light)
         self?.textView?.undoManager?.redo()
     }
+    private lazy var dismissKeyboardButton = makeButton(systemImage: "keyboard.chevron.compact.down") { [weak self] in
+        InteractionFeedback.impact(.light)
+        _ = self?.textView?.resignFirstResponder()
+    }
     private lazy var rightStack: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [snippetButton, photoButton, undoButton, redoButton])
+        let stack = UIStackView(arrangedSubviews: [snippetButton, photoButton, undoButton, redoButton, dismissKeyboardButton])
         stack.axis = .horizontal
         stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -127,6 +131,7 @@ final class KeyboardAccessoryView: UIView {
         undoButton.accessibilityHint = L10n.a11yKeyboardUndoHint
         redoButton.accessibilityLabel = L10n.a11yKeyboardRedoLabel
         redoButton.accessibilityHint = L10n.a11yKeyboardRedoHint
+        dismissKeyboardButton.accessibilityLabel = L10n.tr("Done")
     }
 
     private func startObservingHardwareKeyboard() {
@@ -158,6 +163,7 @@ final class KeyboardAccessoryView: UIView {
         let showsUndoRedo = !isPad || hasHardwareKeyboard
         undoButton.isHidden = !showsUndoRedo
         redoButton.isHidden = !showsUndoRedo
+        dismissKeyboardButton.isHidden = !isPad
     }
 
     private func setupViews() {
