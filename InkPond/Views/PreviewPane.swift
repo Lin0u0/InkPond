@@ -639,13 +639,14 @@ final class SVGPreviewContainerView: UIView {
     private let pageGap: CGFloat = 12
     private let pageMargin: CGFloat = 16
     private let visualFitZoomScale: CGFloat = 1
-    private let minimumVisualZoomScale: CGFloat = 0.5
+    private let minimumVisualZoomScale: CGFloat = 0.35
     private let maximumVisualZoomScale: CGFloat = 4
-    private let preRenderedZoomScale: CGFloat = 3
+    private let preRenderedZoomScale: CGFloat = 2
     private let reloadFadeDuration: TimeInterval = 0.12
+    private let firstPaintDelay: TimeInterval = 0.08
     private var lastLaidOutWidth: CGFloat = 0
     private var lastLaidOutRenderZoomScale: CGFloat = 0
-    private var renderZoomScale: CGFloat = 3
+    private var renderZoomScale: CGFloat = 2
     private var scrollGeneration: UInt = 0
 
     private struct PageLayout {
@@ -770,10 +771,11 @@ final class SVGPreviewContainerView: UIView {
         webView.loadHTMLString(html(forPages: newPages), baseURL: nil)
     }
 
-    func scrollToPosition(page: Int, yPoints: Float, xPoints: Float) {
+    @discardableResult
+    func scrollToPosition(page: Int, yPoints: Float, xPoints: Float) -> Bool {
         layoutIfNeeded()
         layoutPagesIfNeeded()
-        guard page >= 0, page < pageFrames.count else { return }
+        guard page >= 0, page < pageFrames.count else { return false }
 
         let pageFrame = pageFrames[page]
         let scale = scaleForPage(at: page)
@@ -809,29 +811,40 @@ final class SVGPreviewContainerView: UIView {
         } else {
             showMarker()
         }
+        return true
     }
 
-    private func layoutPagesIfNeeded(force: Bool = false) {
+    private func layoutPagesIfNeeded(force: Bool = false, resetZoomToFit: Bool = false) {
         let viewportWidth = max(bounds.width, 1)
         let layoutScale = max(renderZoomScale, 0.01)
         guard force
                 || abs(viewportWidth - lastLaidOutWidth) > 0.5
                 || abs(layoutScale - lastLaidOutRenderZoomScale) > 0.001
                 || pageFrames.count != pages.count else {
+            if resetZoomToFit {
+                scrollView.setZoomScale(fitZoomScale, animated: false)
+                updateScrollContentSize()
+                updateScrollInsetsIfNeeded()
+                clampContentOffsetIfNeeded()
+            }
             layoutPendingPageView()
             return
         }
 
         let savedOffset = scrollView.contentOffset
+        let targetVisualZoomScale = resetZoomToFit
+            ? visualFitZoomScale
+            : min(max(currentVisualZoomScale, minimumVisualZoomScale), maximumVisualZoomScale)
         let layout = pageLayout(for: pages, viewportWidth: viewportWidth, renderScale: layoutScale)
         pageFrames = layout.frames
 
         contentView.frame = CGRect(origin: .zero, size: layout.contentSize)
         pageView?.frame = contentView.bounds
-        scrollView.contentSize = contentView.frame.size
         lastLaidOutWidth = viewportWidth
         lastLaidOutRenderZoomScale = layoutScale
         updateTransientZoomScaleLimits()
+        scrollView.setZoomScale(scrollZoomScale(forVisualZoom: targetVisualZoomScale), animated: false)
+        updateScrollContentSize()
         updateScrollInsetsIfNeeded()
         layoutPendingPageView()
         scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
@@ -901,6 +914,17 @@ final class SVGPreviewContainerView: UIView {
         scrollView.verticalScrollIndicatorInsets.bottom = bottomViewportInset
     }
 
+    private var zoomedContentSize: CGSize {
+        CGSize(
+            width: contentView.bounds.width * scrollView.zoomScale,
+            height: contentView.bounds.height * scrollView.zoomScale
+        )
+    }
+
+    private func updateScrollContentSize() {
+        scrollView.contentSize = zoomedContentSize
+    }
+
     private func centeredHorizontalContentInset() -> CGFloat {
         let visibleWidth = scrollView.bounds.width
         guard visibleWidth > 1 else { return 0 }
@@ -911,7 +935,8 @@ final class SVGPreviewContainerView: UIView {
     private func clampedContentOffset(_ contentOffset: CGPoint) -> CGPoint {
         let inset = scrollView.adjustedContentInset
         let minY = -inset.top
-        let maxY = max(minY, scrollView.contentSize.height - scrollView.bounds.height + inset.bottom)
+        let contentSize = zoomedContentSize
+        let maxY = max(minY, contentSize.height - scrollView.bounds.height + inset.bottom)
         return CGPoint(
             x: clampedHorizontalOffset(contentOffset.x),
             y: min(max(contentOffset.y, minY), maxY)
@@ -921,7 +946,8 @@ final class SVGPreviewContainerView: UIView {
     private func clampedHorizontalOffset(_ x: CGFloat) -> CGFloat {
         let inset = scrollView.adjustedContentInset
         let minX = -inset.left
-        let maxX = max(minX, scrollView.contentSize.width - scrollView.bounds.width + inset.right)
+        let contentSize = zoomedContentSize
+        let maxX = max(minX, contentSize.width - scrollView.bounds.width + inset.right)
         return allowsHorizontalScroll
             ? min(max(x, minX), maxX)
             : minX
@@ -980,6 +1006,7 @@ final class SVGPreviewContainerView: UIView {
         }
 
         let oldPageView = pageView
+        let shouldResetZoomToFit = oldPageView == nil
         let savedOffset = scrollView.contentOffset
 
         CATransaction.begin()
@@ -994,7 +1021,7 @@ final class SVGPreviewContainerView: UIView {
 
             setNeedsLayout()
             layoutIfNeeded()
-            layoutPagesIfNeeded(force: true)
+            layoutPagesIfNeeded(force: true, resetZoomToFit: shouldResetZoomToFit)
             scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
 
             loadedPageView.navigationDelegate = nil
@@ -1209,11 +1236,13 @@ extension SVGPreviewContainerView: UIScrollViewDelegate {
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        updateScrollContentSize()
         updateScrollInsetsIfNeeded()
         clampContentOffsetIfNeeded()
     }
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        updateScrollContentSize()
         updateScrollInsetsIfNeeded()
         clampContentOffsetIfNeeded()
     }
@@ -1221,7 +1250,19 @@ extension SVGPreviewContainerView: UIScrollViewDelegate {
 
 extension SVGPreviewContainerView: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        completePendingPageLoad(for: webView)
+        guard webView === pendingPageView,
+              let loadID = pendingLoadID else {
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + firstPaintDelay) { [weak self, weak webView] in
+            guard let self,
+                  let webView,
+                  webView === self.pendingPageView,
+                  self.pendingLoadID == loadID else {
+                return
+            }
+            self.commitPendingPages(loadID: loadID)
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -1272,8 +1313,14 @@ struct SVGPreviewView: UIViewRepresentable {
         container.reloadPages(pages)
 
         if let target = scrollTarget, context.coordinator.lastAppliedScrollTarget != target {
-            container.scrollToPosition(page: target.page, yPoints: target.yPoints, xPoints: target.xPoints)
-            context.coordinator.lastAppliedScrollTarget = target
+            let didApply = container.scrollToPosition(
+                page: target.page,
+                yPoints: target.yPoints,
+                xPoints: target.xPoints
+            )
+            if didApply {
+                context.coordinator.lastAppliedScrollTarget = target
+            }
         }
     }
 
@@ -1338,6 +1385,7 @@ struct PreviewPane: View {
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
     @State private var isSVGPreviewRendering = false
+    @State private var isSVGPreviewAwaitingFirstPaint = false
     @State private var hasPresentedRenderablePreview = false
 
     private var previewStatistics: PreviewStatistics? {
@@ -1357,7 +1405,7 @@ struct PreviewPane: View {
     }
 
     private var isPreviewLoading: Bool {
-        (compiler.isPreviewUpdating || isSVGPreviewRendering)
+        (compiler.isPreviewUpdating || isSVGPreviewRendering || isSVGPreviewAwaitingFirstPaint)
             && !requiresExternalFolderLink
     }
 
@@ -1500,12 +1548,20 @@ struct PreviewPane: View {
                 } else {
                     hasPresentedRenderablePreview = false
                     isSVGPreviewRendering = false
+                    isSVGPreviewAwaitingFirstPaint = false
                     isShowingStatsDetails = false
                 }
             }
             .onChange(of: compiler.previewArtifact) { _, artifact in
                 if artifact?.svgPages.isEmpty == false {
+                    isSVGPreviewAwaitingFirstPaint = true
                     isSVGPreviewRendering = true
+                }
+            }
+            .onChange(of: isSVGPreviewRendering) { _, isRendering in
+                if !isRendering, compiler.previewArtifact?.svgPages.isEmpty == false {
+                    isSVGPreviewAwaitingFirstPaint = false
+                    hasPresentedRenderablePreview = true
                 }
             }
             .onChange(of: isPreviewLoading, initial: true) { _, isLoading in
@@ -1516,6 +1572,7 @@ struct PreviewPane: View {
             .onChange(of: compiler.errorMessage, initial: true) { _, newValue in
                 if newValue != nil {
                     isSVGPreviewRendering = false
+                    isSVGPreviewAwaitingFirstPaint = false
                 }
                 let shouldExpand = (newValue != nil) && !hasRenderablePreview
                 guard shouldExpand != isShowingErrorDetails else { return }
@@ -1633,6 +1690,7 @@ struct PreviewPane: View {
     private func compileIfNeeded() {
         if requiresExternalFolderLink {
             isSVGPreviewRendering = false
+            isSVGPreviewAwaitingFirstPaint = false
             hasPresentedRenderablePreview = false
             compiler.cancel()
             compiler.clearPreview()
@@ -1641,12 +1699,14 @@ struct PreviewPane: View {
         let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             isSVGPreviewRendering = false
+            isSVGPreviewAwaitingFirstPaint = false
             hasPresentedRenderablePreview = false
             compiler.clearPreview()
             return
         }
         if let preflightError {
             isSVGPreviewRendering = false
+            isSVGPreviewAwaitingFirstPaint = false
             hasPresentedRenderablePreview = false
             compiler.presentPreflightError(preflightError)
             return
