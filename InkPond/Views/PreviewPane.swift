@@ -638,6 +638,8 @@ final class SVGPreviewContainerView: UIView {
     private let reservedNavigationEdgeWidth: CGFloat = 44
     private let pageGap: CGFloat = 12
     private let pageMargin: CGFloat = 16
+    private let fitZoomScale: CGFloat = 1
+    private let minimumZoomScale: CGFloat = 0.5
     private let maximumZoomScale: CGFloat = 4
     private var lastLaidOutWidth: CGFloat = 0
     private var scrollGeneration: UInt = 0
@@ -662,11 +664,12 @@ final class SVGPreviewContainerView: UIView {
         super.init(frame: frame)
 
         scrollView.delegate = self
+        scrollView.isDirectionalLockEnabled = true
         scrollView.alwaysBounceVertical = true
-        scrollView.alwaysBounceHorizontal = true
-        scrollView.minimumZoomScale = 1
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.minimumZoomScale = minimumZoomScale
         scrollView.maximumZoomScale = maximumZoomScale
-        scrollView.zoomScale = 1
+        scrollView.zoomScale = fitZoomScale
         scrollView.applySoftScrollEdgeEffects()
         addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -730,6 +733,7 @@ final class SVGPreviewContainerView: UIView {
             pendingLoadID = nil
             pendingPageIDs = []
             lastLaidOutWidth = 0
+            scrollView.setZoomScale(fitZoomScale, animated: false)
             layoutPagesIfNeeded(force: true)
             return
         }
@@ -799,8 +803,8 @@ final class SVGPreviewContainerView: UIView {
 
         let savedZoomScale = scrollView.zoomScale
         let savedOffset = scrollView.contentOffset
-        if savedZoomScale != scrollView.minimumZoomScale {
-            scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        if savedZoomScale != fitZoomScale {
+            scrollView.setZoomScale(fitZoomScale, animated: false)
         }
 
         let availableWidth = max(layoutWidth - pageMargin * 2, 1)
@@ -829,8 +833,8 @@ final class SVGPreviewContainerView: UIView {
         scrollView.contentSize = contentView.frame.size
         lastLaidOutWidth = layoutWidth
 
-        if savedZoomScale != scrollView.minimumZoomScale {
-            scrollView.setZoomScale(min(savedZoomScale, scrollView.maximumZoomScale), animated: false)
+        if savedZoomScale != fitZoomScale {
+            scrollView.setZoomScale(clampedZoomScale(savedZoomScale), animated: false)
             scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
         }
     }
@@ -857,9 +861,27 @@ final class SVGPreviewContainerView: UIView {
         let minY = -inset.top
         let maxY = max(minY, scrollView.contentSize.height - scrollView.bounds.height + inset.bottom)
         return CGPoint(
-            x: 0,
+            x: clampedHorizontalOffset(contentOffset.x),
             y: min(max(contentOffset.y, minY), maxY)
         )
+    }
+
+    private func clampedHorizontalOffset(_ x: CGFloat) -> CGFloat {
+        let inset = scrollView.adjustedContentInset
+        let minX = -inset.left
+        let maxX = max(minX, scrollView.contentSize.width - scrollView.bounds.width + inset.right)
+        return allowsHorizontalScroll
+            ? min(max(x, minX), maxX)
+            : minX
+    }
+
+    private var allowsHorizontalScroll: Bool {
+        scrollView.zoomScale > fitZoomScale + 0.01
+            && scrollView.contentSize.width > scrollView.bounds.width + 1
+    }
+
+    private func clampedZoomScale(_ scale: CGFloat) -> CGFloat {
+        min(max(scale, scrollView.minimumZoomScale), scrollView.maximumZoomScale)
     }
 
     private func applyPreviewBackgroundColor() {
@@ -937,8 +959,8 @@ final class SVGPreviewContainerView: UIView {
     }
 
     @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
-        if scrollView.zoomScale > scrollView.minimumZoomScale + 0.05 {
-            scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+        if abs(scrollView.zoomScale - fitZoomScale) > 0.05 {
+            scrollView.setZoomScale(fitZoomScale, animated: true)
             return
         }
 
@@ -1042,6 +1064,22 @@ extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
 extension SVGPreviewContainerView: UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
         contentView
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let clampedX = clampedHorizontalOffset(scrollView.contentOffset.x)
+        guard abs(scrollView.contentOffset.x - clampedX) > 0.5 else { return }
+        scrollView.setContentOffset(
+            CGPoint(x: clampedX, y: scrollView.contentOffset.y),
+            animated: false
+        )
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        let clampedOffset = clampedContentOffset(scrollView.contentOffset)
+        if scrollView.contentOffset != clampedOffset {
+            scrollView.setContentOffset(clampedOffset, animated: false)
+        }
     }
 }
 
