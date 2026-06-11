@@ -572,7 +572,7 @@ final class TypstCompiler {
         materializedFontPaths: [String],
         typstVersion: String?
     ) -> String? {
-        guard request.mode == .debounced,
+        guard case .debounced = request.mode,
               let descriptor = request.previewCacheDescriptor else {
             return nil
         }

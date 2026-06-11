@@ -626,13 +626,12 @@ final class SVGPreviewContainerView: UIView {
     private let scrollView = UIScrollView()
     private let contentView = UIView()
     private let syncMarkerView = PreviewSyncMarkerView()
-    private var pageViews: [WKWebView] = []
-    private var pendingPageViews: [WKWebView] = []
+    private var pageView: WKWebView?
+    private var pendingPageView: WKWebView?
     private var pageFrames: [CGRect] = []
     private var pages: [TypstPreviewPage] = []
     private var pendingPages: [TypstPreviewPage]?
     private var pendingLoadID: UUID?
-    private var pendingPageIDs: Set<ObjectIdentifier> = []
     private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
     private var horizontalPanStartLocation: CGPoint?
     private var isLoadingPages = false
@@ -742,13 +741,12 @@ final class SVGPreviewContainerView: UIView {
 
         cancelPendingPageLoad(notify: false)
         guard !newPages.isEmpty else {
-            pageViews.forEach { $0.removeFromSuperview() }
-            pageViews = []
+            pageView?.removeFromSuperview()
+            pageView = nil
             pages = []
             pageFrames = []
             pendingPages = nil
             pendingLoadID = nil
-            pendingPageIDs = []
             lastLaidOutWidth = 0
             lastLaidOutRenderZoomScale = 0
             renderZoomScale = preRenderedZoomScale
@@ -761,18 +759,15 @@ final class SVGPreviewContainerView: UIView {
 
         setLoadingPages(true)
         let loadID = UUID()
+        let webView = Self.makeDocumentWebView()
         pendingLoadID = loadID
         pendingPages = newPages
-        pendingPageViews = newPages.map { page in
-            let webView = Self.makePageWebView()
-            webView.alpha = 0
-            webView.navigationDelegate = self
-            contentView.addSubview(webView)
-            pendingPageIDs.insert(ObjectIdentifier(webView))
-            webView.loadHTMLString(Self.html(forSVG: page.svg), baseURL: nil)
-            return webView
-        }
-        layoutPendingPageViews()
+        pendingPageView = webView
+        webView.alpha = 0
+        webView.navigationDelegate = self
+        contentView.addSubview(webView)
+        layoutPendingPageView()
+        webView.loadHTMLString(html(forPages: newPages), baseURL: nil)
     }
 
     func scrollToPosition(page: Int, yPoints: Float, xPoints: Float) {
@@ -823,7 +818,7 @@ final class SVGPreviewContainerView: UIView {
                 || abs(viewportWidth - lastLaidOutWidth) > 0.5
                 || abs(layoutScale - lastLaidOutRenderZoomScale) > 0.001
                 || pageFrames.count != pages.count else {
-            layoutPendingPageViews()
+            layoutPendingPageView()
             return
         }
 
@@ -831,17 +826,14 @@ final class SVGPreviewContainerView: UIView {
         let layout = pageLayout(for: pages, viewportWidth: viewportWidth, renderScale: layoutScale)
         pageFrames = layout.frames
 
-        for (index, frame) in pageFrames.enumerated() where index < pageViews.count {
-            pageViews[index].frame = frame
-        }
-
         contentView.frame = CGRect(origin: .zero, size: layout.contentSize)
+        pageView?.frame = contentView.bounds
         scrollView.contentSize = contentView.frame.size
         lastLaidOutWidth = viewportWidth
         lastLaidOutRenderZoomScale = layoutScale
         updateTransientZoomScaleLimits()
         updateScrollInsetsIfNeeded()
-        layoutPendingPageViews()
+        layoutPendingPageView()
         scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
     }
 
@@ -881,12 +873,10 @@ final class SVGPreviewContainerView: UIView {
         )
     }
 
-    private func layoutPendingPageViews() {
-        guard let pendingPages, !pendingPageViews.isEmpty else { return }
+    private func layoutPendingPageView() {
+        guard let pendingPages, let pendingPageView else { return }
         let layout = pageLayout(for: pendingPages)
-        for (index, frame) in layout.frames.enumerated() where index < pendingPageViews.count {
-            pendingPageViews[index].frame = frame
-        }
+        pendingPageView.frame = CGRect(origin: .zero, size: layout.contentSize)
     }
 
     private func scaleForPage(at index: Int) -> CGFloat {
@@ -968,17 +958,15 @@ final class SVGPreviewContainerView: UIView {
         backgroundColor = previewBackgroundColor
         scrollView.backgroundColor = previewBackgroundColor
         contentView.backgroundColor = previewBackgroundColor
-        (pageViews + pendingPageViews).forEach { webView in
+        [pageView, pendingPageView].compactMap { $0 }.forEach { webView in
             webView.backgroundColor = .clear
             webView.scrollView.backgroundColor = .clear
         }
     }
 
     private func completePendingPageLoad(for webView: WKWebView) {
-        let pageID = ObjectIdentifier(webView)
-        guard pendingPageIDs.remove(pageID) != nil,
-              let loadID = pendingLoadID,
-              pendingPageIDs.isEmpty else {
+        guard webView === pendingPageView,
+              let loadID = pendingLoadID else {
             return
         }
         commitPendingPages(loadID: loadID)
@@ -986,23 +974,22 @@ final class SVGPreviewContainerView: UIView {
 
     private func commitPendingPages(loadID: UUID) {
         guard pendingLoadID == loadID,
-              let nextPages = pendingPages else {
+              let nextPages = pendingPages,
+              let loadedPageView = pendingPageView else {
             return
         }
 
-        let oldPageViews = pageViews
-        let loadedPageViews = pendingPageViews
+        let oldPageView = pageView
         let savedOffset = scrollView.contentOffset
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         UIView.performWithoutAnimation {
-            pageViews = loadedPageViews
+            pageView = loadedPageView
             pages = nextPages
-            pendingPageViews = []
+            pendingPageView = nil
             pendingPages = nil
             pendingLoadID = nil
-            pendingPageIDs = []
             lastLaidOutWidth = 0
 
             setNeedsLayout()
@@ -1010,36 +997,31 @@ final class SVGPreviewContainerView: UIView {
             layoutPagesIfNeeded(force: true)
             scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
 
-            loadedPageViews.forEach { webView in
-                webView.navigationDelegate = nil
-                webView.alpha = 0
-            }
+            loadedPageView.navigationDelegate = nil
+            loadedPageView.alpha = 0
         }
         CATransaction.commit()
 
         UIView.animate(
-            withDuration: oldPageViews.isEmpty ? 0 : reloadFadeDuration,
+            withDuration: oldPageView == nil ? 0 : reloadFadeDuration,
             delay: 0,
             options: [.allowUserInteraction, .beginFromCurrentState, .curveEaseOut]
         ) {
-            loadedPageViews.forEach { $0.alpha = 1 }
-            oldPageViews.forEach { $0.alpha = 0 }
+            loadedPageView.alpha = 1
+            oldPageView?.alpha = 0
         } completion: { _ in
-            oldPageViews.forEach { $0.removeFromSuperview() }
+            oldPageView?.removeFromSuperview()
             self.setLoadingPages(false)
         }
     }
 
     private func cancelPendingPageLoad(notify: Bool = true) {
-        pendingPageViews.forEach { webView in
-            webView.navigationDelegate = nil
-            webView.stopLoading()
-            webView.removeFromSuperview()
-        }
-        pendingPageViews = []
+        pendingPageView?.navigationDelegate = nil
+        pendingPageView?.stopLoading()
+        pendingPageView?.removeFromSuperview()
+        pendingPageView = nil
         pendingPages = nil
         pendingLoadID = nil
-        pendingPageIDs = []
         if notify {
             setLoadingPages(false)
         }
@@ -1115,25 +1097,70 @@ final class SVGPreviewContainerView: UIView {
         }
     }
 
-    private static func html(forSVG svg: String) -> String {
-        """
+    private func html(forPages pages: [TypstPreviewPage]) -> String {
+        let scale = max(renderZoomScale, 0.01)
+        let margin = Self.cssPixels(pageMargin * scale)
+        let gap = Self.cssPixels(pageGap * scale)
+        let pageHTML = pages.map { page in
+            let width = max(page.widthPoints, 1)
+            let height = max(page.heightPoints, 1)
+            return """
+            <div class="page" style="aspect-ratio: \(Self.cssPixels(width)) / \(Self.cssPixels(height));">
+            \(page.svg)
+            </div>
+            """
+        }.joined(separator: "\n")
+
+        return """
         <!doctype html>
         <html>
         <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-        svg { display: block; width: 100%; height: 100%; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          min-height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
+        body {
+          box-sizing: border-box;
+          padding: \(margin)px;
+        }
+        .page {
+          width: 100%;
+          margin: 0 0 \(gap)px 0;
+          overflow: hidden;
+          background: transparent;
+        }
+        .page:last-child {
+          margin-bottom: 0;
+        }
+        .page > svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
         </style>
         </head>
         <body>
-        \(svg)
+        \(pageHTML)
         </body>
         </html>
         """
     }
 
-    private static func makePageWebView() -> WKWebView {
+    private static func cssPixels(_ value: Double) -> String {
+        String(format: "%.3f", value)
+    }
+
+    private static func cssPixels(_ value: CGFloat) -> String {
+        String(format: "%.3f", Double(value))
+    }
+
+    private static func makeDocumentWebView() -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
@@ -1143,6 +1170,7 @@ final class SVGPreviewContainerView: UIView {
         webView.isUserInteractionEnabled = false
         return webView
     }
+
 }
 
 extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
