@@ -711,6 +711,7 @@ final class SVGPreviewContainerView: UIView {
         super.layoutSubviews()
         layoutPagesIfNeeded()
         updateScrollInsetsIfNeeded()
+        clampContentOffsetIfNeeded()
     }
 
     func reloadPages(_ newPages: [TypstPreviewPage]) {
@@ -832,10 +833,13 @@ final class SVGPreviewContainerView: UIView {
         contentView.frame = CGRect(x: 0, y: 0, width: layoutWidth, height: max(y, bounds.height + 1))
         scrollView.contentSize = contentView.frame.size
         lastLaidOutWidth = layoutWidth
+        updateScrollInsetsIfNeeded()
 
         if savedZoomScale != fitZoomScale {
             scrollView.setZoomScale(clampedZoomScale(savedZoomScale), animated: false)
             scrollView.setContentOffset(clampedContentOffset(savedOffset), animated: false)
+        } else {
+            clampContentOffsetIfNeeded()
         }
     }
 
@@ -845,15 +849,27 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func updateScrollInsetsIfNeeded() {
-        if scrollView.contentInset.top != topViewportInset
-            || scrollView.contentInset.bottom != bottomViewportInset {
-            var insets = scrollView.contentInset
+        let horizontalInset = centeredHorizontalContentInset()
+        var insets = scrollView.contentInset
+        if abs(insets.top - topViewportInset) > 0.5
+            || abs(insets.bottom - bottomViewportInset) > 0.5
+            || abs(insets.left - horizontalInset) > 0.5
+            || abs(insets.right - horizontalInset) > 0.5 {
             insets.top = topViewportInset
             insets.bottom = bottomViewportInset
+            insets.left = horizontalInset
+            insets.right = horizontalInset
             scrollView.contentInset = insets
         }
         scrollView.verticalScrollIndicatorInsets.top = topViewportInset
         scrollView.verticalScrollIndicatorInsets.bottom = bottomViewportInset
+    }
+
+    private func centeredHorizontalContentInset() -> CGFloat {
+        let visibleWidth = scrollView.bounds.width
+        guard visibleWidth > 1 else { return 0 }
+        let zoomedContentWidth = contentView.bounds.width * scrollView.zoomScale
+        return max((visibleWidth - zoomedContentWidth) / 2, 0)
     }
 
     private func clampedContentOffset(_ contentOffset: CGPoint) -> CGPoint {
@@ -877,11 +893,20 @@ final class SVGPreviewContainerView: UIView {
 
     private var allowsHorizontalScroll: Bool {
         scrollView.zoomScale > fitZoomScale + 0.01
-            && scrollView.contentSize.width > scrollView.bounds.width + 1
+            && contentView.bounds.width * scrollView.zoomScale > scrollView.bounds.width + 1
     }
 
     private func clampedZoomScale(_ scale: CGFloat) -> CGFloat {
         min(max(scale, scrollView.minimumZoomScale), scrollView.maximumZoomScale)
+    }
+
+    private func clampContentOffsetIfNeeded() {
+        let clampedOffset = clampedContentOffset(scrollView.contentOffset)
+        guard abs(scrollView.contentOffset.x - clampedOffset.x) > 0.5
+                || abs(scrollView.contentOffset.y - clampedOffset.y) > 0.5 else {
+            return
+        }
+        scrollView.setContentOffset(clampedOffset, animated: false)
     }
 
     private func applyPreviewBackgroundColor() {
@@ -1076,10 +1101,8 @@ extension SVGPreviewContainerView: UIScrollViewDelegate {
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
-        let clampedOffset = clampedContentOffset(scrollView.contentOffset)
-        if scrollView.contentOffset != clampedOffset {
-            scrollView.setContentOffset(clampedOffset, animated: false)
-        }
+        updateScrollInsetsIfNeeded()
+        clampContentOffsetIfNeeded()
     }
 }
 

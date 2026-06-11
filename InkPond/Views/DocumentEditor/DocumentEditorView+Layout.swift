@@ -689,39 +689,7 @@ extension DocumentEditorView {
 
     private var regularProjectTitleMenu: some View {
         Menu {
-            Section {
-                Button {
-                    InteractionFeedback.impact(.light)
-                    showingProjectSettings = true
-                } label: {
-                    Label("Project Settings", systemImage: "gearshape")
-                }
-                Button {
-                    newProjectFileName = ""
-                    showingNewProjectFileAlert = true
-                } label: {
-                    Label("New .typ File", systemImage: "doc.badge.plus")
-                }
-                Button {
-                    showingProjectFileImporter = true
-                } label: {
-                    Label("Import File", systemImage: "square.and.arrow.down")
-                }
-            }
-            Section {
-            Button { shareButtonAction() } label: {
-                Label(L10n.tr("Share"), systemImage: "square.and.arrow.up")
-            }
-            Button {
-                guard flushPendingSave() else { return }
-                exporter.exportTypSource(for: document, fileName: currentFileName)
-            } label: {
-                Label("Export .typ", systemImage: "square.and.arrow.up.on.square")
-            }
-            Button { triggerZipExport() } label: {
-                Label("Export Project as Zip", systemImage: "archivebox")
-            }
-            }
+            projectTitleMenuContent
         } label: {
             HStack(spacing: 5) {
                 Text(document.title)
@@ -815,9 +783,10 @@ extension DocumentEditorView {
 
             if !usesMinimalLayout {
                 Button(action: shareButtonAction) {
-                    regularToolbarIconLabel("square.and.arrow.up", size: iconSize)
+                    regularShareToolbarLabel(size: iconSize)
                 }
                 .contentShape(Rectangle())
+                .disabled(exporter.exportButtonPhase != .idle)
                 .accessibilityLabel(Text(shareButtonLabel))
                 .accessibilityHint(L10n.a11yEditorShareHint)
                 .accessibilityIdentifier("editor.share")
@@ -845,16 +814,9 @@ extension DocumentEditorView {
                         .disabled(!compiler.compiledOnce)
 
                         Button(action: shareButtonAction) {
-                            Label(shareButtonLabel, systemImage: "square.and.arrow.up")
+                            Label(shareButtonLabel, systemImage: shareMenuSystemImage)
                         }
-                    }
-                }
-                Section {
-                    Button {
-                        InteractionFeedback.impact(.light)
-                        showingProjectSettings = true
-                    } label: {
-                        Label("Project Settings", systemImage: "gearshape")
+                        .disabled(exporter.exportButtonPhase != .idle)
                     }
                 }
                 Section {
@@ -1033,6 +995,21 @@ extension DocumentEditorView {
             .font(.title3.weight(.semibold))
             .foregroundStyle(regularToolbarForegroundColor)
             .frame(width: size, height: regularToolbarControlHeight - 4)
+    }
+
+    @ViewBuilder
+    private func regularShareToolbarLabel(size: CGFloat = 44) -> some View {
+        switch exporter.exportButtonPhase {
+        case .idle:
+            regularToolbarIconLabel("square.and.arrow.up", size: size)
+        case .exporting:
+            ProgressView()
+                .controlSize(.small)
+                .tint(regularToolbarForegroundColor)
+                .frame(width: size, height: regularToolbarControlHeight - 4)
+        case .completed:
+            regularToolbarIconLabel("checkmark", size: size)
+        }
     }
 
     @ViewBuilder
@@ -1516,6 +1493,17 @@ extension DocumentEditorView {
         return L10n.tr("Export .typ")
     }
 
+    private var shareMenuSystemImage: String {
+        switch exporter.exportButtonPhase {
+        case .idle:
+            "square.and.arrow.up"
+        case .exporting:
+            "hourglass"
+        case .completed:
+            "checkmark"
+        }
+    }
+
     var canTriggerPreviewActions: Bool {
         !previewRequiresExternalFolderLink
             && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1601,35 +1589,60 @@ extension DocumentEditorView {
         .accessibilityLabel(resumeBannerLabel)
         .accessibilityHint(L10n.tr("resume.banner.a11y_hint"))
     }
+
     @ViewBuilder
-    private var editorToolbarMenuContent: some View {
+    private var projectTitleMenuContent: some View {
         Section {
-            Button(action: shareButtonAction) {
-                Label(shareButtonLabel, systemImage: "square.and.arrow.up")
+            Button {
+                InteractionFeedback.impact(.light)
+                showingProjectSettings = true
+            } label: {
+                Label("Project Settings", systemImage: "gearshape")
             }
+            Button {
+                newProjectFileName = ""
+                showingNewProjectFileAlert = true
+            } label: {
+                Label("New .typ File", systemImage: "doc.badge.plus")
+            }
+            Button {
+                showingProjectFileImporter = true
+            } label: {
+                Label("Import File", systemImage: "square.and.arrow.down")
+            }
+        }
+
+        Section {
+            if sizeClass != .regular, !previewRequiresExternalFolderLink, selectedTab == previewTab {
+                Button(action: shareButtonAction) {
+                    Label(shareButtonLabel, systemImage: shareMenuSystemImage)
+                }
+                .disabled(exporter.exportButtonPhase != .idle)
+            }
+
             Button {
                 guard flushPendingSave() else { return }
                 exporter.exportTypSource(for: document, fileName: currentFileName)
             } label: {
                 Label("Export .typ", systemImage: "square.and.arrow.up.on.square")
             }
+            .disabled(exporter.exportButtonPhase != .idle)
+
             Button { triggerZipExport() } label: {
                 Label("Export Project as Zip", systemImage: "archivebox")
             }
+            .disabled(exporter.exportButtonPhase != .idle)
         }
+    }
 
+    @ViewBuilder
+    private var editorToolbarMenuContent: some View {
         Section {
             Button {
                 InteractionFeedback.impact(.light)
                 showingFileBrowser = true
             } label: {
                 Label("Project Files", systemImage: "folder")
-            }
-            Button {
-                InteractionFeedback.impact(.light)
-                showingProjectSettings = true
-            } label: {
-                Label("Project Settings", systemImage: "gearshape")
             }
         }
 
@@ -1654,6 +1667,16 @@ extension DocumentEditorView {
         }
 
         Section {
+            Button {
+                Task { @MainActor in
+                    await Task.yield()
+                    compilePreviewNow()
+                }
+            } label: {
+                Label("Compile Now", systemImage: "play.circle")
+            }
+            .disabled(!canTriggerPreviewActions)
+
             Button {
                 Task { @MainActor in
                     await Task.yield()
@@ -1755,7 +1778,7 @@ extension DocumentEditorView {
 
     private var compactNavigationTitle: some View {
         Menu {
-            editorToolbarMenuContent
+            projectTitleMenuContent
         } label: {
             HStack(alignment: .center, spacing: 4) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -2091,18 +2114,6 @@ extension DocumentEditorView {
 
     var editorOverlaysAndAlerts: some View {
         editorSheetsAndEvents
-            .overlay {
-                if exporter.isExporting {
-                    ZStack {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .ignoresSafeArea()
-                        ProgressView("Compiling…")
-                            .padding()
-                            .systemFloatingSurface(cornerRadius: 12)
-                    }
-                }
-            }
             .safeAreaInset(edge: .bottom) {
                 externalFolderLinkProgressInset
             }

@@ -9,9 +9,16 @@ import Foundation
 import PDFKit
 import Observation
 
+enum ExportButtonPhase: Equatable {
+    case idle
+    case exporting
+    case completed
+}
+
 @Observable
 final class ExportController {
     var isExporting = false
+    var exportButtonPhase: ExportButtonPhase = .idle
     var exportError: String?
     var exportURL: URL?
 
@@ -22,56 +29,123 @@ final class ExportController {
         cachedPDFData: Data? = nil,
         cachedPDF: PDFDocument? = nil
     ) {
-        guard !isExporting else { return }
+        guard beginExport() else { return }
 
         if let cachedPDFData {
-            do { exportURL = try ExportManager.temporaryPDFURL(data: cachedPDFData, title: document.title) }
-            catch { exportError = error.localizedDescription }
+            let title = document.title
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                do {
+                    let url = try await Self.temporaryPDFURL(data: cachedPDFData, title: title)
+                    finishExport(with: url)
+                } catch {
+                    failExport(error)
+                }
+            }
             return
         }
 
         // Keep PDFDocument compatibility for older call sites and fallback flows.
-        if let pdf = cachedPDF, let data = pdf.dataRepresentation() {
-            do { exportURL = try ExportManager.temporaryPDFURL(data: data, title: document.title) }
-            catch { exportError = error.localizedDescription }
+        if let pdf = cachedPDF {
+            let title = document.title
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                guard let data = pdf.dataRepresentation() else {
+                    failExport(CocoaError(.fileWriteUnknown))
+                    return
+                }
+                do {
+                    let url = try await Self.temporaryPDFURL(data: data, title: title)
+                    finishExport(with: url)
+                } catch {
+                    failExport(error)
+                }
+            }
             return
         }
 
-        isExporting = true
         Task { @MainActor [weak self] in
             guard let self else { return }
+            await Task.yield()
             let result = await ExportManager.compilePDF(for: document)
-            isExporting = false
             switch result {
             case .success(let data):
-                do { exportURL = try ExportManager.temporaryPDFURL(data: data, title: document.title) }
-                catch { exportError = error.localizedDescription }
+                let title = document.title
+                do {
+                    let url = try await Self.temporaryPDFURL(data: data, title: title)
+                    finishExport(with: url)
+                } catch {
+                    failExport(error)
+                }
             case .failure(let error):
-                exportError = error.localizedDescription
+                failExport(error)
             }
         }
     }
 
     func exportTypSource(for document: InkPondDocument, fileName: String) {
-        do { exportURL = try ExportManager.temporaryTypURL(for: document, fileName: fileName) }
-        catch { exportError = error.localizedDescription }
+        guard beginExport() else { return }
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            do {
+                let url = try ExportManager.temporaryTypURL(for: document, fileName: fileName)
+                finishExport(with: url)
+            } catch {
+                failExport(error)
+            }
+        }
     }
 
     func exportZip(for document: InkPondDocument) {
-        guard !isExporting else { return }
-        isExporting = true
+        guard beginExport() else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
+            await Task.yield()
             let projectDir = ProjectFileManager.projectDirectory(for: document)
             let title = document.title
             do {
-                exportURL = try await Task.detached {
+                let url = try await Task.detached {
                     try ExportManager.zipProject(sourceDir: projectDir, title: title)
                 }.value
+                finishExport(with: url)
             } catch {
-                exportError = error.localizedDescription
+                failExport(error)
             }
-            isExporting = false
         }
+    }
+
+    @discardableResult
+    private func beginExport() -> Bool {
+        guard !isExporting else { return false }
+        exportError = nil
+        isExporting = true
+        exportButtonPhase = .exporting
+        return true
+    }
+
+    private func finishExport(with url: URL) {
+        exportButtonPhase = .completed
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(260))
+            guard let self else { return }
+            exportURL = url
+            isExporting = false
+            exportButtonPhase = .idle
+        }
+    }
+
+    private func failExport(_ error: Error) {
+        isExporting = false
+        exportButtonPhase = .idle
+        exportError = error.localizedDescription
+    }
+
+    nonisolated private static func temporaryPDFURL(data: Data, title: String) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            try ExportManager.temporaryPDFURL(data: data, title: title)
+        }.value
     }
 }
