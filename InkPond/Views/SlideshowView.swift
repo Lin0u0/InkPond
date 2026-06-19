@@ -2,139 +2,226 @@
 //  SlideshowView.swift
 //  InkPond
 //
-//  Full-screen PDF slideshow: one page at a time, swipe or arrow buttons to navigate.
+//  Full-screen SVG slideshow: one page at a time, swipe or arrow buttons to navigate.
 //
 
 import SwiftUI
-import PDFKit
+import WebKit
 
-private final class SlideshowPDFView: PDFView {
-    override var canBecomeFirstResponder: Bool { false }
-}
-
-private final class SlideshowPDFContainerView: UIView {
-    let pdfView = SlideshowPDFView()
-    var page: PDFPage? {
-        didSet { updatePageLayout() }
-    }
+private final class SVGSlideshowContainerView: UIView, WKNavigationDelegate {
+    private let webView: WKWebView
+    private var pages: [TypstPreviewPage] = []
+    private var currentPage = 0
+    private var isLoaded = false
+    private var lastLaidOutSize: CGSize = .zero
 
     override init(frame: CGRect) {
+        let configuration = WKWebViewConfiguration()
+        webView = WKWebView(frame: .zero, configuration: configuration)
         super.init(frame: frame)
 
-        addSubview(pdfView)
-        pdfView.translatesAutoresizingMaskIntoConstraints = false
+        backgroundColor = .black
+        webView.navigationDelegate = self
+        webView.isOpaque = false
+        webView.backgroundColor = .black
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.backgroundColor = .black
+        webView.isUserInteractionEnabled = false
+
+        addSubview(webView)
+        webView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            pdfView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            pdfView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            pdfView.topAnchor.constraint(equalTo: topAnchor),
-            pdfView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            webView.topAnchor.constraint(equalTo: topAnchor),
+            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-
-        pdfView.displayMode = .singlePage
-        pdfView.displayDirection = .horizontal
-        pdfView.displaysPageBreaks = false
-        pdfView.backgroundColor = .black
-        pdfView.isUserInteractionEnabled = false
-        pdfView.autoScales = false
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updatePageLayout()
-    }
-
-    private func updatePageLayout() {
-        guard let page else { return }
-
-        let pageBounds = page.bounds(for: .mediaBox)
-        let availableWidth = max(bounds.width, 1)
-        let availableHeight = max(bounds.height, 1)
-        let widthScale = availableWidth / max(pageBounds.width, 1)
-        let heightScale = availableHeight / max(pageBounds.height, 1)
-        let fittedScale = min(widthScale, heightScale)
-
-        pdfView.minScaleFactor = fittedScale
-        pdfView.maxScaleFactor = fittedScale
-        pdfView.scaleFactor = fittedScale
-        pdfView.go(to: page)
-        DispatchQueue.main.async { [weak self] in
-            self?.centerRenderedPageIfNeeded()
-        }
-    }
-
-    private func centerRenderedPageIfNeeded() {
-        guard let scrollView = findScrollView(in: pdfView) else { return }
-
-        scrollView.applySoftScrollEdgeEffects()
-        scrollView.layoutIfNeeded()
-
-        let horizontalInset = max((scrollView.bounds.width - scrollView.contentSize.width) / 2, 0)
-        let verticalInset = max((scrollView.bounds.height - scrollView.contentSize.height) / 2, 0)
-        let insets = UIEdgeInsets(
-            top: verticalInset,
-            left: horizontalInset,
-            bottom: verticalInset,
-            right: horizontalInset
-        )
-
-        if scrollView.contentInset != insets {
-            scrollView.contentInset = insets
-        }
-
-        if scrollView.verticalScrollIndicatorInsets != insets {
-            scrollView.verticalScrollIndicatorInsets = insets
-        }
-
-        if scrollView.horizontalScrollIndicatorInsets != insets {
-            scrollView.horizontalScrollIndicatorInsets = insets
-        }
-
-        let centeredOffset = CGPoint(x: -horizontalInset, y: -verticalInset)
-        if scrollView.contentOffset != centeredOffset {
-            scrollView.setContentOffset(centeredOffset, animated: false)
-        }
-    }
-
-    private func findScrollView(in view: UIView) -> UIScrollView? {
-        if let scrollView = view as? UIScrollView {
-            return scrollView
-        }
-
-        for subview in view.subviews {
-            if let scrollView = findScrollView(in: subview) {
-                return scrollView
-            }
-        }
-
-        return nil
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = bounds.size
+        guard abs(size.width - lastLaidOutSize.width) > 0.5
+                || abs(size.height - lastLaidOutSize.height) > 0.5 else {
+            return
+        }
+        lastLaidOutSize = size
+        updateDeckLayout()
+    }
+
+    func updatePages(_ newPages: [TypstPreviewPage]) {
+        guard pages != newPages else { return }
+        pages = newPages
+        isLoaded = false
+        lastLaidOutSize = .zero
+        webView.loadHTMLString(Self.html(forPages: newPages), baseURL: nil)
+    }
+
+    func setCurrentPage(_ pageIndex: Int) {
+        currentPage = min(max(pageIndex, 0), max(pages.count - 1, 0))
+        guard isLoaded else { return }
+        webView.evaluateJavaScript("window.showPage(\(currentPage));")
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        isLoaded = true
+        updateDeckLayout()
+        setCurrentPage(currentPage)
+    }
+
+    private func updateDeckLayout() {
+        guard isLoaded else { return }
+        webView.evaluateJavaScript("window.layoutPages && window.layoutPages(); window.showPage && window.showPage(\(currentPage));")
+    }
+
+    private static func html(forPages pages: [TypstPreviewPage]) -> String {
+        let slideData = pages.enumerated().map { index, page in
+            let width = max(page.widthPoints, 1)
+            let height = max(page.heightPoints, 1)
+            let metrics = "{width:\(cssPixels(width)),height:\(cssPixels(height))}"
+            let slide = """
+            <section class="slide" data-page-index="\(index)">
+              <div class="page">
+                \(page.svg)
+              </div>
+            </section>
+            """
+            return (metrics: metrics, slide: slide)
+        }
+        let pageMetrics = "[\(slideData.map(\.metrics).joined(separator: ","))]"
+        let slides = slideData.map(\.slide).joined(separator: "\n")
+
+        return """
+        <!doctype html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: #000;
+        }
+        html {
+          --page: 0;
+        }
+        body {
+          position: fixed;
+          inset: 0;
+        }
+        .deck {
+          display: flex;
+          width: 100%;
+          height: 100%;
+          transform: translate3d(calc(var(--page) * -100%), 0, 0);
+          transition: transform 220ms ease;
+          will-change: transform;
+        }
+        .slide {
+          flex: 0 0 100%;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          background: #000;
+        }
+        .page {
+          max-width: 100%;
+          max-height: 100%;
+          overflow: hidden;
+          background: #fff;
+        }
+        .page > svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        </style>
+        <script>
+        const pages = \(pageMetrics);
+        window.layoutPages = function() {
+          document.querySelectorAll(".slide").forEach(function(slide) {
+            const index = Number(slide.dataset.pageIndex || 0);
+            const page = pages[index];
+            const pageElement = slide.querySelector(".page");
+            if (!page || !pageElement) return;
+
+            const slideWidth = Math.max(slide.clientWidth, 1);
+            const slideHeight = Math.max(slide.clientHeight, 1);
+            const scale = Math.min(slideWidth / page.width, slideHeight / page.height);
+            pageElement.style.width = Math.max(page.width * scale, 1) + "px";
+            pageElement.style.height = Math.max(page.height * scale, 1) + "px";
+          });
+        };
+        window.showPage = function(index) {
+          document.documentElement.style.setProperty("--page", index);
+        };
+        function installResizeObserver() {
+          const deck = document.querySelector(".deck");
+          if (!deck || !window.ResizeObserver || window.deckResizeObserver) return;
+          window.deckResizeObserver = new ResizeObserver(window.layoutPages);
+          window.deckResizeObserver.observe(deck);
+        }
+        window.addEventListener("resize", window.layoutPages);
+        requestAnimationFrame(function() {
+          window.layoutPages();
+          installResizeObserver();
+        });
+        window.addEventListener("load", function() {
+          window.layoutPages();
+          installResizeObserver();
+        });
+        </script>
+        </head>
+        <body>
+        <main class="deck">
+        \(slides)
+        </main>
+        </body>
+        </html>
+        """
+    }
+
+    private static func cssPixels(_ value: Double) -> String {
+        String(format: "%.4f", value)
+    }
 }
 
 // MARK: - Slideshow
 
 struct SlideshowView: View {
-    let document: PDFDocument
+    let pages: [TypstPreviewPage]
     @Environment(\.dismiss) private var dismiss
     @State private var currentPage: Int = 0
     @State private var showControls: Bool = true
 
-    private var pageCount: Int { document.pageCount }
+    private var pageCount: Int { pages.count }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            PDFSlideView(document: document, pageIndex: currentPage)
-                .contentShape(Rectangle())
-                .gesture(slideGesture)
+            if pageCount > 0 {
+                GeometryReader { proxy in
+                    SVGSlideDeckView(pages: pages, currentPage: currentPage)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .contentShape(Rectangle())
+                        .gesture(slideGesture)
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
+                        }
+                }
                 .ignoresSafeArea()
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
             }
 
             if showControls {
@@ -143,16 +230,16 @@ struct SlideshowView: View {
                     .animation(.easeInOut(duration: 0.2), value: showControls)
             }
         }
+        .onChange(of: pageCount, initial: true) { _, count in
+            currentPage = min(currentPage, max(count - 1, 0))
+        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .preferredColorScheme(.dark)
     }
 
-    // MARK: Controls overlay
-
     private var controlsOverlay: some View {
         VStack(spacing: 0) {
-            // ── Top bar ──────────────────────────────────────────────
             HStack {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
@@ -162,7 +249,7 @@ struct SlideshowView: View {
 
                 Spacer()
 
-                Text(verbatim: "\(currentPage + 1) / \(pageCount)")
+                Text(verbatim: pageCount > 0 ? "\(currentPage + 1) / \(pageCount)" : "0 / 0")
                     .foregroundStyle(.white)
                     .font(.subheadline.monospacedDigit().bold())
                     .padding(.horizontal, 12)
@@ -181,7 +268,6 @@ struct SlideshowView: View {
 
             Spacer()
 
-            // ── Bottom bar ───────────────────────────────────────────
             HStack {
                 navButton(systemImage: "chevron.left", enabled: currentPage > 0) {
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -237,33 +323,16 @@ struct SlideshowView: View {
     }
 }
 
-// MARK: - Per-page renderer
+private struct SVGSlideDeckView: UIViewRepresentable {
+    let pages: [TypstPreviewPage]
+    let currentPage: Int
 
-struct PDFSlideView: View {
-    let document: PDFDocument
-    let pageIndex: Int
-
-    var body: some View {
-        PDFSinglePageView(document: document, pageIndex: pageIndex)
-            .ignoresSafeArea()
-    }
-}
-
-private struct PDFSinglePageView: UIViewRepresentable {
-    let document: PDFDocument
-    let pageIndex: Int
-
-    func makeUIView(context: Context) -> SlideshowPDFContainerView {
-        let container = SlideshowPDFContainerView()
-        container.pdfView.document = document
-        return container
+    func makeUIView(context: Context) -> SVGSlideshowContainerView {
+        SVGSlideshowContainerView()
     }
 
-    func updateUIView(_ container: SlideshowPDFContainerView, context: Context) {
-        if container.pdfView.document !== document {
-            container.pdfView.document = document
-        }
-
-        container.page = document.page(at: pageIndex)
+    func updateUIView(_ container: SVGSlideshowContainerView, context: Context) {
+        container.updatePages(pages)
+        container.setCurrentPage(currentPage)
     }
 }

@@ -75,7 +75,7 @@ struct DocumentListView: View {
     @State var folderLinkImportTitle: String?
     @State var folderLinkImportProjectID: String?
     @State var folderLinkImportTask: Task<Void, Never>?
-    @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = [:]
+    @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = Self.loadPreviewCacheEntriesByProjectID()
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
@@ -123,6 +123,15 @@ struct DocumentListView: View {
         colorScheme == .dark
             ? UIColor.white.withAlphaComponent(0.045)
             : UIColor.systemGroupedBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+    }
+
+    static func loadPreviewCacheEntriesByProjectID() -> [String: CompiledPreviewCacheEntry] {
+        do {
+            let entries = try CompiledPreviewCacheStore().snapshot().entries
+            return Dictionary(uniqueKeysWithValues: entries.map { ($0.projectID, $0) })
+        } catch {
+            return [:]
+        }
     }
 
     var body: some View {

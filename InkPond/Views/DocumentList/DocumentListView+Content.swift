@@ -144,12 +144,7 @@ extension DocumentListView {
     }
 
     func refreshPreviewCacheSnapshot() {
-        do {
-            let entries = try CompiledPreviewCacheStore().snapshot().entries
-            previewCacheEntriesByProjectID = Dictionary(uniqueKeysWithValues: entries.map { ($0.projectID, $0) })
-        } catch {
-            previewCacheEntriesByProjectID = [:]
-        }
+        previewCacheEntriesByProjectID = Self.loadPreviewCacheEntriesByProjectID()
     }
 
     var libraryEmptyState: some View {
@@ -440,17 +435,24 @@ private struct ProjectHomeThumbnail: View {
 
     @MainActor
     private func loadThumbnail() async {
-        thumbnail = nil
-        svgHTML = nil
+        guard cacheEntry != nil else {
+            thumbnail = nil
+            svgHTML = nil
+            return
+        }
 
         if let pdfURL = cacheEntry?.pdfURL,
            let document = PDFDocument(url: pdfURL),
            let page = document.page(at: 0) {
+            guard !Task.isCancelled else { return }
             thumbnail = page.thumbnail(of: CGSize(width: 520, height: 680), for: .mediaBox)
+            svgHTML = nil
             return
         }
 
         guard let svgURL = cacheEntry?.firstSVGPageURL else {
+            thumbnail = nil
+            svgHTML = nil
             return
         }
 
@@ -458,6 +460,8 @@ private struct ProjectHomeThumbnail: View {
             let svg = try String(contentsOf: svgURL, encoding: .utf8)
             return ProjectHomeThumbnail.svgHTML(for: svg)
         }.value
+        guard !Task.isCancelled else { return }
+        thumbnail = nil
         svgHTML = html
     }
 

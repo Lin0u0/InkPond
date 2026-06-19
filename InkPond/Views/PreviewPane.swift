@@ -2,12 +2,11 @@
 //  PreviewPane.swift
 //  InkPond
 //
-//  Shows the compiled PDF, a compilation error banner, or a placeholder
+//  Shows the compiled SVG preview, a compilation error banner, or a placeholder
 //  when the Typst compiler library hasn't been linked yet.
 //
 
 import SwiftUI
-import PDFKit
 import NaturalLanguage
 import WebKit
 
@@ -21,6 +20,16 @@ struct PreviewStatistics {
     let pageCount: Int
     let wordCount: Int
     let characterCount: Int
+}
+
+private struct PreviewCompileInputSignature: Equatable {
+    let source: String
+    let fontPaths: [String]
+    let preflightError: String?
+    let rootDir: String?
+    let previewCacheDescriptor: CompiledPreviewCacheDescriptor?
+    let compileToken: UUID
+    let requiresExternalFolderLink: Bool
 }
 
 private struct PreviewStatisticItem: Identifiable {
@@ -50,335 +59,7 @@ private extension View {
     }
 }
 
-// MARK: - PDFKit wrapper
-
-/// PDFView subclass that refuses first-responder so it never steals focus
-/// from the text editor (which would dismiss the software keyboard on iPadOS).
-private final class PassivePDFView: PDFView {
-    override var canBecomeFirstResponder: Bool { false }
-}
-
-private struct PDFPreviewScrollState {
-    let contentOffset: CGPoint
-    let scaleFactor: CGFloat
-}
-
-final class PDFContainerView: UIView {
-    fileprivate let pdfView = PassivePDFView()
-    private let syncMarkerView = PreviewSyncMarkerView()
-    var previewBackgroundColor: UIColor = .secondarySystemBackground {
-        didSet { applyPreviewBackgroundColor() }
-    }
-    private var horizontalSwipeRecognizers: [UIGestureRecognizer] = []
-    private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
-    private var horizontalPanStartLocation: CGPoint?
-    private let reservedNavigationEdgeWidth: CGFloat = 44
-    /// Incremented on each `scrollToPosition` call so stale scroll-animation
-    /// completion handlers don't fire `showMarker` for an outdated position.
-    private var scrollGeneration: UInt = 0
-    /// When true, `reloadDocument` skips scroll restoration so that
-    /// a pending `scrollToPosition` call can take priority.
-    var suppressScrollRestoration = false
-    var onHorizontalSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)? {
-        didSet {
-            horizontalSwipeRecognizers.forEach { $0.isEnabled = onHorizontalSwipe != nil }
-        }
-    }
-    var topViewportInset: CGFloat = 0 {
-        didSet {
-            guard oldValue != topViewportInset else { return }
-            updateScrollInsetsIfNeeded()
-        }
-    }
-    var bottomViewportInset: CGFloat = 0 {
-        didSet {
-            guard oldValue != bottomViewportInset else { return }
-            updateScrollInsetsIfNeeded()
-            alignShortDocumentToTopIfNeeded()
-        }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-
-        addSubview(pdfView)
-        addSubview(syncMarkerView)
-        pdfView.translatesAutoresizingMaskIntoConstraints = false
-        syncMarkerView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            pdfView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            pdfView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            pdfView.topAnchor.constraint(equalTo: topAnchor),
-            pdfView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            syncMarkerView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            syncMarkerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            syncMarkerView.topAnchor.constraint(equalTo: topAnchor),
-            syncMarkerView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        applyPreviewBackgroundColor()
-
-        installHorizontalSwipeRecognizers()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateScrollInsetsIfNeeded()
-        alignShortDocumentToTopIfNeeded()
-    }
-
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer === horizontalPanRecognizer,
-              let panRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
-            return super.gestureRecognizerShouldBegin(gestureRecognizer)
-        }
-
-        let startLocation = panRecognizer.location(in: pdfView)
-        let velocity = panRecognizer.velocity(in: pdfView)
-        return startLocation.x > reservedNavigationEdgeWidth
-            && velocity.x > 0
-            && abs(velocity.x) > abs(velocity.y) * 1.35
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func reloadDocument(_ document: PDFDocument, focusCoordinator: EditorFocusCoordinator?) {
-        applyPreviewBackgroundColor()
-
-        guard pdfView.document !== document else {
-            focusCoordinator?.setResignSuppressed(false)
-            return
-        }
-
-        let savedState = captureScrollState()
-
-        // Prevent PDFKit from dismissing the software keyboard while it
-        // tears down / rebuilds page views for the new document.
-        focusCoordinator?.setResignSuppressed(true)
-        UIView.performWithoutAnimation {
-            pdfView.document = document
-        }
-
-        guard let savedState else {
-            // First load: let PDFView pick the initial scale automatically.
-            pdfView.autoScales = true
-            DispatchQueue.main.async { [weak self, weak focusCoordinator] in
-                guard let self, self.pdfView.document === document else { return }
-                self.layoutIfNeeded()
-                self.pdfView.layoutIfNeeded()
-                self.updateScrollInsetsIfNeeded(forcePinnedTop: true)
-                self.alignShortDocumentToTopIfNeeded()
-                DispatchQueue.main.async { [weak self, weak focusCoordinator] in
-                    guard let self, self.pdfView.document === document else { return }
-                    focusCoordinator?.setResignSuppressed(false)
-                }
-            }
-            return
-        }
-
-        pdfView.autoScales = false
-        pdfView.scaleFactor = savedState.scaleFactor
-
-        // PDFKit resets its internal scroll view when the document changes.
-        // Restore once synchronously so the reset position is not visible for
-        // one frame, then keep the async pass below as a layout-safe correction.
-        restoreScrollState(savedState)
-
-        DispatchQueue.main.async { [weak self, weak focusCoordinator] in
-            guard let self, self.pdfView.document === document else { return }
-
-            self.restoreScrollState(savedState)
-            self.updateScrollInsetsIfNeeded()
-            self.alignShortDocumentToTopIfNeeded()
-            self.suppressScrollRestoration = false
-
-            focusCoordinator?.setResignSuppressed(false)
-        }
-    }
-
-    private func restoreScrollState(_ savedState: PDFPreviewScrollState) {
-        layoutIfNeeded()
-        pdfView.layoutIfNeeded()
-        pdfView.scaleFactor = clampedScaleFactor(savedState.scaleFactor)
-
-        // Skip scroll restoration when a sync-driven scroll is pending —
-        // scrollToPosition will handle positioning instead.
-        guard !suppressScrollRestoration,
-              let scrollView = findScrollView(in: pdfView) else {
-            return
-        }
-
-        scrollView.layoutIfNeeded()
-        let clampedOffset = clampedContentOffset(
-            savedState.contentOffset,
-            in: scrollView
-        )
-        if scrollView.contentOffset != clampedOffset {
-            scrollView.setContentOffset(clampedOffset, animated: false)
-        }
-    }
-
-    private func captureScrollState() -> PDFPreviewScrollState? {
-        guard pdfView.document != nil,
-              let scrollView = findScrollView(in: pdfView) else {
-            return nil
-        }
-
-        return PDFPreviewScrollState(
-            contentOffset: scrollView.contentOffset,
-            scaleFactor: pdfView.scaleFactor
-        )
-    }
-
-    private func findScrollView(in view: UIView) -> UIScrollView? {
-        if let scrollView = view as? UIScrollView {
-            return scrollView
-        }
-
-        for subview in view.subviews {
-            if let scrollView = findScrollView(in: subview) {
-                return scrollView
-            }
-        }
-
-        return nil
-    }
-
-    private func applyPreviewBackgroundColor() {
-        backgroundColor = previewBackgroundColor
-        pdfView.backgroundColor = previewBackgroundColor
-        if let scrollView = findScrollView(in: pdfView) {
-            scrollView.backgroundColor = previewBackgroundColor
-            scrollView.applySoftScrollEdgeEffects()
-        }
-    }
-
-    private func updateScrollInsetsIfNeeded(forcePinnedTop: Bool = false) {
-        guard let scrollView = findScrollView(in: pdfView) else { return }
-        scrollView.applySoftScrollEdgeEffects()
-        scrollView.alwaysBounceVertical = true
-
-        let previousAdjustedTop = scrollView.adjustedContentInset.top
-        let wasPinnedToTop = forcePinnedTop || abs(scrollView.contentOffset.y + previousAdjustedTop) < 2
-
-        if scrollView.contentInset.top != topViewportInset
-            || scrollView.contentInset.bottom != bottomViewportInset {
-            var insets = scrollView.contentInset
-            insets.top = topViewportInset
-            insets.bottom = bottomViewportInset
-            scrollView.contentInset = insets
-        }
-
-        if scrollView.verticalScrollIndicatorInsets.top != topViewportInset
-            || scrollView.verticalScrollIndicatorInsets.bottom != bottomViewportInset {
-            var indicatorInsets = scrollView.verticalScrollIndicatorInsets
-            indicatorInsets.top = topViewportInset
-            indicatorInsets.bottom = bottomViewportInset
-            scrollView.verticalScrollIndicatorInsets = indicatorInsets
-        }
-
-        if wasPinnedToTop {
-            scrollView.setContentOffset(
-                CGPoint(x: scrollView.contentOffset.x, y: -scrollView.adjustedContentInset.top),
-                animated: false
-            )
-        }
-    }
-
-    private func alignShortDocumentToTopIfNeeded() {
-        guard let scrollView = findScrollView(in: pdfView),
-              let documentView = pdfView.documentView,
-              documentView.superview != nil else {
-            return
-        }
-
-        scrollView.layoutIfNeeded()
-        documentView.layoutIfNeeded()
-
-        let visibleHeight = scrollView.bounds.height
-            - scrollView.adjustedContentInset.top
-            - scrollView.adjustedContentInset.bottom
-        let documentRectInPDFView = documentView.convert(documentView.bounds, to: pdfView)
-        guard visibleHeight > 0,
-              documentRectInPDFView.height > 0,
-              documentRectInPDFView.height < visibleHeight else {
-            return
-        }
-
-        let documentTopInPDFView = documentRectInPDFView.minY
-        let targetTopInPDFView = pdfView.bounds.minY + scrollView.adjustedContentInset.top
-        let verticalDelta = targetTopInPDFView - documentTopInPDFView
-        guard abs(verticalDelta) > 0.5 else { return }
-
-        var frame = documentView.frame
-        frame.origin.y += verticalDelta
-        documentView.frame = frame
-    }
-
-    private func clampedContentOffset(_ contentOffset: CGPoint, in scrollView: UIScrollView) -> CGPoint {
-        let inset = scrollView.adjustedContentInset
-        let minX = -inset.left
-        let minY = -inset.top
-        let maxX = max(minX, scrollView.contentSize.width - scrollView.bounds.width + inset.right)
-        let maxY = max(minY, scrollView.contentSize.height - scrollView.bounds.height + inset.bottom)
-
-        return CGPoint(
-            x: min(max(contentOffset.x, minX), maxX),
-            y: min(max(contentOffset.y, minY), maxY)
-        )
-    }
-
-    private func clampedScaleFactor(_ scaleFactor: CGFloat) -> CGFloat {
-        let minScale = pdfView.minScaleFactor > 0 ? pdfView.minScaleFactor : scaleFactor
-        let maxScale = pdfView.maxScaleFactor > 0 ? pdfView.maxScaleFactor : scaleFactor
-        return min(max(scaleFactor, minScale), maxScale)
-    }
-
-    private func installHorizontalSwipeRecognizers() {
-        let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleHorizontalPan(_:)))
-        recognizer.delegate = self
-        recognizer.cancelsTouchesInView = true
-        recognizer.maximumNumberOfTouches = 1
-        recognizer.isEnabled = onHorizontalSwipe != nil
-        pdfView.addGestureRecognizer(recognizer)
-        horizontalPanRecognizer = recognizer
-        horizontalSwipeRecognizers.append(recognizer)
-    }
-
-    @objc private func handleHorizontalPan(_ recognizer: UIPanGestureRecognizer) {
-        switch recognizer.state {
-        case .began:
-            horizontalPanStartLocation = recognizer.location(in: pdfView)
-        case .ended:
-            defer { horizontalPanStartLocation = nil }
-            let translation = recognizer.translation(in: pdfView)
-            guard let startLocation = horizontalPanStartLocation,
-                  startLocation.x > reservedNavigationEdgeWidth,
-                  translation.x >= 70,
-                  abs(translation.x) > abs(translation.y) * 1.35 else {
-                return
-            }
-            onHorizontalSwipe?(.right)
-        case .cancelled, .failed:
-            horizontalPanStartLocation = nil
-        default:
-            break
-        }
-    }
-}
-
-extension PDFContainerView: UIGestureRecognizerDelegate {
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        guard gestureRecognizer === horizontalPanRecognizer else { return true }
-        guard let otherView = otherGestureRecognizer.view else { return false }
-        return otherView === pdfView || otherView.isDescendant(of: pdfView)
-    }
-}
+// MARK: - Shared preview overlays
 
 private final class PreviewSyncMarkerView: UIView {
     private let pillView = UIView()
@@ -437,189 +118,6 @@ private final class PreviewSyncMarkerView: UIView {
     }
 }
 
-struct PDFKitView: UIViewRepresentable {
-    let document: PDFDocument
-    let focusCoordinator: EditorFocusCoordinator?
-    var topViewportInset: CGFloat = 0
-    var bottomViewportInset: CGFloat = 0
-    var scrollTarget: PreviewScrollTarget?
-    var backgroundColor: UIColor = .secondarySystemBackground
-    var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
-    var onCompactPreviewSwipe: (() -> Void)? = nil
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onTapLocation: onTapLocation)
-    }
-
-    func makeUIView(context: Context) -> PDFContainerView {
-        focusCoordinator?.setResignSuppressed(true)
-        context.coordinator.isHoldingInitialMountSuppression = true
-
-        let container = PDFContainerView()
-        container.previewBackgroundColor = backgroundColor
-        let pdfView = container.pdfView
-        pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.displayDirection = .vertical
-        pdfView.isAccessibilityElement = false
-        container.isAccessibilityElement = true
-        container.accessibilityIdentifier = "editor.preview"
-        container.accessibilityLabel = L10n.a11yPreviewLabel
-        container.accessibilityHint = L10n.a11yPreviewHint
-        container.accessibilityValue = L10n.a11yPreviewValueReady
-        container.onHorizontalSwipe = horizontalSwipeHandler
-
-        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
-        tapGesture.numberOfTapsRequired = 1
-        pdfView.addGestureRecognizer(tapGesture)
-        context.coordinator.pdfView = pdfView
-
-        return container
-    }
-
-    func updateUIView(_ container: PDFContainerView, context: Context) {
-        context.coordinator.onTapLocation = onTapLocation
-        context.coordinator.pdfView = container.pdfView
-        container.previewBackgroundColor = backgroundColor
-        container.onHorizontalSwipe = horizontalSwipeHandler
-        container.topViewportInset = topViewportInset
-        container.bottomViewportInset = bottomViewportInset
-        container.accessibilityLabel = L10n.a11yPreviewLabel
-        container.accessibilityHint = L10n.a11yPreviewHint
-        container.accessibilityValue = L10n.a11yPreviewValueReady
-
-        if context.coordinator.isHoldingInitialMountSuppression {
-            context.coordinator.isHoldingInitialMountSuppression = false
-            DispatchQueue.main.async { [weak focusCoordinator] in
-                DispatchQueue.main.async {
-                    focusCoordinator?.setResignSuppressed(false)
-                }
-            }
-        }
-
-        let documentChanged = context.coordinator.lastDocument !== document
-        if documentChanged {
-            context.coordinator.lastDocument = document
-        }
-
-        let hasScrollTarget = scrollTarget != nil
-            && context.coordinator.lastAppliedScrollTarget != scrollTarget
-
-        // Tell reloadDocument to skip scroll restoration when we'll scroll via sync target.
-        if documentChanged && hasScrollTarget {
-            container.suppressScrollRestoration = true
-        }
-
-        container.reloadDocument(document, focusCoordinator: focusCoordinator)
-
-        if let target = scrollTarget, context.coordinator.lastAppliedScrollTarget != target {
-            container.scrollToPosition(page: target.page, yPoints: target.yPoints, xPoints: target.xPoints)
-            context.coordinator.lastAppliedScrollTarget = target
-        }
-    }
-
-    private var horizontalSwipeHandler: ((UISwipeGestureRecognizer.Direction) -> Void)? {
-        guard let onCompactPreviewSwipe else { return nil }
-        return { direction in
-            guard direction.contains(.right) else { return }
-            onCompactPreviewSwipe()
-        }
-    }
-
-    final class Coordinator: NSObject {
-        weak var pdfView: PDFView?
-        weak var lastDocument: PDFDocument?
-        var lastAppliedScrollTarget: PreviewScrollTarget?
-        var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
-        var isHoldingInitialMountSuppression = false
-
-        init(onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?) {
-            self.onTapLocation = onTapLocation
-        }
-
-        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            guard let pdfView, let document = pdfView.document else { return }
-            let tapPoint = gesture.location(in: pdfView)
-
-            guard let tappedPage = pdfView.page(for: tapPoint, nearest: true) else { return }
-            let pagePoint = pdfView.convert(tapPoint, to: tappedPage)
-            let pageIndex = document.index(for: tappedPage)
-
-            // PDFKit Y is from bottom-left; convert to top-down.
-            let pageBounds = tappedPage.bounds(for: .mediaBox)
-            let yFromTop = pageBounds.height - pagePoint.y
-
-            onTapLocation?(pageIndex, Float(yFromTop))
-        }
-    }
-}
-
-extension PDFContainerView {
-    func scrollToPosition(page: Int, yPoints: Float, xPoints: Float) {
-        guard let document = pdfView.document,
-              page < document.pageCount,
-              let pdfPage = document.page(at: page) else { return }
-
-        // Convert top-down Y to PDFKit bottom-up coordinate.
-        let pageBounds = pdfPage.bounds(for: .mediaBox)
-        let pdfY = pageBounds.height - CGFloat(yPoints)
-        let pdfX = CGFloat(xPoints)
-
-        // Check if the target is already near the visible area.
-        // If so, skip `go(to:)` to avoid a jarring double-scroll bounce
-        // (go(to:) overshoots, then the refined animation corrects it).
-        let targetInView = pdfView.convert(CGPoint(x: pdfX, y: pdfY), from: pdfPage)
-        let visibleRect = pdfView.bounds.insetBy(dx: 0, dy: -pdfView.bounds.height * 0.5)
-        if !visibleRect.contains(targetInView) {
-            let destination = PDFDestination(page: pdfPage, at: CGPoint(x: pdfX, y: pdfY))
-            pdfView.go(to: destination)
-        }
-
-        // Defer the precise positioning to let PDFKit finish its internal layout.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.pdfView.document === document else { return }
-            self.layoutIfNeeded()
-            self.pdfView.layoutIfNeeded()
-
-            guard let scrollView = self.findScrollView(in: self.pdfView) else { return }
-
-            // Convert page-space point through scroll view to get content coordinates.
-            let pointInPDFView = self.pdfView.convert(CGPoint(x: pdfX, y: pdfY), from: pdfPage)
-            let pointInScrollContent = scrollView.convert(pointInPDFView, from: self.pdfView)
-
-            // Position the target at ~1/3 from the top of the visible area.
-            let anchorRatio: CGFloat = 0.33
-            let desiredOffset = CGPoint(
-                x: scrollView.contentOffset.x,
-                y: pointInScrollContent.y - scrollView.bounds.height * anchorRatio
-            )
-            let clampedOffset = self.clampedContentOffset(desiredOffset, in: scrollView)
-            let needsScroll = abs(scrollView.contentOffset.y - clampedOffset.y) > 2
-
-            self.scrollGeneration &+= 1
-            let currentGeneration = self.scrollGeneration
-
-            let showMarker = { [weak self] in
-                guard let self, self.scrollGeneration == currentGeneration else { return }
-                let updatedPoint = self.pdfView.convert(CGPoint(x: pdfX, y: pdfY), from: pdfPage)
-                let markerPoint = self.convert(updatedPoint, from: self.pdfView)
-                self.syncMarkerView.show(at: markerPoint)
-            }
-
-            if needsScroll {
-                UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
-                    scrollView.contentOffset = clampedOffset
-                } completion: { _ in
-                    showMarker()
-                }
-            } else {
-                showMarker()
-            }
-        }
-    }
-
-}
-
 // MARK: - SVG wrapper
 
 final class SVGPreviewContainerView: UIView {
@@ -641,12 +139,12 @@ final class SVGPreviewContainerView: UIView {
     private let visualFitZoomScale: CGFloat = 1
     private let minimumVisualZoomScale: CGFloat = 0.35
     private let maximumVisualZoomScale: CGFloat = 4
-    private let preRenderedZoomScale: CGFloat = 1
+    /// Oversamples the WebKit backing view without changing preview layout or user zoom.
+    private let svgBackingScale: CGFloat = 2.5
     private let reloadFadeDuration: TimeInterval = 0.12
     private let firstPaintDelay: TimeInterval = 0.08
+    private let pendingLoadFallbackDelay: TimeInterval = 1.2
     private var lastLaidOutWidth: CGFloat = 0
-    private var lastLaidOutRenderZoomScale: CGFloat = 0
-    private var renderZoomScale: CGFloat = 1
     private var scrollGeneration: UInt = 0
 
     private struct PageLayout {
@@ -655,7 +153,7 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private var fitZoomScale: CGFloat {
-        scrollZoomScale(forVisualZoom: visualFitZoomScale)
+        visualFitZoomScale
     }
 
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
@@ -686,6 +184,7 @@ final class SVGPreviewContainerView: UIView {
         scrollView.zoomScale = fitZoomScale
         scrollView.applySoftScrollEdgeEffects()
         addSubview(scrollView)
+        contentView.clipsToBounds = true
         scrollView.addSubview(contentView)
         addSubview(syncMarkerView)
 
@@ -749,8 +248,6 @@ final class SVGPreviewContainerView: UIView {
             pendingPages = nil
             pendingLoadID = nil
             lastLaidOutWidth = 0
-            lastLaidOutRenderZoomScale = 0
-            renderZoomScale = preRenderedZoomScale
             updateTransientZoomScaleLimits()
             scrollView.setZoomScale(fitZoomScale, animated: false)
             layoutPagesIfNeeded(force: true)
@@ -769,6 +266,7 @@ final class SVGPreviewContainerView: UIView {
         contentView.addSubview(webView)
         layoutPendingPageView()
         webView.loadHTMLString(html(forPages: newPages), baseURL: nil)
+        schedulePendingPageLoadFallback(loadID: loadID)
     }
 
     @discardableResult
@@ -814,12 +312,14 @@ final class SVGPreviewContainerView: UIView {
         return true
     }
 
-    private func layoutPagesIfNeeded(force: Bool = false, resetZoomToFit: Bool = false) {
+    private func layoutPagesIfNeeded(
+        force: Bool = false,
+        resetZoomToFit: Bool = false,
+        targetVisualZoomScale: CGFloat? = nil
+    ) {
         let viewportWidth = max(bounds.width, 1)
-        let layoutScale = max(renderZoomScale, 0.01)
         guard force
                 || abs(viewportWidth - lastLaidOutWidth) > 0.5
-                || abs(layoutScale - lastLaidOutRenderZoomScale) > 0.001
                 || pageFrames.count != pages.count else {
             if resetZoomToFit {
                 scrollView.setZoomScale(fitZoomScale, animated: false)
@@ -832,18 +332,17 @@ final class SVGPreviewContainerView: UIView {
         }
 
         let savedOffset = scrollView.contentOffset
-        let targetVisualZoomScale = resetZoomToFit
+        let nextVisualZoomScale = resetZoomToFit
             ? visualFitZoomScale
-            : min(max(currentVisualZoomScale, minimumVisualZoomScale), maximumVisualZoomScale)
-        let layout = pageLayout(for: pages, viewportWidth: viewportWidth, renderScale: layoutScale)
+            : min(max(targetVisualZoomScale ?? currentVisualZoomScale, minimumVisualZoomScale), maximumVisualZoomScale)
+        let layout = pageLayout(for: pages, viewportWidth: viewportWidth)
         pageFrames = layout.frames
 
         contentView.frame = CGRect(origin: .zero, size: layout.contentSize)
-        pageView?.frame = contentView.bounds
+        applyWebViewBackingLayout(to: pageView, logicalContentSize: layout.contentSize)
         lastLaidOutWidth = viewportWidth
-        lastLaidOutRenderZoomScale = layoutScale
         updateTransientZoomScaleLimits()
-        scrollView.setZoomScale(scrollZoomScale(forVisualZoom: targetVisualZoomScale), animated: false)
+        scrollView.setZoomScale(nextVisualZoomScale, animated: false)
         updateScrollContentSize()
         updateScrollInsetsIfNeeded()
         layoutPendingPageView()
@@ -852,14 +351,12 @@ final class SVGPreviewContainerView: UIView {
 
     private func pageLayout(
         for pages: [TypstPreviewPage],
-        viewportWidth: CGFloat? = nil,
-        renderScale: CGFloat? = nil
+        viewportWidth: CGFloat? = nil
     ) -> PageLayout {
         let viewportWidth = max(viewportWidth ?? bounds.width, 1)
-        let layoutScale = max(renderScale ?? renderZoomScale, 0.01)
-        let layoutWidth = max(viewportWidth * layoutScale, 1)
-        let margin = pageMargin * layoutScale
-        let gap = pageGap * layoutScale
+        let layoutWidth = max(viewportWidth, 1)
+        let margin = pageMargin
+        let gap = pageGap
         let availableWidth = max(layoutWidth - margin * 2, 1)
         var frames: [CGRect] = []
         frames.reserveCapacity(pages.count)
@@ -889,7 +386,27 @@ final class SVGPreviewContainerView: UIView {
     private func layoutPendingPageView() {
         guard let pendingPages, let pendingPageView else { return }
         let layout = pageLayout(for: pendingPages)
-        pendingPageView.frame = CGRect(origin: .zero, size: layout.contentSize)
+        applyWebViewBackingLayout(to: pendingPageView, logicalContentSize: layout.contentSize)
+    }
+
+    private func applyWebViewBackingLayout(to webView: WKWebView?, logicalContentSize: CGSize) {
+        guard let webView else { return }
+        let scale = max(svgBackingScale, 1)
+        let logicalSize = CGSize(
+            width: max(logicalContentSize.width, 1),
+            height: max(logicalContentSize.height, 1)
+        )
+
+        webView.transform = .identity
+        webView.bounds = CGRect(
+            origin: .zero,
+            size: CGSize(
+                width: logicalSize.width * scale,
+                height: logicalSize.height * scale
+            )
+        )
+        webView.center = CGPoint(x: logicalSize.width / 2, y: logicalSize.height / 2)
+        webView.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
     }
 
     private func scaleForPage(at index: Int) -> CGFloat {
@@ -958,9 +475,8 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func updateTransientZoomScaleLimits() {
-        let baseScale = max(renderZoomScale, 0.01)
-        scrollView.minimumZoomScale = minimumVisualZoomScale / baseScale
-        scrollView.maximumZoomScale = maximumVisualZoomScale / baseScale
+        scrollView.minimumZoomScale = minimumVisualZoomScale
+        scrollView.maximumZoomScale = maximumVisualZoomScale
     }
 
     private func clampContentOffsetIfNeeded() {
@@ -972,12 +488,8 @@ final class SVGPreviewContainerView: UIView {
         scrollView.setContentOffset(clampedOffset, animated: false)
     }
 
-    private func scrollZoomScale(forVisualZoom visualZoomScale: CGFloat) -> CGFloat {
-        visualZoomScale / max(renderZoomScale, 0.01)
-    }
-
     private var currentVisualZoomScale: CGFloat {
-        scrollView.zoomScale * max(renderZoomScale, 0.01)
+        scrollView.zoomScale
     }
 
     private func applyPreviewBackgroundColor() {
@@ -996,6 +508,17 @@ final class SVGPreviewContainerView: UIView {
             return
         }
         commitPendingPages(loadID: loadID)
+    }
+
+    private func schedulePendingPageLoadFallback(loadID: UUID) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + pendingLoadFallbackDelay) { [weak self] in
+            guard let self,
+                  self.pendingLoadID == loadID,
+                  self.pendingPageView != nil else {
+                return
+            }
+            self.commitPendingPages(loadID: loadID)
+        }
     }
 
     private func commitPendingPages(loadID: UUID) {
@@ -1078,7 +601,7 @@ final class SVGPreviewContainerView: UIView {
             return
         }
 
-        let targetScale = scrollZoomScale(forVisualZoom: min(maximumVisualZoomScale, 2.5))
+        let targetScale = min(maximumVisualZoomScale, 2.5)
         let center = recognizer.location(in: contentView)
         let zoomSize = CGSize(
             width: scrollView.bounds.width / targetScale,
@@ -1111,6 +634,7 @@ final class SVGPreviewContainerView: UIView {
             defer { horizontalPanStartLocation = nil }
             let translation = recognizer.translation(in: self)
             guard let startLocation = horizontalPanStartLocation,
+                  !allowsHorizontalScroll,
                   startLocation.x > reservedNavigationEdgeWidth,
                   translation.x >= 70,
                   abs(translation.x) > abs(translation.y) * 1.35 else {
@@ -1125,7 +649,7 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func html(forPages pages: [TypstPreviewPage]) -> String {
-        let scale = max(renderZoomScale, 0.01)
+        let scale = max(svgBackingScale, 1)
         let margin = Self.cssPixels(pageMargin * scale)
         let gap = Self.cssPixels(pageGap * scale)
         let pageHTML = pages.map { page in
@@ -1208,7 +732,8 @@ extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
         }
         let startLocation = panRecognizer.location(in: self)
         let velocity = panRecognizer.velocity(in: self)
-        return startLocation.x > reservedNavigationEdgeWidth
+        return !allowsHorizontalScroll
+            && startLocation.x > reservedNavigationEdgeWidth
             && velocity.x > 0
             && abs(velocity.x) > abs(velocity.y) * 1.35
     }
@@ -1249,6 +774,10 @@ extension SVGPreviewContainerView: UIScrollViewDelegate {
 }
 
 extension SVGPreviewContainerView: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        completePendingPageLoad(for: webView)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === pendingPageView,
               let loadID = pendingLoadID else {
@@ -1385,8 +914,7 @@ struct PreviewPane: View {
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
     @State private var isSVGPreviewRendering = false
-    @State private var isSVGPreviewAwaitingFirstPaint = false
-    @State private var hasPresentedRenderablePreview = false
+    @State private var lastCompileSignature: PreviewCompileInputSignature?
 
     private var previewStatistics: PreviewStatistics? {
         guard compiler.compiledOnce else { return nil }
@@ -1398,19 +926,12 @@ struct PreviewPane: View {
     }
 
     private var hasRenderablePreview: Bool {
-        if let artifact = compiler.previewArtifact, !artifact.svgPages.isEmpty {
-            return true
-        }
-        return compiler.pdfDocument != nil
+        compiler.previewArtifact?.svgPages.isEmpty == false
     }
 
     private var isPreviewLoading: Bool {
-        (compiler.isPreviewUpdating || isSVGPreviewRendering || isSVGPreviewAwaitingFirstPaint)
+        (compiler.isPreviewUpdating || isSVGPreviewRendering)
             && !requiresExternalFolderLink
-    }
-
-    private var showsInitialPreviewLoadingCover: Bool {
-        isPreviewLoading && !hasPresentedRenderablePreview
     }
 
     private var visibleFontWarnings: [CompileFontWarning] {
@@ -1418,7 +939,7 @@ struct PreviewPane: View {
     }
 
     private var keyboardAccessoryClearance: CGFloat { 80 }
-    private var minimumBottomOverlayClearance: CGFloat { 96 }
+    private var minimumBottomOverlayClearance: CGFloat { 0 }
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -1456,37 +977,6 @@ struct PreviewPane: View {
                     compiler.errorMessage == nil ? L10n.a11yPreviewValueReady : L10n.a11yPreviewValueError
                 )
                 .accessibilityIdentifier("editor.preview")
-            } else if let pdf = compiler.pdfDocument {
-                PDFKitView(
-                    document: pdf,
-                    focusCoordinator: focusCoordinator,
-                    topViewportInset: topViewportInset,
-                    bottomViewportInset: previewBottomViewportInset,
-                    scrollTarget: syncCoordinator?.previewScrollTarget,
-                    backgroundColor: backgroundColor,
-                    onTapLocation: { page, yPoints in
-                        guard let syncCoordinator,
-                              let sourceMap,
-                              let location = sourceMap.sourceLocation(forPage: page, yPoints: yPoints),
-                              syncCoordinator.beginSync(.previewToEditor) else {
-                            return
-                        }
-
-                        syncCoordinator.editorScrollTarget = EditorScrollTarget(
-                            line: location.line,
-                            column: location.column
-                        )
-                    },
-                    onCompactPreviewSwipe: onCompactPreviewSwipe
-                )
-                .ignoresSafeArea(.container, edges: .bottom)
-                .softScrollEdgeEffect()
-                .accessibilityLabel(L10n.a11yPreviewLabel)
-                .accessibilityHint(L10n.a11yPreviewHint)
-                .accessibilityValue(
-                    compiler.errorMessage == nil ? L10n.a11yPreviewValueReady : L10n.a11yPreviewValueError
-                )
-                .accessibilityIdentifier("editor.preview")
             } else if isPreviewLoading {
                 compilingPlaceholderView
                     .padding(.top, topViewportInset)
@@ -1495,12 +985,7 @@ struct PreviewPane: View {
                     .padding(.top, topViewportInset)
             }
 
-            if showsInitialPreviewLoadingCover && hasRenderablePreview {
-                compilingPlaceholderView
-                    .padding(.top, topViewportInset)
-                    .transition(.opacity)
-                    .zIndex(4)
-            } else if showsCompilingIndicatorOverlay && isPreviewLoading && hasRenderablePreview {
+            if showsCompilingIndicatorOverlay && isPreviewLoading {
                 compilingIndicatorOverlay
             }
 
@@ -1540,39 +1025,14 @@ struct PreviewPane: View {
                 compileIfNeeded()
             }
             .onChange(of: hasRenderablePreview) { _, hasPreview in
-                if hasPreview {
-                    let isSVGArtifact = compiler.previewArtifact?.svgPages.isEmpty == false
-                    if !isPreviewLoading && !isSVGArtifact {
-                        hasPresentedRenderablePreview = true
-                    }
-                } else {
-                    hasPresentedRenderablePreview = false
+                if !hasPreview {
                     isSVGPreviewRendering = false
-                    isSVGPreviewAwaitingFirstPaint = false
                     isShowingStatsDetails = false
-                }
-            }
-            .onChange(of: compiler.previewArtifact) { _, artifact in
-                if artifact?.svgPages.isEmpty == false {
-                    isSVGPreviewAwaitingFirstPaint = true
-                    isSVGPreviewRendering = true
-                }
-            }
-            .onChange(of: isSVGPreviewRendering) { _, isRendering in
-                if !isRendering, compiler.previewArtifact?.svgPages.isEmpty == false {
-                    isSVGPreviewAwaitingFirstPaint = false
-                    hasPresentedRenderablePreview = true
-                }
-            }
-            .onChange(of: isPreviewLoading, initial: true) { _, isLoading in
-                if !isLoading, hasRenderablePreview {
-                    hasPresentedRenderablePreview = true
                 }
             }
             .onChange(of: compiler.errorMessage, initial: true) { _, newValue in
                 if newValue != nil {
                     isSVGPreviewRendering = false
-                    isSVGPreviewAwaitingFirstPaint = false
                 }
                 let shouldExpand = (newValue != nil) && !hasRenderablePreview
                 guard shouldExpand != isShowingErrorDetails else { return }
@@ -1617,7 +1077,7 @@ struct PreviewPane: View {
                 .padding(8)
                 .systemFloatingSurface(cornerRadius: 8)
                 .padding(.top, topOverlayPadding(safeAreaTop: geometry.safeAreaInsets.top))
-                .padding(.trailing, 16)
+                .padding(.trailing, 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .allowsHitTesting(false)
@@ -1632,7 +1092,7 @@ struct PreviewPane: View {
     }
 
     private func topOverlayPadding(safeAreaTop: CGFloat) -> CGFloat {
-        max(topViewportInset, overlayTopInset, safeAreaTop) + 14
+        max(overlayTopInset, safeAreaTop) + 8
     }
 
     private var previewBottomViewportInset: CGFloat {
@@ -1688,33 +1148,41 @@ struct PreviewPane: View {
 
     /// Only compile when the source contains meaningful content.
     private func compileIfNeeded() {
+        let effectiveCompileSource = compileSource ?? source
+        let signature = PreviewCompileInputSignature(
+            source: effectiveCompileSource,
+            fontPaths: fontPaths,
+            preflightError: preflightError,
+            rootDir: rootDir,
+            previewCacheDescriptor: previewCacheDescriptor,
+            compileToken: compileToken,
+            requiresExternalFolderLink: requiresExternalFolderLink
+        )
+        guard signature != lastCompileSignature else { return }
+        lastCompileSignature = signature
+
         if requiresExternalFolderLink {
             isSVGPreviewRendering = false
-            isSVGPreviewAwaitingFirstPaint = false
-            hasPresentedRenderablePreview = false
             compiler.cancel()
             compiler.clearPreview()
             return
         }
-        let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             isSVGPreviewRendering = false
-            isSVGPreviewAwaitingFirstPaint = false
-            hasPresentedRenderablePreview = false
             compiler.clearPreview()
             return
         }
         if let preflightError {
             isSVGPreviewRendering = false
-            isSVGPreviewAwaitingFirstPaint = false
-            hasPresentedRenderablePreview = false
             compiler.presentPreflightError(preflightError)
             return
         }
+        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
         compiler.compile(
             source: effectiveCompileSource,
             fontPaths: fontPaths,
             rootDir: rootDir,
+            mode: mode,
             previewCachePolicy: .useCacheIfValid,
             previewCacheDescriptor: previewCacheDescriptor
         )
@@ -1754,16 +1222,8 @@ struct PreviewPane: View {
     }
 
     private var compilingPlaceholderView: some View {
-        VStack(spacing: 14) {
-            ProgressView()
-                .controlSize(.regular)
-                .accessibilityHidden(true)
-            Text(L10n.tr("Compiling…"))
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
+        Color(uiColor: backgroundColor)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: backgroundColor))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.tr("Compiling…"))
         .accessibilityValue(L10n.a11yPreviewValueEmpty)
@@ -2122,6 +1582,7 @@ struct PreviewCompileDriver: View {
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     var compileToken: UUID
     var requiresExternalFolderLink: Bool = false
+    @State private var lastCompileSignature: PreviewCompileInputSignature?
 
     var body: some View {
         Color.clear
@@ -2155,12 +1616,24 @@ struct PreviewCompileDriver: View {
     }
 
     private func compileIfNeeded() {
+        let effectiveCompileSource = compileSource ?? source
+        let signature = PreviewCompileInputSignature(
+            source: effectiveCompileSource,
+            fontPaths: fontPaths,
+            preflightError: preflightError,
+            rootDir: rootDir,
+            previewCacheDescriptor: previewCacheDescriptor,
+            compileToken: compileToken,
+            requiresExternalFolderLink: requiresExternalFolderLink
+        )
+        guard signature != lastCompileSignature else { return }
+        lastCompileSignature = signature
+
         if requiresExternalFolderLink {
             compiler.cancel()
             compiler.clearPreview()
             return
         }
-        let effectiveCompileSource = compileSource ?? source
         guard !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             compiler.clearPreview()
             return
@@ -2169,10 +1642,12 @@ struct PreviewCompileDriver: View {
             compiler.presentPreflightError(preflightError)
             return
         }
+        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
         compiler.compile(
             source: effectiveCompileSource,
             fontPaths: fontPaths,
             rootDir: rootDir,
+            mode: mode,
             previewCachePolicy: .useCacheIfValid,
             previewCacheDescriptor: previewCacheDescriptor
         )

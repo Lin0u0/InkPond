@@ -5,7 +5,6 @@
 
 import SwiftUI
 import SwiftData
-import PDFKit
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
@@ -777,7 +776,7 @@ extension DocumentEditorView {
                     regularToolbarIconLabel("play.rectangle", size: iconSize)
                 }
                 .contentShape(Rectangle())
-                .disabled(!compiler.compiledOnce)
+                .disabled(!canPresentSlideshow)
                 .accessibilityLabel(L10n.tr("Slideshow"))
             }
 
@@ -811,7 +810,7 @@ extension DocumentEditorView {
                         } label: {
                             Label(L10n.tr("Slideshow"), systemImage: "play.rectangle")
                         }
-                        .disabled(!compiler.compiledOnce)
+                        .disabled(!canPresentSlideshow)
 
                         Button(action: shareButtonAction) {
                             Label(shareButtonLabel, systemImage: shareMenuSystemImage)
@@ -1266,17 +1265,16 @@ extension DocumentEditorView {
                         .opacity(selectedTab == editorTab ? 1 : 0)
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
-                    if selectedTab == previewTab {
-                        previewPane(
-                            topViewportInset: topViewportInset,
-                            overlayTopInset: overlayTopInset,
-                            overlayBottomInset: overlayBottomInset
-                        )
-                            .ignoresSafeArea(edges: .top)
-                            .softScrollEdgeEffect()
-                            .transition(.identity)
-                            .accessibilityHidden(false)
-                    }
+                    previewPane(
+                        topViewportInset: 0,
+                        overlayTopInset: overlayTopInset,
+                        overlayBottomInset: overlayBottomInset
+                    )
+                        .ignoresSafeArea(edges: .top)
+                        .softScrollEdgeEffect()
+                        .opacity(selectedTab == previewTab ? 1 : 0)
+                        .allowsHitTesting(selectedTab == previewTab)
+                        .accessibilityHidden(selectedTab != previewTab)
                 }
                 .animation(nil, value: selectedTab)
                 .simultaneousGesture(compactModeSwipeGesture)
@@ -1464,9 +1462,6 @@ extension DocumentEditorView {
                 if horizontal < 0, selectedTab == editorTab, startsAwayFromLeadingEdge {
                     pendingCompactSwipeFeedback = true
                     selectedTab = previewTab
-                } else if horizontal > 0, selectedTab == previewTab, startsAwayFromLeadingEdge {
-                    pendingCompactSwipeFeedback = true
-                    selectedTab = editorTab
                 }
             }
     }
@@ -1485,7 +1480,7 @@ extension DocumentEditorView {
                     exporter.exportError = fontResolutionError
                     return
                 }
-                exporter.exportPDF(for: document, cachedPDFData: compiler.pdfData)
+                exporter.exportPDF(for: document)
             }
         }
         return {
@@ -1514,6 +1509,10 @@ extension DocumentEditorView {
     var canTriggerPreviewActions: Bool {
         !previewRequiresExternalFolderLink
             && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canPresentSlideshow: Bool {
+        compiler.previewArtifact?.svgPages.isEmpty == false
     }
 
     private func regularShouldShowPreviewStatistics(for previewWidth: CGFloat) -> Bool {
@@ -1777,7 +1776,7 @@ extension DocumentEditorView {
                         compactToolbarGlassLabel(systemName: "play.rectangle")
                     }
                     .buttonStyle(.plain)
-                    .disabled(!compiler.compiledOnce)
+                    .disabled(!canPresentSlideshow)
                 }
             }
         }
@@ -2193,8 +2192,8 @@ extension DocumentEditorView {
                 handleProjectFileImportFromMenu(result)
             }
             .fullScreenCover(isPresented: $showingSlideshow) {
-                if let pdf = compiler.pdfDocumentForCurrentData() {
-                    SlideshowView(document: pdf)
+                if let pages = compiler.previewArtifact?.svgPages, !pages.isEmpty {
+                    SlideshowView(pages: pages)
                 }
             }
             .alert("New Source File", isPresented: $showingNewProjectFileAlert) {
