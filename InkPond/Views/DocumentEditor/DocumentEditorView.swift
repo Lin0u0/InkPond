@@ -5,7 +5,6 @@
 
 import SwiftUI
 import SwiftData
-import PDFKit
 import PhotosUI
 
 actor BackgroundDocumentFileWriter {

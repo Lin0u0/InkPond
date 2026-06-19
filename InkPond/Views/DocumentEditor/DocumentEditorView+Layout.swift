@@ -5,7 +5,6 @@
 
 import SwiftUI
 import SwiftData
-import PDFKit
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
@@ -689,39 +688,7 @@ extension DocumentEditorView {
 
     private var regularProjectTitleMenu: some View {
         Menu {
-            Section {
-                Button {
-                    InteractionFeedback.impact(.light)
-                    showingProjectSettings = true
-                } label: {
-                    Label("Project Settings", systemImage: "gearshape")
-                }
-                Button {
-                    newProjectFileName = ""
-                    showingNewProjectFileAlert = true
-                } label: {
-                    Label("New .typ File", systemImage: "doc.badge.plus")
-                }
-                Button {
-                    showingProjectFileImporter = true
-                } label: {
-                    Label("Import File", systemImage: "square.and.arrow.down")
-                }
-            }
-            Section {
-            Button { shareButtonAction() } label: {
-                Label(L10n.tr("Share"), systemImage: "square.and.arrow.up")
-            }
-            Button {
-                guard flushPendingSave() else { return }
-                exporter.exportTypSource(for: document, fileName: currentFileName)
-            } label: {
-                Label("Export .typ", systemImage: "square.and.arrow.up.on.square")
-            }
-            Button { triggerZipExport() } label: {
-                Label("Export Project as Zip", systemImage: "archivebox")
-            }
-            }
+            projectTitleMenuContent
         } label: {
             HStack(spacing: 5) {
                 Text(document.title)
@@ -809,15 +776,16 @@ extension DocumentEditorView {
                     regularToolbarIconLabel("play.rectangle", size: iconSize)
                 }
                 .contentShape(Rectangle())
-                .disabled(!compiler.compiledOnce)
+                .disabled(!canPresentSlideshow)
                 .accessibilityLabel(L10n.tr("Slideshow"))
             }
 
             if !usesMinimalLayout {
                 Button(action: shareButtonAction) {
-                    regularToolbarIconLabel("square.and.arrow.up", size: iconSize)
+                    regularShareToolbarLabel(size: iconSize)
                 }
                 .contentShape(Rectangle())
+                .disabled(exporter.exportButtonPhase != .idle)
                 .accessibilityLabel(Text(shareButtonLabel))
                 .accessibilityHint(L10n.a11yEditorShareHint)
                 .accessibilityIdentifier("editor.share")
@@ -842,19 +810,12 @@ extension DocumentEditorView {
                         } label: {
                             Label(L10n.tr("Slideshow"), systemImage: "play.rectangle")
                         }
-                        .disabled(!compiler.compiledOnce)
+                        .disabled(!canPresentSlideshow)
 
                         Button(action: shareButtonAction) {
-                            Label(shareButtonLabel, systemImage: "square.and.arrow.up")
+                            Label(shareButtonLabel, systemImage: shareMenuSystemImage)
                         }
-                    }
-                }
-                Section {
-                    Button {
-                        InteractionFeedback.impact(.light)
-                        showingProjectSettings = true
-                    } label: {
-                        Label("Project Settings", systemImage: "gearshape")
+                        .disabled(exporter.exportButtonPhase != .idle)
                     }
                 }
                 Section {
@@ -909,14 +870,14 @@ extension DocumentEditorView {
             ? regularToolbarPreviewStatsCompactEstimatedWidth
             : regularToolbarPreviewStatsFullEstimatedWidth
         let hasStats = stats != nil
-        let isCompiling = compiler.isCompiling
+        let isUpdatingPreview = compiler.isPreviewUpdating
 
         return Button {
             guard hasStats else { return }
             showingPreviewStatsDetails.toggle()
         } label: {
             HStack(spacing: 5) {
-                if isCompiling {
+                if isUpdatingPreview {
                     ProgressView()
                         .controlSize(.mini)
                         .tint(regularToolbarForegroundColor)
@@ -934,12 +895,12 @@ extension DocumentEditorView {
                     )
                         .transition(.opacity)
                 } else if usesCompactLabel {
-                    if !isCompiling {
+                    if !isUpdatingPreview {
                         ProgressView()
                             .controlSize(.mini)
                     }
                 } else {
-                    if !isCompiling {
+                    if !isUpdatingPreview {
                         ProgressView()
                             .controlSize(.mini)
                     }
@@ -972,7 +933,7 @@ extension DocumentEditorView {
         .frame(width: pillWidth)
         .regularToolbarCapsuleSurface()
         .animation(.easeInOut(duration: 0.18), value: hasStats)
-        .animation(.easeInOut(duration: 0.18), value: isCompiling)
+        .animation(.easeInOut(duration: 0.18), value: isUpdatingPreview)
     }
 
     private func regularPreviewStatsCompactLabel(_ wordCount: Int) -> String {
@@ -1033,6 +994,28 @@ extension DocumentEditorView {
             .font(.title3.weight(.semibold))
             .foregroundStyle(regularToolbarForegroundColor)
             .frame(width: size, height: regularToolbarControlHeight - 4)
+    }
+
+    @ViewBuilder
+    private func regularShareToolbarLabel(size: CGFloat = 44) -> some View {
+        ZStack {
+            regularToolbarIconLabel("square.and.arrow.up", size: size)
+                .opacity(exporter.exportButtonPhase == .idle ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .idle ? 1 : 0.84)
+
+            ProgressView()
+                .controlSize(.small)
+                .tint(regularToolbarForegroundColor)
+                .frame(width: size, height: regularToolbarControlHeight - 4)
+                .opacity(exporter.exportButtonPhase == .exporting ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .exporting ? 1 : 0.84)
+
+            regularToolbarIconLabel("checkmark", size: size)
+                .opacity(exporter.exportButtonPhase == .completed ? 1 : 0)
+                .scaleEffect(exporter.exportButtonPhase == .completed ? 1 : 0.84)
+        }
+        .frame(width: size, height: regularToolbarControlHeight - 4)
+        .animation(.easeInOut(duration: 0.18), value: exporter.exportButtonPhase)
     }
 
     @ViewBuilder
@@ -1282,17 +1265,16 @@ extension DocumentEditorView {
                         .opacity(selectedTab == editorTab ? 1 : 0)
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
-                    if selectedTab == previewTab {
-                        previewPane(
-                            topViewportInset: topViewportInset,
-                            overlayTopInset: overlayTopInset,
-                            overlayBottomInset: overlayBottomInset
-                        )
-                            .ignoresSafeArea(edges: .top)
-                            .softScrollEdgeEffect()
-                            .transition(.identity)
-                            .accessibilityHidden(false)
-                    }
+                    previewPane(
+                        topViewportInset: 0,
+                        overlayTopInset: overlayTopInset,
+                        overlayBottomInset: overlayBottomInset
+                    )
+                        .ignoresSafeArea(edges: .top)
+                        .softScrollEdgeEffect()
+                        .opacity(selectedTab == previewTab ? 1 : 0)
+                        .allowsHitTesting(selectedTab == previewTab)
+                        .accessibilityHidden(selectedTab != previewTab)
                 }
                 .animation(nil, value: selectedTab)
                 .simultaneousGesture(compactModeSwipeGesture)
@@ -1480,9 +1462,6 @@ extension DocumentEditorView {
                 if horizontal < 0, selectedTab == editorTab, startsAwayFromLeadingEdge {
                     pendingCompactSwipeFeedback = true
                     selectedTab = previewTab
-                } else if horizontal > 0, selectedTab == previewTab, startsAwayFromLeadingEdge {
-                    pendingCompactSwipeFeedback = true
-                    selectedTab = editorTab
                 }
             }
     }
@@ -1501,7 +1480,7 @@ extension DocumentEditorView {
                     exporter.exportError = fontResolutionError
                     return
                 }
-                exporter.exportPDF(for: document, cachedPDF: compiler.pdfDocument)
+                exporter.exportPDF(for: document)
             }
         }
         return {
@@ -1516,9 +1495,24 @@ extension DocumentEditorView {
         return L10n.tr("Export .typ")
     }
 
+    private var shareMenuSystemImage: String {
+        switch exporter.exportButtonPhase {
+        case .idle:
+            "square.and.arrow.up"
+        case .exporting:
+            "hourglass"
+        case .completed:
+            "checkmark"
+        }
+    }
+
     var canTriggerPreviewActions: Bool {
         !previewRequiresExternalFolderLink
             && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canPresentSlideshow: Bool {
+        compiler.previewArtifact?.svgPages.isEmpty == false
     }
 
     private func regularShouldShowPreviewStatistics(for previewWidth: CGFloat) -> Bool {
@@ -1529,7 +1523,7 @@ extension DocumentEditorView {
     }
 
     private var toolbarPreviewStatisticsIncludesRenderedPages: Bool {
-        compiler.pdfDocument != nil
+        compiler.compiledOnce
     }
 
     private var toolbarPreviewStatistics: PreviewStatistics? {
@@ -1540,7 +1534,7 @@ extension DocumentEditorView {
             return nil
         }
         return PreviewStatistics(
-            pageCount: max(compiler.pdfDocument?.pageCount ?? 0, 0),
+            pageCount: max(compiler.pageCount, 0),
             wordCount: previewStatsWordCount,
             characterCount: previewStatsCharacterCount
         )
@@ -1601,35 +1595,60 @@ extension DocumentEditorView {
         .accessibilityLabel(resumeBannerLabel)
         .accessibilityHint(L10n.tr("resume.banner.a11y_hint"))
     }
+
     @ViewBuilder
-    private var editorToolbarMenuContent: some View {
+    private var projectTitleMenuContent: some View {
         Section {
-            Button(action: shareButtonAction) {
-                Label(shareButtonLabel, systemImage: "square.and.arrow.up")
+            Button {
+                InteractionFeedback.impact(.light)
+                showingProjectSettings = true
+            } label: {
+                Label("Project Settings", systemImage: "gearshape")
             }
+            Button {
+                newProjectFileName = ""
+                showingNewProjectFileAlert = true
+            } label: {
+                Label("New .typ File", systemImage: "doc.badge.plus")
+            }
+            Button {
+                showingProjectFileImporter = true
+            } label: {
+                Label("Import File", systemImage: "square.and.arrow.down")
+            }
+        }
+
+        Section {
+            if sizeClass != .regular, !previewRequiresExternalFolderLink, selectedTab == previewTab {
+                Button(action: shareButtonAction) {
+                    Label(shareButtonLabel, systemImage: shareMenuSystemImage)
+                }
+                .disabled(exporter.exportButtonPhase != .idle)
+            }
+
             Button {
                 guard flushPendingSave() else { return }
                 exporter.exportTypSource(for: document, fileName: currentFileName)
             } label: {
                 Label("Export .typ", systemImage: "square.and.arrow.up.on.square")
             }
+            .disabled(exporter.exportButtonPhase != .idle)
+
             Button { triggerZipExport() } label: {
                 Label("Export Project as Zip", systemImage: "archivebox")
             }
+            .disabled(exporter.exportButtonPhase != .idle)
         }
+    }
 
+    @ViewBuilder
+    private var editorToolbarMenuContent: some View {
         Section {
             Button {
                 InteractionFeedback.impact(.light)
                 showingFileBrowser = true
             } label: {
                 Label("Project Files", systemImage: "folder")
-            }
-            Button {
-                InteractionFeedback.impact(.light)
-                showingProjectSettings = true
-            } label: {
-                Label("Project Settings", systemImage: "gearshape")
             }
         }
 
@@ -1654,6 +1673,16 @@ extension DocumentEditorView {
         }
 
         Section {
+            Button {
+                Task { @MainActor in
+                    await Task.yield()
+                    compilePreviewNow()
+                }
+            } label: {
+                Label("Compile Now", systemImage: "play.circle")
+            }
+            .disabled(!canTriggerPreviewActions)
+
             Button {
                 Task { @MainActor in
                     await Task.yield()
@@ -1747,7 +1776,7 @@ extension DocumentEditorView {
                         compactToolbarGlassLabel(systemName: "play.rectangle")
                     }
                     .buttonStyle(.plain)
-                    .disabled(!compiler.compiledOnce)
+                    .disabled(!canPresentSlideshow)
                 }
             }
         }
@@ -1755,7 +1784,7 @@ extension DocumentEditorView {
 
     private var compactNavigationTitle: some View {
         Menu {
-            editorToolbarMenuContent
+            projectTitleMenuContent
         } label: {
             HStack(alignment: .center, spacing: 4) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -2065,10 +2094,10 @@ extension DocumentEditorView {
                 InteractionFeedback.notify(.error)
                 AccessibilitySupport.announce(newValue)
             }
-            .onChange(of: compiler.pdfDocument) { _, newValue in
-                if newValue != nil {
+            .onChange(of: compiler.previewArtifact) { _, newValue in
+                if newValue != nil, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
                     syncCursorToPreviewIfPending()
-                } else {
+                } else if newValue == nil {
                     showingPreviewStatsDetails = false
                 }
                 guard pendingManualCompileFeedback, newValue != nil, compiler.errorMessage == nil else { return }
@@ -2091,18 +2120,6 @@ extension DocumentEditorView {
 
     var editorOverlaysAndAlerts: some View {
         editorSheetsAndEvents
-            .overlay {
-                if exporter.isExporting {
-                    ZStack {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .ignoresSafeArea()
-                        ProgressView("Compiling…")
-                            .padding()
-                            .systemFloatingSurface(cornerRadius: 12)
-                    }
-                }
-            }
             .safeAreaInset(edge: .bottom) {
                 externalFolderLinkProgressInset
             }
@@ -2175,8 +2192,8 @@ extension DocumentEditorView {
                 handleProjectFileImportFromMenu(result)
             }
             .fullScreenCover(isPresented: $showingSlideshow) {
-                if let pdf = compiler.pdfDocument {
-                    SlideshowView(document: pdf)
+                if let pages = compiler.previewArtifact?.svgPages, !pages.isEmpty {
+                    SlideshowView(pages: pages)
                 }
             }
             .alert("New Source File", isPresented: $showingNewProjectFileAlert) {

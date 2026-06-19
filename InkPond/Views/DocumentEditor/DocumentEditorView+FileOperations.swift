@@ -608,10 +608,10 @@ extension DocumentEditorView {
         }
         pendingCursorJump = document.lastCursorLocation
 
-        // If the compiler already has a PDF and source map (e.g. from cache),
+        // If the compiler already has a preview and source map (e.g. from cache),
         // defer the sync until after the cursor jump lands.  Otherwise, wait
-        // for the next compilation to finish via onChange(of: compiler.pdfDocument).
-        if compiler.pdfDocument != nil, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
+        // for the next compilation to finish via onChange(of: compiler.previewArtifact).
+        if compiler.compiledOnce, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
             // Sync after the cursor jump is applied in the next run-loop cycle.
             Task { @MainActor in
                 syncCursorToPreview(at: document.lastCursorLocation)

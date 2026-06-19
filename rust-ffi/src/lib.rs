@@ -21,12 +21,14 @@ use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_library::text::RAW_SYNTAXES;
 use typst_pdf::{pdf, PdfOptions};
+use typst_svg::svg;
 
 const EXTRA_FONT_CACHE_LIMIT: usize = 16;
 
 static BUNDLED_FONT_FACES: OnceLock<Arc<Vec<Font>>> = OnceLock::new();
 static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> = OnceLock::new();
 static PACKAGE_FETCH_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+static PREVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<SimpleWorld>>>> = OnceLock::new();
 
 #[cfg(debug_assertions)]
 macro_rules! debug_log {
@@ -70,7 +72,7 @@ struct SimpleWorld {
     book: LazyHash<FontBook>,
     fonts: Vec<Font>,
     main_id: FileId,
-    source: Source,
+    source: Mutex<Source>,
     /// Root directory for the package cache (if provided).
     pkg_cache_root: Option<PathBuf>,
     /// Root directory for resolving local file references (images, imports).
@@ -192,7 +194,7 @@ impl SimpleWorld {
             book: LazyHash::new(book),
             fonts,
             main_id,
-            source,
+            source: Mutex::new(source),
             pkg_cache_root,
             root_dir,
             local_packages_root,
@@ -200,6 +202,16 @@ impl SimpleWorld {
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn main_source(&self) -> Source {
+        self.source.lock().unwrap().clone()
+    }
+
+    fn replace_main_source(&self, source_text: &str) {
+        self.source.lock().unwrap().replace(source_text);
+        self.source_cache.lock().unwrap().clear();
+        self.file_cache.lock().unwrap().clear();
     }
 
     /// Return (and download if needed) the local directory for a package.
@@ -481,7 +493,7 @@ impl World for SimpleWorld {
 
     fn source(&self, id: FileId) -> FileResult<Source> {
         if id == self.main_id {
-            return Ok(self.source.clone());
+            return Ok(self.main_source());
         }
 
         // Check cache first
@@ -768,6 +780,31 @@ pub struct TypstResultWithMap {
     pub source_map_len: usize,
 }
 
+/// A single SVG page returned by preview compilation.
+#[repr(C)]
+pub struct TypstSvgPage {
+    /// Null-terminated UTF-8 SVG document.
+    pub svg: *mut c_char,
+    /// Page width in Typst/PDF points.
+    pub width_pt: f32,
+    /// Page height in Typst/PDF points.
+    pub height_pt: f32,
+}
+
+/// Preview artifact returned across the FFI boundary.
+/// Free with `typst_free_preview_result`.
+#[repr(C)]
+pub struct TypstPreviewResult {
+    pub pdf_data: *mut u8,
+    pub pdf_len: usize,
+    pub error_message: *mut c_char,
+    pub success: bool,
+    pub source_map: *mut SourceMapEntry,
+    pub source_map_len: usize,
+    pub svg_pages: *mut TypstSvgPage,
+    pub svg_page_len: usize,
+}
+
 /// Walk a frame recursively, collecting source map entries for text items.
 fn walk_frame(
     frame: &Frame,
@@ -977,7 +1014,8 @@ unsafe fn typst_compile_with_source_map_impl(
 
     match typst::compile::<PagedDocument>(&world).output {
         Ok(document) => {
-            let map_entries = extract_source_map(&document, &world.source);
+            let main_source = world.main_source();
+            let map_entries = extract_source_map(&document, &main_source);
 
             match pdf(&document, &PdfOptions::default()) {
                 Ok(bytes) => {
@@ -1012,6 +1050,202 @@ unsafe fn typst_compile_with_source_map_impl(
     }
 }
 
+/// Compile Typst source once into a preview artifact containing SVG pages,
+/// PDF bytes, and source-map entries.
+///
+/// If `session_key` is non-null and non-empty, the Rust side reuses a
+/// `SimpleWorld` for that key and updates its main source with
+/// `Source::replace` before recompiling.
+///
+/// # Safety
+/// Same requirements as `typst_compile`; `session_key` may be null.
+/// Free the result with `typst_free_preview_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_compile_preview(
+    source: *const c_char,
+    options: *const TypstOptions,
+    session_key: *const c_char,
+) -> TypstPreviewResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_compile_preview_impl(source, options, session_key, true)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_result_preview("Typst compiler panicked"),
+    }
+}
+
+/// Compile Typst source once into a live-preview artifact containing SVG pages
+/// and source-map entries. PDF export is intentionally skipped so live preview
+/// can become visible before compatibility export work is needed.
+///
+/// # Safety
+/// Same requirements as `typst_compile_preview`; `session_key` may be null.
+/// Free the result with `typst_free_preview_result`.
+#[no_mangle]
+pub unsafe extern "C" fn typst_compile_preview_svg(
+    source: *const c_char,
+    options: *const TypstOptions,
+    session_key: *const c_char,
+) -> TypstPreviewResult {
+    match catch_unwind(AssertUnwindSafe(|| unsafe {
+        typst_compile_preview_impl(source, options, session_key, false)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_result_preview("Typst compiler panicked"),
+    }
+}
+
+unsafe fn typst_compile_preview_impl(
+    source: *const c_char,
+    options: *const TypstOptions,
+    session_key: *const c_char,
+    include_pdf: bool,
+) -> TypstPreviewResult {
+    if source.is_null() {
+        return error_result_preview("null source pointer");
+    }
+    let source_str = match CStr::from_ptr(source).to_str() {
+        Ok(s) => s,
+        Err(_) => return error_result_preview("source is not valid UTF-8"),
+    };
+    let session_key = match preview_session_key(session_key) {
+        Ok(key) => key,
+        Err(result) => return result,
+    };
+
+    let world = preview_world(source_str, options, session_key);
+
+    match typst::compile::<PagedDocument>(&*world).output {
+        Ok(document) => preview_result_from_document(&world, document, include_pdf),
+        Err(e) => error_result_preview(&format_diagnostics(&world, &e)),
+    }
+}
+
+unsafe fn preview_session_key(
+    session_key: *const c_char,
+) -> Result<Option<String>, TypstPreviewResult> {
+    if session_key.is_null() {
+        return Ok(None);
+    }
+
+    match CStr::from_ptr(session_key).to_str() {
+        Ok(key) if key.is_empty() => Ok(None),
+        Ok(key) => Ok(Some(key.to_string())),
+        Err(_) => Err(error_result_preview("preview session key is not valid UTF-8")),
+    }
+}
+
+unsafe fn preview_world(
+    source_str: &str,
+    options: *const TypstOptions,
+    session_key: Option<String>,
+) -> Arc<SimpleWorld> {
+    let Some(session_key) = session_key else {
+        return Arc::new(SimpleWorld::new(source_str, options));
+    };
+
+    let sessions = PREVIEW_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = sessions.lock().unwrap();
+    if let Some(world) = guard.get(&session_key).cloned() {
+        world.replace_main_source(source_str);
+        return world;
+    }
+
+    let world = Arc::new(SimpleWorld::new(source_str, options));
+    guard.insert(session_key, world.clone());
+    world
+}
+
+fn preview_result_from_document(
+    world: &SimpleWorld,
+    document: PagedDocument,
+    include_pdf: bool,
+) -> TypstPreviewResult {
+    let main_source = world.main_source();
+    let map_entries = extract_source_map(&document, &main_source);
+
+    let (pdf_ptr, pdf_len) = if include_pdf {
+        let bytes = match pdf(&document, &PdfOptions::default()) {
+            Ok(bytes) => bytes,
+            Err(e) => return error_result_preview(&format_diagnostics(world, &e)),
+        };
+        let pdf_len = bytes.len();
+        let mut pdf_boxed = bytes.into_boxed_slice();
+        let pdf_ptr = pdf_boxed.as_mut_ptr();
+        std::mem::forget(pdf_boxed);
+        (pdf_ptr, pdf_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    let map_len = map_entries.len();
+    let (map_ptr, map_len) = if map_len > 0 {
+        let mut map_boxed = map_entries.into_boxed_slice();
+        let ptr = map_boxed.as_mut_ptr();
+        std::mem::forget(map_boxed);
+        (ptr, map_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    let svg_pages = svg_pages_for_document(&document);
+    let svg_page_len = svg_pages.len();
+    let (svg_pages, svg_page_len) = if svg_page_len > 0 {
+        let mut boxed = svg_pages.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        std::mem::forget(boxed);
+        (ptr, svg_page_len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
+
+    TypstPreviewResult {
+        pdf_data: pdf_ptr,
+        pdf_len,
+        error_message: std::ptr::null_mut(),
+        success: true,
+        source_map: map_ptr,
+        source_map_len: map_len,
+        svg_pages,
+        svg_page_len,
+    }
+}
+
+fn svg_pages_for_document(document: &PagedDocument) -> Vec<TypstSvgPage> {
+    document
+        .pages
+        .iter()
+        .map(|page| TypstSvgPage {
+            svg: string_into_raw(svg(page)),
+            width_pt: page.frame.width().to_pt() as f32,
+            height_pt: page.frame.height().to_pt() as f32,
+        })
+        .collect()
+}
+
+/// Reset one preview session. A null or invalid key is ignored.
+#[no_mangle]
+pub unsafe extern "C" fn typst_clear_preview_session(session_key: *const c_char) {
+    if session_key.is_null() {
+        return;
+    }
+    let Ok(session_key) = CStr::from_ptr(session_key).to_str() else {
+        return;
+    };
+    let Some(sessions) = PREVIEW_SESSIONS.get() else {
+        return;
+    };
+    sessions.lock().unwrap().remove(session_key);
+}
+
+/// Reset all preview sessions.
+#[no_mangle]
+pub extern "C" fn typst_clear_all_preview_sessions() {
+    if let Some(sessions) = PREVIEW_SESSIONS.get() {
+        sessions.lock().unwrap().clear();
+    }
+}
+
 /// Free a `TypstResultWithMap`.
 ///
 /// # Safety
@@ -1029,6 +1263,34 @@ pub unsafe extern "C" fn typst_free_result_with_map(result: TypstResultWithMap) 
         let slice_ptr =
             std::ptr::slice_from_raw_parts_mut(result.source_map, result.source_map_len);
         drop(Box::from_raw(slice_ptr));
+    }
+}
+
+/// Free a `TypstPreviewResult`.
+///
+/// # Safety
+/// Must have been returned by `typst_compile_preview` and not yet freed.
+#[no_mangle]
+pub unsafe extern "C" fn typst_free_preview_result(result: TypstPreviewResult) {
+    if !result.pdf_data.is_null() {
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.pdf_data, result.pdf_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.error_message.is_null() {
+        drop(CString::from_raw(result.error_message));
+    }
+    if !result.source_map.is_null() {
+        let slice_ptr =
+            std::ptr::slice_from_raw_parts_mut(result.source_map, result.source_map_len);
+        drop(Box::from_raw(slice_ptr));
+    }
+    if !result.svg_pages.is_null() {
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(result.svg_pages, result.svg_page_len);
+        let mut boxed = Box::from_raw(slice_ptr);
+        for page in boxed.iter_mut() {
+            free_raw_string(page.svg);
+        }
+        drop(boxed);
     }
 }
 
@@ -2617,6 +2879,20 @@ fn error_result_with_map(msg: &str) -> TypstResultWithMap {
     }
 }
 
+fn error_result_preview(msg: &str) -> TypstPreviewResult {
+    let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
+    TypstPreviewResult {
+        pdf_data: std::ptr::null_mut(),
+        pdf_len: 0,
+        error_message: c.into_raw(),
+        success: false,
+        source_map: std::ptr::null_mut(),
+        source_map_len: 0,
+        svg_pages: std::ptr::null_mut(),
+        svg_page_len: 0,
+    }
+}
+
 fn error_highlight_result(msg: &str) -> TypstHighlightResult {
     let c = CString::new(msg).unwrap_or_else(|_| CString::new("error").unwrap());
     TypstHighlightResult {
@@ -2868,7 +3144,8 @@ mod tests {
         let world = unsafe { SimpleWorld::new(source_text, std::ptr::null()) };
         let compiled = typst::compile::<PagedDocument>(&world);
         let document = compiled.output.expect("compilation should succeed");
-        let entries = extract_source_map(&document, &world.source);
+        let source = world.main_source();
+        let entries = extract_source_map(&document, &source);
 
         assert!(!entries.is_empty(), "source map should have entries");
         // All entries should be on page 0 for a simple document.
@@ -2889,7 +3166,8 @@ mod tests {
         let world = unsafe { SimpleWorld::new(source_text, std::ptr::null()) };
         let compiled = typst::compile::<PagedDocument>(&world);
         let document = compiled.output.expect("compilation should succeed");
-        let entries = extract_source_map(&document, &world.source);
+        let source = world.main_source();
+        let entries = extract_source_map(&document, &source);
 
         let wrapped_line_entries: Vec<_> = entries.iter().filter(|entry| entry.line == 2).collect();
 
@@ -2920,6 +3198,65 @@ mod tests {
         let bundled_count = bundled_font_faces().len();
 
         assert_eq!(world.fonts.len(), bundled_count);
+    }
+
+    #[test]
+    fn simple_world_replaces_main_source_for_session_compile() {
+        let world = unsafe { SimpleWorld::new("= First", std::ptr::null()) };
+
+        world.replace_main_source("= Second");
+
+        assert_eq!(world.main_source().text(), "= Second");
+    }
+
+    #[test]
+    fn preview_compile_returns_svg_pdf_and_source_map() {
+        let source = CString::new("= Hello\n\nThis is a preview artifact.").unwrap();
+        let session_key = CString::new("preview-test-session").unwrap();
+
+        let result = unsafe {
+            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), true)
+        };
+        assert!(result.success);
+        assert!(!result.pdf_data.is_null());
+        assert!(result.pdf_len > 0);
+        assert!(!result.svg_pages.is_null());
+        assert!(result.svg_page_len > 0);
+        assert!(!result.source_map.is_null());
+        assert!(result.source_map_len > 0);
+
+        let pages = unsafe { std::slice::from_raw_parts(result.svg_pages, result.svg_page_len) };
+        let first_svg = unsafe { CStr::from_ptr(pages[0].svg) }
+            .to_str()
+            .expect("SVG should be UTF-8");
+        assert!(first_svg.contains("<svg"));
+
+        unsafe {
+            typst_free_preview_result(result);
+            typst_clear_preview_session(session_key.as_ptr());
+        }
+    }
+
+    #[test]
+    fn preview_svg_compile_omits_pdf_but_keeps_svg_and_source_map() {
+        let source = CString::new("= Hello\n\nThis is an SVG-first preview artifact.").unwrap();
+        let session_key = CString::new("preview-svg-test-session").unwrap();
+
+        let result = unsafe {
+            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), false)
+        };
+        assert!(result.success);
+        assert!(result.pdf_data.is_null());
+        assert_eq!(result.pdf_len, 0);
+        assert!(!result.svg_pages.is_null());
+        assert!(result.svg_page_len > 0);
+        assert!(!result.source_map.is_null());
+        assert!(result.source_map_len > 0);
+
+        unsafe {
+            typst_free_preview_result(result);
+            typst_clear_preview_session(session_key.as_ptr());
+        }
     }
 
     #[test]

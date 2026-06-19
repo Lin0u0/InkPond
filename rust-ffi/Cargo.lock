@@ -2341,6 +2341,7 @@ dependencies = [
  "typst-assets",
  "typst-library",
  "typst-pdf",
+ "typst-svg",
  "ureq",
 ]
 

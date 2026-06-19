@@ -150,6 +150,80 @@ struct TypstBridge {
 #endif
     }
 
+    /// Compile Typst source once into the live-preview artifact:
+    /// SVG pages for rendering, PDF bytes for compatibility, and a source map
+    /// for editor-preview sync.
+    nonisolated static func compilePreview(
+        source: String,
+        fontPaths: [String],
+        rootDir: String? = nil,
+        sessionKey: String? = nil
+    ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+#if TYPST_FFI_AVAILABLE
+        compilePreviewArtifact(
+            source: source,
+            fontPaths: fontPaths,
+            rootDir: rootDir,
+            sessionKey: sessionKey,
+            includePDF: true
+        )
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+    /// Compile Typst source once into the fastest live-preview artifact:
+    /// SVG pages for rendering and source map for editor-preview sync. PDF
+    /// bytes are intentionally omitted and export paths compile PDF directly.
+    nonisolated static func compilePreviewSVG(
+        source: String,
+        fontPaths: [String],
+        rootDir: String? = nil,
+        sessionKey: String? = nil
+    ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+#if TYPST_FFI_AVAILABLE
+        compilePreviewArtifact(
+            source: source,
+            fontPaths: fontPaths,
+            rootDir: rootDir,
+            sessionKey: sessionKey,
+            includePDF: false
+        )
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+#if TYPST_FFI_AVAILABLE
+    nonisolated private static func compilePreviewArtifact(
+        source: String,
+        fontPaths: [String],
+        rootDir: String?,
+        sessionKey: String?,
+        includePDF: Bool
+    ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir) { cSource, opts in
+            if let sessionKey, !sessionKey.isEmpty {
+                return sessionKey.withCString { cSessionKey in
+                    let result = includePDF
+                        ? typst_compile_preview(cSource, &opts, cSessionKey)
+                        : typst_compile_preview_svg(cSource, &opts, cSessionKey)
+                    defer { typst_free_preview_result(result) }
+
+                    return Self.previewArtifact(from: result)
+                }
+            } else {
+                let result = includePDF
+                    ? typst_compile_preview(cSource, &opts, nil)
+                    : typst_compile_preview_svg(cSource, &opts, nil)
+                defer { typst_free_preview_result(result) }
+
+                return Self.previewArtifact(from: result)
+            }
+        }
+    }
+#endif
+
     /// Parse Typst source and return syntax-highlight tokens in UTF-16 offsets.
     nonisolated static func syntaxHighlightTokens(source: String) -> [TypstSyntaxToken]? {
 #if TYPST_FFI_AVAILABLE
@@ -446,11 +520,32 @@ struct TypstBridge {
     }
 
     nonisolated private static func parseSourceMap(_ result: TypstResultWithMap) -> SourceMap {
-        guard let ptr = result.source_map, result.source_map_len > 0 else {
+        parseSourceMap(pointer: result.source_map, count: Int(result.source_map_len))
+    }
+
+    nonisolated private static func previewArtifact(from result: TypstPreviewResult) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+        if result.success {
+            let pdfData = result.pdf_data.map { Data(bytes: $0, count: Int(result.pdf_len)) }
+            let sourceMap = Self.parseSourceMap(pointer: result.source_map, count: Int(result.source_map_len))
+            let svgPages = Self.parseSVGPages(pointer: result.svg_pages, count: Int(result.svg_page_len))
+            return .success(TypstPreviewArtifact(
+                svgPages: svgPages,
+                pdfData: pdfData,
+                sourceMap: sourceMap
+            ))
+        } else if let errPtr = result.error_message {
+            return .failure(.compilationFailed(String(cString: errPtr)))
+        } else {
+            return .failure(.compilationFailed(L10n.tr("error.typst.unknown_compilation")))
+        }
+    }
+
+    nonisolated private static func parseSourceMap(pointer: UnsafeMutablePointer<SourceMapEntry>?, count: Int) -> SourceMap {
+        guard let ptr = pointer, count > 0 else {
             return SourceMap(byOffset: [], byPosition: [])
         }
 
-        let buffer = UnsafeBufferPointer(start: ptr, count: Int(result.source_map_len))
+        let buffer = UnsafeBufferPointer(start: ptr, count: count)
         var entries: [SourceMapLocation] = []
         entries.reserveCapacity(buffer.count)
 
@@ -473,6 +568,25 @@ struct TypstBridge {
         }
 
         return SourceMap(byOffset: entries, byPosition: byPosition)
+    }
+
+    nonisolated private static func parseSVGPages(pointer: UnsafeMutablePointer<TypstSvgPage>?, count: Int) -> [TypstPreviewPage] {
+        guard let ptr = pointer, count > 0 else { return [] }
+
+        let buffer = UnsafeBufferPointer(start: ptr, count: count)
+        var pages: [TypstPreviewPage] = []
+        pages.reserveCapacity(buffer.count)
+
+        for page in buffer {
+            guard let svgPtr = page.svg else { continue }
+            pages.append(TypstPreviewPage(
+                svg: String(cString: svgPtr),
+                widthPoints: Double(page.width_pt),
+                heightPoints: Double(page.height_pt)
+            ))
+        }
+
+        return pages
     }
 #endif
 }
