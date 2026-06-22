@@ -275,6 +275,7 @@ struct EditorView: UIViewRepresentable {
         }
 
         func captureViewState(from textView: TypstTextView) {
+            parent.focusCoordinator?.updateSelectionState(selectedLength: textView.selectedRange.length)
             let newState = EditorViewState(
                 selectedLocation: textView.selectedRange.location,
                 selectedLength: textView.selectedRange.length,
@@ -295,6 +296,7 @@ struct EditorView: UIViewRepresentable {
             if textView.selectedRange != restoredRange {
                 textView.selectedRange = restoredRange
             }
+            parent.focusCoordinator?.updateSelectionState(selectedLength: restoredRange.length)
 
             var targetOffset = parent.viewState.contentOffset
             // The default viewState has contentOffset (0,0), which assumed no

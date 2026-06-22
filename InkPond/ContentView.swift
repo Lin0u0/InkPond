@@ -216,7 +216,7 @@ struct ContentView: View {
             .background(rootChromeColor.ignoresSafeArea())
             .animation(projectNavigationAnimation, value: selectedDocument?.projectID)
         }
-        .toolbar(selectedDocument != nil ? .hidden : .visible, for: .navigationBar)
+        .toolbar(hidesRootNavigationBarForSelectedProject ? .hidden : .visible, for: .navigationBar)
         .background(rootChromeColor.ignoresSafeArea())
         .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
@@ -256,6 +256,10 @@ struct ContentView: View {
 
     private var activeDocument: InkPondDocument? {
         externalFileDocument ?? selectedDocument
+    }
+
+    private var hidesRootNavigationBarForSelectedProject: Bool {
+        selectedDocument != nil && horizontalSizeClass == .regular
     }
 
     private var projectNavigationAnimation: Animation {

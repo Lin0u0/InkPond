@@ -1453,7 +1453,7 @@ extension DocumentEditorView {
     private var compactModeSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 35, coordinateSpace: .local)
             .onEnded { value in
-                guard !(selectedTab == editorTab && focusCoordinator.isTextSelectionDragActive) else { return }
+                guard !(selectedTab == editorTab && focusCoordinator.isTextSelectionInteractionActive) else { return }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 let startsAwayFromLeadingEdge = value.startLocation.x > 44
