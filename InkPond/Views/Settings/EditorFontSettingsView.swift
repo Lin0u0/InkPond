@@ -129,7 +129,7 @@ private struct EditorFontFamilyPickerView: View {
                             if editorFontSettings.selectedFamily.id == family.id {
                                 Image(systemName: "checkmark")
                                     .font(.body.weight(.semibold))
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(.primary)
                             }
                         }
                     }

@@ -44,13 +44,18 @@ final class KeyboardAccessoryView: UIView {
         InteractionFeedback.impact(.light)
         self?.textView?.undoManager?.redo()
     }
+    private lazy var dismissKeyboardButton = makeButton(systemImage: "keyboard.chevron.compact.down") { [weak self] in
+        InteractionFeedback.impact(.light)
+        _ = self?.textView?.resignFirstResponder()
+    }
     private lazy var rightStack: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [snippetButton, photoButton, undoButton, redoButton])
+        let stack = UIStackView(arrangedSubviews: [snippetButton, photoButton, undoButton, redoButton, dismissKeyboardButton])
         stack.axis = .horizontal
         stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
+    private var workspaceChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
     private var hardwareKeyboardObservers: [NotificationObserverToken] = []
     private static let barHeight: CGFloat = 60
 
@@ -101,6 +106,11 @@ final class KeyboardAccessoryView: UIView {
         CGSize(width: size.width, height: Self.barHeight)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyWorkspaceChromeBackground()
+    }
+
     private var isPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
@@ -121,6 +131,7 @@ final class KeyboardAccessoryView: UIView {
         undoButton.accessibilityHint = L10n.a11yKeyboardUndoHint
         redoButton.accessibilityLabel = L10n.a11yKeyboardRedoLabel
         redoButton.accessibilityHint = L10n.a11yKeyboardRedoHint
+        dismissKeyboardButton.accessibilityLabel = L10n.tr("Done")
     }
 
     private func startObservingHardwareKeyboard() {
@@ -152,6 +163,7 @@ final class KeyboardAccessoryView: UIView {
         let showsUndoRedo = !isPad || hasHardwareKeyboard
         undoButton.isHidden = !showsUndoRedo
         redoButton.isHidden = !showsUndoRedo
+        dismissKeyboardButton.isHidden = !isPad
     }
 
     private func setupViews() {
@@ -166,8 +178,7 @@ final class KeyboardAccessoryView: UIView {
 
     @available(iOS 26, *)
     private func setupGlassLayout() {
-        // Transparent host — the glass container provides all visuals
-        backgroundColor = .clear
+        applyWorkspaceChromeBackground()
 
         // Glass container
         let glass = UIVisualEffectView(effect: UIGlassEffect())
@@ -185,7 +196,6 @@ final class KeyboardAccessoryView: UIView {
         glass.contentView.addSubview(rightStack)
 
         let constraints = [
-            // Glass container constraints
             glass.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             glass.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             glass.topAnchor.constraint(equalTo: topAnchor, constant: 4),
@@ -210,7 +220,7 @@ final class KeyboardAccessoryView: UIView {
     // MARK: - Pre-iOS 26 Layout
 
     private func setupLegacyLayout() {
-        backgroundColor = .secondarySystemBackground
+        applyWorkspaceChromeBackground()
 
         let (scrollView, rightStack, separator) = buildContent()
 
@@ -269,7 +279,7 @@ final class KeyboardAccessoryView: UIView {
 
     private func makeButton(title: String? = nil, systemImage: String? = nil, action: @escaping () -> Void) -> UIButton {
         var config = UIButton.Configuration.plain()
-        config.baseForegroundColor = .label
+        config.baseForegroundColor = controlForegroundColor
         if let title {
             config.title = title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
@@ -291,5 +301,43 @@ final class KeyboardAccessoryView: UIView {
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
         return button
+    }
+
+    func applyWorkspaceChromeBackground(_ color: UIColor? = nil) {
+        if let color {
+            workspaceChromeBackgroundColor = color
+        }
+        if #available(iOS 26, *) {
+            backgroundColor = .clear
+            isOpaque = false
+        } else {
+            backgroundColor = workspaceChromeBackgroundColor
+            isOpaque = true
+        }
+        separator.backgroundColor = controlForegroundColor.withAlphaComponent(0.22)
+        applyControlForegroundColor(in: self)
+    }
+
+    private var controlForegroundColor: UIColor {
+        let color = workspaceChromeBackgroundColor.resolvedColor(with: traitCollection)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return .label
+        }
+        let luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+        return luminance < 0.5 ? .white : .black
+    }
+
+    private func applyControlForegroundColor(in view: UIView) {
+        if let button = view as? UIButton {
+            var config = button.configuration
+            config?.baseForegroundColor = controlForegroundColor
+            button.configuration = config
+            button.tintColor = controlForegroundColor
+        }
+        view.subviews.forEach(applyControlForegroundColor)
     }
 }

@@ -51,6 +51,7 @@ struct DocumentListView: View {
     @Environment(\.modelContext) var modelContext
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.scenePhase) var scenePhase
+    @Environment(\.colorScheme) var colorScheme
     @Query(sort: \InkPondDocument.modifiedAt, order: .reverse) var documents: [InkPondDocument]
 
     @Binding var selectedDocument: InkPondDocument?
@@ -74,6 +75,7 @@ struct DocumentListView: View {
     @State var folderLinkImportTitle: String?
     @State var folderLinkImportProjectID: String?
     @State var folderLinkImportTask: Task<Void, Never>?
+    @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = Self.loadPreviewCacheEntriesByProjectID()
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
 
@@ -102,6 +104,36 @@ struct DocumentListView: View {
 
     var isIPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
+    var projectHomeChromeUIColor: UIColor {
+        if colorScheme == .dark {
+            return UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
+        }
+        return UIColor.secondarySystemGroupedBackground.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .light)
+        )
+    }
+
+    var projectHomeCardUIColor: UIColor {
+        colorScheme == .dark
+            ? UIColor.white.withAlphaComponent(0.07)
+            : UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+    }
+
+    var projectHomeThumbnailUIColor: UIColor {
+        colorScheme == .dark
+            ? UIColor.white.withAlphaComponent(0.045)
+            : UIColor.systemGroupedBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+    }
+
+    static func loadPreviewCacheEntriesByProjectID() -> [String: CompiledPreviewCacheEntry] {
+        do {
+            let entries = try CompiledPreviewCacheStore().snapshot().entries
+            return Dictionary(uniqueKeysWithValues: entries.map { ($0.projectID, $0) })
+        } catch {
+            return [:]
+        }
+    }
+
     var body: some View {
         baseContent
             .modifier(DocumentListAlertsModifier(
@@ -125,17 +157,18 @@ struct DocumentListView: View {
                 zipImportError: $zipImportError,
                 selectedDocument: $selectedDocument
             ))
+            .tint(.primary)
     }
 
     private var baseContent: some View {
         documentList
-            .navigationTitle(L10n.appName)
             .searchable(
                 text: $searchText,
                 placement: isIPad ? .automatic : .toolbar,
                 prompt: Text(L10n.tr("Search"))
             )
             .toolbar { if isIPad { iPadToolbar } else { iPhoneToolbar } }
+            .modifier(ProjectHomeToolbarBackgroundModifier(background: Color(uiColor: projectHomeChromeUIColor)))
             .overlay { documentListProgressOverlay }
             .safeAreaInset(edge: .bottom) {
                 linkedFolderProgressInset
@@ -169,6 +202,34 @@ struct DocumentListView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
             .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}
+
+private struct ProjectHomeToolbarBackgroundModifier: ViewModifier {
+    let background: Color
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.visible, for: .bottomBar)
+        } else if #available(iOS 18.0, *) {
+            content
+                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.visible, for: .bottomBar)
+                .toolbarBackground(background, for: .navigationBar)
+                .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+                .toolbarBackground(background, for: .bottomBar)
+                .toolbarBackgroundVisibility(.visible, for: .bottomBar)
+        } else {
+            content
+                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.visible, for: .bottomBar)
+                .toolbarBackground(background, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbarBackground(background, for: .bottomBar)
+                .toolbarBackground(.visible, for: .bottomBar)
         }
     }
 }

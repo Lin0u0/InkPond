@@ -80,6 +80,7 @@ extension DocumentEditorView {
         pendingCursorJump = nil
         editorViewState = EditorViewState()
         currentFileName = name
+        activateTab(relativePath: name, kind: ProjectFileManager.fileKind(for: name, imageDirectoryName: document.imageDirectoryName))
         isLoadingFileContent = true
         editorText = text
         fileLoadToken = UUID()
@@ -96,6 +97,276 @@ extension DocumentEditorView {
 
         pumpPendingInsertionsIfNeeded()
         return true
+    }
+
+    func activateTab(relativePath: String, kind: FileKind) {
+        guard kind.canBecomeTab else { return }
+        let tab = ProjectFileTab(
+            relativePath: relativePath,
+            displayName: (relativePath as NSString).lastPathComponent,
+            kind: kind
+        )
+        if let index = openTabs.firstIndex(where: { $0.relativePath == relativePath }) {
+            openTabs[index] = tab
+        } else {
+            openTabs.append(tab)
+        }
+        activeTabPath = relativePath
+    }
+
+    func restoreProjectEditorStateIfNeeded() {
+        guard !didRestoreProjectEditorState else { return }
+        didRestoreProjectEditorState = true
+
+        let savedState = ProjectEditorStateStore.load(projectID: document.projectID)
+        let restoredTabs = savedState.openTabPaths.compactMap(savedProjectTab(for:))
+        guard !restoredTabs.isEmpty else {
+            persistProjectEditorTabState()
+            return
+        }
+
+        openTabs = restoredTabs
+
+        if let activePath = savedState.activeTabPath,
+           let activeTab = restoredTabs.first(where: { $0.relativePath == activePath }) {
+            if activeTab.kind.isTextEditable {
+                _ = loadFile(named: activePath)
+            } else {
+                focusCoordinator.dismissKeyboard()
+                selectedTab = editorTab
+                activeTabPath = activePath
+            }
+        } else if let currentTextTab = restoredTabs.first(where: { $0.relativePath == currentFileName }) {
+            activeTabPath = currentTextTab.relativePath
+        } else {
+            activeTabPath = restoredTabs.first?.relativePath
+        }
+
+        persistProjectEditorTabState()
+    }
+
+    func persistProjectEditorTabState() {
+        guard didRestoreProjectEditorState else { return }
+        ProjectEditorStateStore.saveTabs(
+            projectID: document.projectID,
+            openTabPaths: openTabs.map(\.relativePath),
+            activeTabPath: activeTabPath
+        )
+    }
+
+    private func savedProjectTab(for relativePath: String) -> ProjectFileTab? {
+        guard isSafeSavedProjectPath(relativePath) else { return nil }
+
+        let projectDirectory = ProjectFileManager.projectDirectory(for: document).standardizedFileURL
+        let url = projectDirectory.appendingPathComponent(relativePath).standardizedFileURL
+        guard url.path.hasPrefix(projectDirectory.path + "/"),
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+
+        let kind = ProjectFileManager.fileKind(for: relativePath, imageDirectoryName: document.imageDirectoryName)
+        guard kind.canBecomeTab else { return nil }
+        return ProjectFileTab(
+            relativePath: relativePath,
+            displayName: (relativePath as NSString).lastPathComponent,
+            kind: kind
+        )
+    }
+
+    private func isSafeSavedProjectPath(_ relativePath: String) -> Bool {
+        guard !relativePath.isEmpty, !relativePath.hasPrefix("/") else { return false }
+        return !relativePath.split(separator: "/").contains("..")
+    }
+
+    func openProjectFile(_ node: ProjectTreeNode) {
+        guard node.kind.canBecomeTab else { return }
+        if node.kind.isTextEditable {
+            selectedTab = editorTab
+            _ = openFileIfPossible(named: node.relativePath)
+            return
+        }
+
+        guard flushPendingSave() else { return }
+        focusCoordinator.dismissKeyboard()
+        selectedTab = editorTab
+        activateTab(relativePath: node.relativePath, kind: node.kind)
+        InteractionFeedback.selection()
+    }
+
+    func selectProjectTab(_ tab: ProjectFileTab) {
+        guard tab.relativePath != activeTabPath else { return }
+        if tab.kind.isTextEditable {
+            selectedTab = editorTab
+            _ = openFileIfPossible(named: tab.relativePath)
+            return
+        }
+
+        guard flushPendingSave() else { return }
+        focusCoordinator.dismissKeyboard()
+        selectedTab = editorTab
+        activeTabPath = tab.relativePath
+        InteractionFeedback.selection()
+    }
+
+    func closeProjectTab(_ tab: ProjectFileTab) {
+        if tab.relativePath == currentFileName {
+            guard flushPendingSave() else { return }
+        }
+
+        openTabs.removeAll { $0.relativePath == tab.relativePath }
+        guard activeTabPath == tab.relativePath else { return }
+
+        if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
+            activeTabPath = currentTextTab.relativePath
+        } else if let nextTab = openTabs.first {
+            selectProjectTab(nextTab)
+        } else if !currentFileName.isEmpty {
+            activateTab(
+                relativePath: currentFileName,
+                kind: ProjectFileManager.fileKind(for: currentFileName, imageDirectoryName: document.imageDirectoryName)
+            )
+        } else {
+            activeTabPath = nil
+        }
+    }
+
+    @discardableResult
+    func setEntryProjectFile(_ relativePath: String) -> Bool {
+        guard relativePath != document.entryFileName else { return true }
+        guard flushPendingSave() else { return false }
+
+        document.entryFileName = relativePath
+        document.modifiedAt = Date()
+
+        if currentFileName == relativePath {
+            entrySource = editorText
+        } else if let source = try? ProjectFileManager.readTypFile(named: relativePath, for: document) {
+            entrySource = source
+        }
+
+        _ = refreshResolvedFonts(includeAvailableFamilies: false)
+        compileToken = UUID()
+        InteractionFeedback.selection()
+        return true
+    }
+
+    func handleProjectFileDeleted(_ node: ProjectTreeNode) {
+        openTabs.removeAll { $0.relativePath == node.relativePath }
+        if node.relativePath == currentFileName {
+            saveTask?.cancel()
+            saveTask = nil
+            stopConflictMonitoring()
+            if ProjectFileManager.listAllTypFiles(for: document).contains(document.entryFileName) {
+                _ = loadFile(named: document.entryFileName)
+            } else {
+                currentFileName = ""
+                editorText = ""
+                lastPersistedText = ""
+            }
+            return
+        }
+
+        if node.relativePath == activeTabPath {
+            if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
+                activeTabPath = currentTextTab.relativePath
+            } else if let firstTab = openTabs.first {
+                activeTabPath = firstTab.relativePath
+            } else {
+                activeTabPath = currentFileName.isEmpty ? nil : currentFileName
+            }
+        }
+
+        if node.kind == .font {
+            handleCompileInputsChanged()
+        }
+    }
+
+    func createNewProjectFileFromMenu() {
+        var name = newProjectFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty && !name.hasSuffix(".typ") {
+            name += ".typ"
+        }
+        guard !name.isEmpty else { return }
+
+        do {
+            try ProjectFileManager.createTypFile(named: name, for: document)
+            document.modifiedAt = Date()
+            projectFileTreeRefreshToken = UUID()
+            openProjectFile(ProjectTreeNode(
+                relativePath: name,
+                displayName: (name as NSString).lastPathComponent,
+                kind: .typ,
+                children: []
+            ))
+            InteractionFeedback.notify(.success)
+        } catch {
+            fileSaveError = error.localizedDescription
+            InteractionFeedback.notify(.error)
+        }
+    }
+
+    func handleProjectFileImportFromMenu(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else {
+            if case .failure(let error) = result {
+                fileSaveError = error.localizedDescription
+                InteractionFeedback.notify(.error)
+            }
+            return
+        }
+
+        var firstError: Error?
+        var importedNodes: [ProjectTreeNode] = []
+        var importedFont = false
+
+        for url in urls {
+            let ext = url.pathExtension.lowercased()
+            let subdir: String
+            if ProjectFileManager.supportedImageFileExtensions.contains(ext) {
+                subdir = document.imageDirectoryName
+            } else if ProjectFileManager.fontFileExtensions.contains(ext) {
+                subdir = "fonts"
+            } else {
+                subdir = ""
+            }
+
+            do {
+                let importedPath = try ProjectFileManager.importFile(from: url, to: subdir, for: document)
+                let kind = ProjectFileManager.fileKind(for: importedPath, imageDirectoryName: document.imageDirectoryName)
+                if ProjectFileManager.fontFileExtensions.contains(ext) {
+                    importedFont = true
+                    let name = url.lastPathComponent
+                    if !document.fontFileNames.contains(name) {
+                        document.fontFileNames.append(name)
+                    }
+                }
+                importedNodes.append(ProjectTreeNode(
+                    relativePath: importedPath,
+                    displayName: (importedPath as NSString).lastPathComponent,
+                    kind: kind,
+                    children: []
+                ))
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+
+        if !importedNodes.isEmpty {
+            document.modifiedAt = Date()
+            projectFileTreeRefreshToken = UUID()
+            refreshReferenceCompletions()
+            if importedFont {
+                handleCompileInputsChanged()
+            }
+            if urls.count == 1, let node = importedNodes.first {
+                openProjectFile(node)
+            }
+            InteractionFeedback.notify(.success)
+        }
+
+        if let firstError {
+            fileSaveError = firstError.localizedDescription
+            InteractionFeedback.notify(.error)
+        }
     }
 
     // MARK: - Conflict monitoring
@@ -337,10 +608,10 @@ extension DocumentEditorView {
         }
         pendingCursorJump = document.lastCursorLocation
 
-        // If the compiler already has a PDF and source map (e.g. from cache),
+        // If the compiler already has a preview and source map (e.g. from cache),
         // defer the sync until after the cursor jump lands.  Otherwise, wait
-        // for the next compilation to finish via onChange(of: compiler.pdfDocument).
-        if compiler.pdfDocument != nil, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
+        // for the next compilation to finish via onChange(of: compiler.previewArtifact).
+        if compiler.compiledOnce, let sourceMap = compiler.sourceMap, !sourceMap.isEmpty {
             // Sync after the cursor jump is applied in the next run-loop cycle.
             Task { @MainActor in
                 syncCursorToPreview(at: document.lastCursorLocation)

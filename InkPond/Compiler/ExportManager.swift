@@ -55,7 +55,7 @@ enum ExportManager {
     }
 
     /// Write PDF data to a temporary file and return its URL.
-    static func temporaryPDFURL(data: Data, title: String) throws -> URL {
+    nonisolated static func temporaryPDFURL(data: Data, title: String) throws -> URL {
         let sanitized = title.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(sanitized).pdf")

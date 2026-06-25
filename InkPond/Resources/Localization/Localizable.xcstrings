@@ -465,151 +465,6 @@
         }
       }
     },
-    "preview.external_link_required.button" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Link Folder"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关联文件夹"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連結資料夾"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連結資料夾"
-          }
-        }
-      }
-    },
-    "preview.external_link_required.folder_mismatch" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The selected folder must contain the opened .typ file."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选文件夹必须包含当前打开的 .typ 文件。"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所選資料夾必須包含目前開啟的 .typ 檔案。"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所選資料夾必須包含目前開啟的 .typ 檔案。"
-          }
-        }
-      }
-    },
-    "preview.external_link_required.message" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This file was opened as a single .typ file. Link its folder to compile templates, images, fonts, and other local dependencies."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此文件以单个 .typ 文件打开。请关联所在文件夹，才能编译模板、图片、字体和其他本地依赖。"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案以單個 .typ 檔案開啟。請連結所在資料夾，才能編譯範本、圖片、字型和其他本地依賴。"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案以單個 .typ 檔案開啟。請連結所在資料夾，才能編譯範本、圖片、字型和其他本機依賴。"
-          }
-        }
-      }
-    },
-    "preview.external_link_required.missing_source" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The opened external .typ file is no longer available."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前打开的外部 .typ 文件已不可用。"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "目前開啟的外部 .typ 檔案已不可用。"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "目前開啟的外部 .typ 檔案已不可用。"
-          }
-        }
-      }
-    },
-    "preview.external_link_required.title" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Link External Folder to preview"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要 Link External Folder 才能预览"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要 Link External Folder 才能預覽"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要 Link External Folder 才能預覽"
-          }
-        }
-      }
-    },
     "a11y.editor.menu.hint" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2346,6 +2201,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打開專案設定"
+          }
+        }
+      }
+    },
+    "a11y.project_files.sidebar.hide.label" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide project files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏项目文件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏專案檔案"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏專案檔案"
+          }
+        }
+      }
+    },
+    "a11y.project_files.sidebar.show.label" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show project files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示项目文件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示專案檔案"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示專案檔案"
           }
         }
       }
@@ -4198,6 +4111,7 @@
       }
     },
     "Editing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4398,6 +4312,7 @@
       }
     },
     "Entry" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5965,35 +5880,6 @@
         }
       }
     },
-    "icloud.error.download_timeout" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Some files could not be downloaded from iCloud in time. Please check your network connection and try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分文件未能及时从 iCloud 下载。请检查网络连接后重试。"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網絡連線後重試。"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網路連線後重試。"
-          }
-        }
-      }
-    },
     "icloud.error.document_downloading" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6019,6 +5905,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此文件仍在從 iCloud 下載。請稍後再試開啟。"
+          }
+        }
+      }
+    },
+    "icloud.error.download_timeout" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some files could not be downloaded from iCloud in time. Please check your network connection and try again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分文件未能及时从 iCloud 下载。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網絡連線後重試。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分檔案未能及時從 iCloud 下載。請檢查網路連線後重試。"
           }
         }
       }
@@ -8367,6 +8282,7 @@
       }
     },
     "No Document Selected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8389,6 +8305,7 @@
       }
     },
     "No files" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8797,6 +8714,9 @@
         }
       }
     },
+    "Open" : {
+
+    },
     "outline.empty.message" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8951,7 +8871,6 @@
       }
     },
     "Preview" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8969,6 +8888,151 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "預覽"
+          }
+        }
+      }
+    },
+    "preview.external_link_required.button" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link Folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联文件夹"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連結資料夾"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連結資料夾"
+          }
+        }
+      }
+    },
+    "preview.external_link_required.folder_mismatch" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected folder must contain the opened .typ file."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选文件夹必须包含当前打开的 .typ 文件。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所選資料夾必須包含目前開啟的 .typ 檔案。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所選資料夾必須包含目前開啟的 .typ 檔案。"
+          }
+        }
+      }
+    },
+    "preview.external_link_required.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file was opened as a single .typ file. Link its folder to compile templates, images, fonts, and other local dependencies."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件以单个 .typ 文件打开。请关联所在文件夹，才能编译模板、图片、字体和其他本地依赖。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案以單個 .typ 檔案開啟。請連結所在資料夾，才能編譯範本、圖片、字型和其他本地依賴。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案以單個 .typ 檔案開啟。請連結所在資料夾，才能編譯範本、圖片、字型和其他本機依賴。"
+          }
+        }
+      }
+    },
+    "preview.external_link_required.missing_source" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The opened external .typ file is no longer available."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前打开的外部 .typ 文件已不可用。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前開啟的外部 .typ 檔案已不可用。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前開啟的外部 .typ 檔案已不可用。"
+          }
+        }
+      }
+    },
+    "preview.external_link_required.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link External Folder to preview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Link External Folder 才能预览"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Link External Folder 才能預覽"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Link External Folder 才能預覽"
           }
         }
       }
@@ -9114,6 +9178,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字元數"
+          }
+        }
+      }
+    },
+    "preview.stats.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calculating statistics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在计算统计"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在計算統計"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在計算統計"
           }
         }
       }
@@ -9875,6 +9968,7 @@
       }
     },
     "Select a document from the list or create a new one." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9917,6 +10011,9 @@
           }
         }
       }
+    },
+    "Set Entry" : {
+
     },
     "Settings" : {
       "extractionState" : "stale",
@@ -10635,6 +10732,7 @@
       }
     },
     "Slideshow" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12446,6 +12544,7 @@
       }
     },
     "This removes all cached compiled PDF previews. Documents will recompile the next time they open." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12463,6 +12562,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這會移除所有已快取的編譯 PDF 預覽。文件下次打開時會重新編譯。"
+          }
+        }
+      }
+    },
+    "This removes all cached compiled previews. Documents will recompile the next time they open." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会移除所有已缓存的编译预览。文档下次打开时会重新编译。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會移除所有已快取的編譯預覽。文件下次打開時會重新編譯。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會移除所有已快取的編譯預覽。文件下次開啟時會重新編譯。"
           }
         }
       }
@@ -12612,6 +12733,9 @@
           }
         }
       }
+    },
+    "Typst" : {
+
     },
     "ui_test.sample_document_title" : {
       "extractionState" : "stale",

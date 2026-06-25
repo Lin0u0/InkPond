@@ -5,7 +5,6 @@
 
 import SwiftUI
 import SwiftData
-import PDFKit
 import PhotosUI
 
 actor BackgroundDocumentFileWriter {
@@ -29,6 +28,7 @@ struct DocumentEditorView: View {
     @Bindable var document: InkPondDocument
     var isSidebarVisible: Bool = false
     var externalOpenRequest: ExternalTypFileOpenRequest?
+    var onCloseProject: (() -> Void)?
     var onInitialOpenFailure: ((String) -> Void)?
 
     @Environment(AppFontLibrary.self) var appFontLibrary
@@ -85,6 +85,10 @@ struct DocumentEditorView: View {
     @State var fileLoadToken = UUID()
     @State var pendingCursorJump: Int?
     @State var pendingManualCompileFeedback = false
+    @State var previewStatsWordCount = 0
+    @State var previewStatsCharacterCount = 0
+    @State var previewStatsAreReady = false
+    @State var showingPreviewStatsDetails = false
     @State var cachedBibEntries: [TypstBibliographyEntry] = []
     @State var cachedExternalLabels: [(name: String, kind: String)] = []
     @State var cachedImageFiles: [String] = []
@@ -99,14 +103,39 @@ struct DocumentEditorView: View {
     @State var showingOutline = false
     @State var showingSnippetBrowser = false
     @State var showingExternalFolderLinkImporter = false
+    @State var showingProjectFileImporter = false
+    @State var showingNewProjectFileAlert = false
+    @State var newProjectFileName = ""
+    @State var projectFileTreeRefreshToken = UUID()
+    @State var isProjectFileTreeVisible = true
     @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?
     @State var positionSyncTask: Task<Void, Never>?
+    @State var openTabs: [ProjectFileTab] = []
+    @State var activeTabPath: String?
+    @State var didRestoreProjectEditorState = false
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     
     var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
+
+    var activeProjectPath: String {
+        activeTabPath ?? currentFileName
+    }
+
+    var activeProjectTab: ProjectFileTab? {
+        guard let activeTabPath else { return nil }
+        return openTabs.first { $0.relativePath == activeTabPath }
+    }
+
+    var activeTabIsTextEditable: Bool {
+        activeProjectTab?.kind.isTextEditable ?? true
+    }
+
+    var activeEditorSubtitle: String {
+        activeProjectTab?.relativePath ?? currentFileName
+    }
 
     var previewRequiresExternalFolderLink: Bool {
         document.needsExternalFolderLinkForPreview
@@ -143,11 +172,13 @@ struct DocumentEditorView: View {
         document: InkPondDocument,
         isSidebarVisible: Bool = false,
         externalOpenRequest: ExternalTypFileOpenRequest? = nil,
-        onInitialOpenFailure: ((String) -> Void)? = nil
+        onInitialOpenFailure: ((String) -> Void)? = nil,
+        onCloseProject: (() -> Void)? = nil
     ) {
         self.document = document
         self.isSidebarVisible = isSidebarVisible
         self.externalOpenRequest = externalOpenRequest
+        self.onCloseProject = onCloseProject
         self.onInitialOpenFailure = onInitialOpenFailure
     }
 

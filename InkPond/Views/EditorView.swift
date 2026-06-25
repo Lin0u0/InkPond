@@ -32,6 +32,7 @@ struct EditorView: UIViewRepresentable {
     var sourceMap: SourceMap?
     var syncCoordinator: SyncCoordinator?
     var theme: EditorTheme = .system
+    var externalChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
     var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
     var onPhotoTapped: () -> Void = {}
@@ -54,6 +55,7 @@ struct EditorView: UIViewRepresentable {
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
         textView.applyEditorFont(editorFont)
+        textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.accessibilityLabel = L10n.a11yEditorLabel
@@ -68,6 +70,7 @@ struct EditorView: UIViewRepresentable {
         context.coordinator.parent = self
         focusCoordinator?.register(textView)
         textView.applyEditorFont(editorFont)
+        textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
         textView.topViewportInset = topViewportInset
         textView.setErrorLines(errorLines)
@@ -272,6 +275,7 @@ struct EditorView: UIViewRepresentable {
         }
 
         func captureViewState(from textView: TypstTextView) {
+            parent.focusCoordinator?.updateSelectionState(selectedLength: textView.selectedRange.length)
             let newState = EditorViewState(
                 selectedLocation: textView.selectedRange.location,
                 selectedLength: textView.selectedRange.length,
@@ -292,6 +296,7 @@ struct EditorView: UIViewRepresentable {
             if textView.selectedRange != restoredRange {
                 textView.selectedRange = restoredRange
             }
+            parent.focusCoordinator?.updateSelectionState(selectedLength: restoredRange.length)
 
             var targetOffset = parent.viewState.contentOffset
             // The default viewState has contentOffset (0,0), which assumed no

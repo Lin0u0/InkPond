@@ -82,7 +82,7 @@ final class InkPondUITests: XCTestCase {
         app.buttons["document-list.settings"].tap()
 
         XCTAssertTrue(waitForElement(app.buttons["settings.done"]))
-        XCTAssertTrue(waitForElement(app.buttons["settings.import-zip"]))
+        XCTAssertTrue(waitForElement(app.buttons["settings.import-zip"], revealWithSwipes: 2))
         XCTAssertTrue(waitForElement(app.buttons["settings.fonts"], revealWithSwipes: 2))
         XCTAssertTrue(waitForElement(app.buttons["settings.cache"], revealWithSwipes: 2))
     }
@@ -145,7 +145,11 @@ final class InkPondUITests: XCTestCase {
     func testUnavailableDocumentRowDoesNotOpenEditor() throws {
         let app = launchApp(environment: ["UITEST_SEED_STALE_DOCUMENT": "1"])
         let staleRow = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "document-list.row.ui-test-stale-")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                "project-home.card.ui-test-stale-",
+                "document-list.row.ui-test-stale-"
+            )
         ).firstMatch
 
         XCTAssertTrue(staleRow.waitForExistence(timeout: 5))

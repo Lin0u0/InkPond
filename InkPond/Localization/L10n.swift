@@ -93,6 +93,8 @@ enum L10n {
     nonisolated static var a11yProjectFilesSettingsHint: String { tr("a11y.project_files.settings.hint") }
     nonisolated static var a11yProjectFilesAddLabel: String { tr("a11y.project_files.add_menu.label") }
     nonisolated static var a11yProjectFilesAddHint: String { tr("a11y.project_files.add_menu.hint") }
+    nonisolated static var a11yProjectFilesShowLabel: String { tr("a11y.project_files.sidebar.show.label") }
+    nonisolated static var a11yProjectFilesHideLabel: String { tr("a11y.project_files.sidebar.hide.label") }
     nonisolated static var a11yProjectFilesExpandHint: String { tr("a11y.project_files.row.hint.expand") }
     nonisolated static var a11yProjectFilesOpenHint: String { tr("a11y.project_files.row.hint.open") }
     nonisolated static var a11yProjectFilesPreviewHint: String { tr("a11y.project_files.row.hint.preview") }
@@ -133,6 +135,7 @@ enum L10n {
     }
     nonisolated static var previewStatsHintCollapsed: String { tr("preview.stats.a11y.hint.collapsed") }
     nonisolated static var previewStatsHintExpanded: String { tr("preview.stats.a11y.hint.expanded") }
+    nonisolated static var previewStatsLoading: String { tr("preview.stats.loading") }
     nonisolated static var a11yCompileSuccess: String { tr("a11y.compile.success") }
     nonisolated static var a11yCompileFailed: String { tr("a11y.compile.failed") }
     nonisolated static var a11yCacheRefreshStarted: String { tr("a11y.cache_refresh.started") }

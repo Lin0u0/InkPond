@@ -11,6 +11,7 @@ final class CompletionPopupView: UIView {
     private let tableView = UITableView(frame: .zero, style: .plain)
     private var items: [CompletionItem] = []
     private var selectedIndex = 0
+    private var theme: EditorTheme = .system
 
     private static let cellID = "CompletionCell"
     private static let maxVisibleRows = 5
@@ -54,6 +55,16 @@ final class CompletionPopupView: UIView {
             tableView.leadingAnchor.constraint(equalTo: leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+    }
+
+    func applyTheme(_ theme: EditorTheme) {
+        self.theme = theme
+        backgroundColor = theme.gutterBackground
+        layer.borderColor = theme.gutterForeground.withAlphaComponent(0.28).cgColor
+        tableView.backgroundColor = .clear
+        for case let cell as CompletionCell in tableView.visibleCells {
+            cell.applyTheme(theme)
+        }
     }
 
     func update(items: [CompletionItem]) {
@@ -111,7 +122,7 @@ extension CompletionPopupView: UITableViewDataSource, UITableViewDelegate {
             return tableView.dequeueReusableCell(withIdentifier: Self.cellID, for: indexPath)
         }
         let item = items[indexPath.row]
-        cell.configure(with: item)
+        cell.configure(with: item, theme: theme)
         return cell
     }
 
@@ -133,6 +144,7 @@ private final class CompletionCell: UITableViewCell {
     private let detailLabel = UILabel()
     private let modeLabel = UILabel()
     private var isHintOnlyItem = false
+    private var theme: EditorTheme = .system
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -216,26 +228,36 @@ private final class CompletionCell: UITableViewCell {
         updateSelectionAppearance(isActive: highlighted || isSelected)
     }
 
-    func configure(with item: CompletionItem) {
+    func applyTheme(_ theme: EditorTheme) {
+        self.theme = theme
+        nameLabel.textColor = theme.text
+        detailLabel.textColor = theme.gutterForeground
+        modeLabel.textColor = theme.text.withAlphaComponent(0.78)
+        modeLabel.backgroundColor = theme.gutterForeground.withAlphaComponent(0.18)
+        updateSelectionAppearance(isActive: isSelected || isHighlighted)
+    }
+
+    func configure(with item: CompletionItem, theme: EditorTheme) {
+        applyTheme(theme)
         switch item.kind {
         case .keyword:
             iconLabel.text = "K"
-            iconLabel.textColor = .systemPurple
+            iconLabel.textColor = theme.keyword
         case .function:
             iconLabel.text = "F"
-            iconLabel.textColor = .systemBlue
+            iconLabel.textColor = theme.functionColor
         case .snippet:
             iconLabel.text = "S"
-            iconLabel.textColor = .systemOrange
+            iconLabel.textColor = theme.math
         case .parameter:
             iconLabel.text = "P"
-            iconLabel.textColor = .systemTeal
+            iconLabel.textColor = theme.code
         case .value:
             iconLabel.text = "V"
-            iconLabel.textColor = .systemGreen
+            iconLabel.textColor = theme.string
         case .reference:
             iconLabel.text = "@"
-            iconLabel.textColor = .systemIndigo
+            iconLabel.textColor = theme.label
         }
         nameLabel.text = item.label
         detailLabel.text = item.detail
@@ -252,17 +274,17 @@ private final class CompletionCell: UITableViewCell {
         let changes = {
             if isActive {
                 if self.isHintOnlyItem {
-                    self.selectionCardView.backgroundColor = UIColor.systemGray5
-                    self.selectionCardView.layer.shadowColor = UIColor.systemGray.cgColor
-                    self.selectionCardView.layer.shadowOpacity = 0.16
-                    self.selectionCardView.layer.borderColor = UIColor.systemGray3.cgColor
+                    self.selectionCardView.backgroundColor = self.theme.gutterForeground.withAlphaComponent(0.16)
+                    self.selectionCardView.layer.shadowColor = self.theme.gutterForeground.cgColor
+                    self.selectionCardView.layer.shadowOpacity = 0.12
+                    self.selectionCardView.layer.borderColor = self.theme.gutterForeground.withAlphaComponent(0.24).cgColor
                     self.selectionCardView.layer.borderWidth = 0.8
                 } else {
-                    self.selectionCardView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.14)
-                    self.selectionCardView.layer.shadowColor = UIColor.systemBlue.cgColor
-                    self.selectionCardView.layer.shadowOpacity = 0.22
-                    self.selectionCardView.layer.borderColor = UIColor.clear.cgColor
-                    self.selectionCardView.layer.borderWidth = 0
+                    self.selectionCardView.backgroundColor = self.theme.label.withAlphaComponent(0.14)
+                    self.selectionCardView.layer.shadowColor = self.theme.label.cgColor
+                    self.selectionCardView.layer.shadowOpacity = 0.18
+                    self.selectionCardView.layer.borderColor = self.theme.label.withAlphaComponent(0.22).cgColor
+                    self.selectionCardView.layer.borderWidth = 0.8
                 }
             } else {
                 self.selectionCardView.backgroundColor = .clear

@@ -474,7 +474,7 @@ enum CoreTextFontMaterializer {
             if tag == Self.glyfTag || tag == Self.cffTag || tag == Self.cff2Tag {
                 hasReadableOutlines = true
             }
-            tables.append(Table(tag: tag, data: cfData as Data))
+            tables.append(Table(tag: tag, data: ownedTableData(from: cfData)))
         }
         guard !tables.isEmpty else { return nil }
 
@@ -1055,6 +1055,10 @@ enum CoreTextFontMaterializer {
         withUnsafeBytes(of: &be) { raw in
             data.replaceSubrange(offset..<(offset + 2), with: raw)
         }
+    }
+
+    private nonisolated static func ownedTableData(from cfData: CFData) -> Data {
+        (cfData as Data).withUnsafeBytes { Data($0) }
     }
 
     private nonisolated static func readU16(_ data: Data, at offset: Int) -> UInt16? {

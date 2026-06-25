@@ -7,6 +7,12 @@ final class EditorFocusCoordinator {
     private var suppressionCount = 0
     private var shouldRestoreFocus = false
     private var restoreTask: Task<Void, Never>?
+    private(set) var isTextSelectionDragActive = false
+    private(set) var hasActiveTextSelection = false
+
+    var isTextSelectionInteractionActive: Bool {
+        isTextSelectionDragActive || hasActiveTextSelection
+    }
 
     var isEditorFocused: Bool {
         textView?.isFirstResponder == true
@@ -15,6 +21,14 @@ final class EditorFocusCoordinator {
     func register(_ textView: TypstTextView) {
         self.textView = textView
         textView.suppressResignFirstResponder = suppressionCount > 0
+        hasActiveTextSelection = textView.selectedRange.length > 0
+        textView.onTextSelectionDragActiveChanged = { [weak self] isActive in
+            self?.isTextSelectionDragActive = isActive
+        }
+    }
+
+    func updateSelectionState(selectedLength: Int) {
+        hasActiveTextSelection = selectedLength > 0
     }
 
     func setResignSuppressed(_ isSuppressed: Bool) {

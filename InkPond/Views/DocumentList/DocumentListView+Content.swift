@@ -3,8 +3,11 @@
 //  InkPond
 //
 
+import PDFKit
 import SwiftUI
 import SwiftData
+import UIKit
+import WebKit
 
 extension DocumentListView {
     var guardedDocumentSelection: Binding<InkPondDocument?> {
@@ -15,12 +18,17 @@ extension DocumentListView {
     }
 
     var documentList: some View {
-        List(selection: guardedDocumentSelection) {
-            ForEach(sortedDocuments) { document in
-                documentRow(document)
+        ScrollView {
+            LazyVGrid(columns: projectGridColumns, spacing: 16) {
+                ForEach(sortedDocuments) { document in
+                    documentRow(document)
+                }
             }
+            .padding(.horizontal, isIPad ? 24 : 16)
+            .padding(.vertical, 16)
         }
-        .listStyle(.insetGrouped)
+        .softScrollEdgeEffect()
+        .background(Color(uiColor: projectHomeChromeUIColor).ignoresSafeArea())
         .overlay {
             if isShowingLibraryEmptyState {
                 libraryEmptyState
@@ -30,6 +38,7 @@ extension DocumentListView {
         }
         .task {
             startFilesystemMonitoring()
+            refreshPreviewCacheSnapshot()
         }
         .onChange(of: storageManager.mode) { _, _ in
             guard !storageManager.isMigrating else { return }
@@ -42,6 +51,9 @@ extension DocumentListView {
         .onChange(of: storageManager.iCloudAvailable) { _, _ in
             scheduleFilesystemMonitoringRestart()
         }
+        .onChange(of: documents.map(\.projectID)) { _, _ in
+            refreshPreviewCacheSnapshot()
+        }
         .onDisappear {
             monitor.stop()
             syncTask?.cancel()
@@ -51,31 +63,27 @@ extension DocumentListView {
         }
     }
 
+    var projectGridColumns: [GridItem] {
+        [
+            GridItem(
+                .adaptive(minimum: isIPad ? 220 : 155, maximum: 320),
+                spacing: 16,
+                alignment: .top
+            )
+        ]
+    }
+
     func documentRow(_ document: InkPondDocument) -> some View {
         Button {
             selectDocumentIfAvailable(document)
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    if document.isExternalFolder {
-                        Image(systemName: "link")
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(document.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.format("doc.time.created_value", document.createdAt.formatted(rowDateFormat)))
-                    Text(L10n.format("doc.time.modified_value", document.modifiedAt.formatted(rowDateFormat)))
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            ProjectHomeCard(
+                document: document,
+                cacheEntry: previewCacheEntriesByProjectID[document.projectID],
+                dateFormat: rowDateFormat,
+                backgroundColor: projectHomeCardUIColor,
+                thumbnailBackgroundColor: projectHomeThumbnailUIColor
+            )
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
@@ -88,7 +96,7 @@ extension DocumentListView {
         )
         .accessibilityHint(L10n.a11yDocumentRowHint)
         .accessibilityValue(selectedDocument == document ? L10n.tr("a11y.state.selected") : "")
-        .accessibilityIdentifier("document-list.row.\(document.projectID)")
+        .accessibilityIdentifier("project-home.card.\(document.projectID)")
         .accessibilityAction(named: Text(L10n.tr("a11y.document_row.action.rename"))) {
             renamingDocument = document
             newTitle = document.title
@@ -133,6 +141,10 @@ extension DocumentListView {
                 }
             }
         }
+    }
+
+    func refreshPreviewCacheSnapshot() {
+        previewCacheEntriesByProjectID = Self.loadPreviewCacheEntriesByProjectID()
     }
 
     var libraryEmptyState: some View {
@@ -320,5 +332,207 @@ extension DocumentListView {
                 L10n.a11ySortValue(field: sortField.label, direction: sortDirection.label)
             )
         )
+    }
+}
+
+private struct ProjectHomeCard: View {
+    let document: InkPondDocument
+    let cacheEntry: CompiledPreviewCacheEntry?
+    let dateFormat: Date.FormatStyle
+    let backgroundColor: UIColor
+    let thumbnailBackgroundColor: UIColor
+
+    private let cardCornerRadius: CGFloat = 16
+    private let thumbnailCornerRadius: CGFloat = 12
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ProjectHomeThumbnail(cacheEntry: cacheEntry, backgroundColor: thumbnailBackgroundColor)
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: thumbnailCornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: thumbnailCornerRadius, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    if document.isExternalFolder {
+                        Image(systemName: "link")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(document.title)
+                        .font(.headline.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Text(document.entryFileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(L10n.format("doc.time.modified_value", document.modifiedAt.formatted(dateFormat)))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: backgroundColor), in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct ProjectHomeThumbnail: View {
+    let cacheEntry: CompiledPreviewCacheEntry?
+    let backgroundColor: UIColor
+    @State private var thumbnail: UIImage?
+    @State private var svgHTML: String?
+
+    private var thumbnailID: String {
+        guard let cacheEntry else { return "empty" }
+        let sourcePath = cacheEntry.pdfURL?.path ?? cacheEntry.firstSVGPageURL?.path ?? "empty"
+        return "\(sourcePath)-\(cacheEntry.updatedAt.timeIntervalSinceReferenceDate)"
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(uiColor: backgroundColor))
+
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(10)
+            } else if let svgHTML {
+                ProjectHomeSVGThumbnailView(html: svgHTML)
+                    .padding(10)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.richtext")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Typst")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task(id: thumbnailID) {
+            await loadThumbnail()
+        }
+        .accessibilityHidden(true)
+    }
+
+    @MainActor
+    private func loadThumbnail() async {
+        guard cacheEntry != nil else {
+            thumbnail = nil
+            svgHTML = nil
+            return
+        }
+
+        if let pdfURL = cacheEntry?.pdfURL,
+           let document = PDFDocument(url: pdfURL),
+           let page = document.page(at: 0) {
+            guard !Task.isCancelled else { return }
+            thumbnail = page.thumbnail(of: CGSize(width: 520, height: 680), for: .mediaBox)
+            svgHTML = nil
+            return
+        }
+
+        guard let svgURL = cacheEntry?.firstSVGPageURL else {
+            thumbnail = nil
+            svgHTML = nil
+            return
+        }
+
+        let html = try? await Task.detached(priority: .utility) {
+            let svg = try String(contentsOf: svgURL, encoding: .utf8)
+            return ProjectHomeThumbnail.svgHTML(for: svg)
+        }.value
+        guard !Task.isCancelled else { return }
+        thumbnail = nil
+        svgHTML = html
+    }
+
+    nonisolated private static func svgHTML(for svg: String) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
+        body {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .page {
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
+        .page > svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        </style>
+        </head>
+        <body>
+        <div class="page">
+        \(svg)
+        </div>
+        </body>
+        </html>
+        """
+    }
+}
+
+private struct ProjectHomeSVGThumbnailView: UIViewRepresentable {
+    let html: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.isUserInteractionEnabled = false
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastHTML != html else { return }
+        context.coordinator.lastHTML = html
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    final class Coordinator {
+        var lastHTML: String?
     }
 }

@@ -39,23 +39,88 @@ struct ProjectFiles {
     var fontFiles: [String]
 }
 
-struct ProjectTreeNode: Identifiable, Hashable {
-    enum Kind: Hashable {
-        case directory
-        case typ
-        case reference
-        case image
-        case font
-        case other
+enum FileKind: String, CaseIterable, Sendable, Hashable {
+    case directory
+    case typ
+    case text
+    case bibliography
+    case data
+    case configuration
+    case image
+    case vector
+    case pdf
+    case font
+    case archive
+    case other
+
+    var isDirectory: Bool { self == .directory }
+
+    var canBecomeTab: Bool { !isDirectory }
+
+    var isTextEditable: Bool {
+        switch self {
+        case .typ, .text, .bibliography, .data, .configuration:
+            return true
+        case .directory, .image, .vector, .pdf, .font, .archive, .other:
+            return false
+        }
     }
 
+    var iconName: String {
+        switch self {
+        case .directory:
+            return "folder"
+        case .typ:
+            return "doc.plaintext"
+        case .text:
+            return "doc.text"
+        case .bibliography:
+            return "book.closed"
+        case .data:
+            return "tablecells"
+        case .configuration:
+            return "slider.horizontal.3"
+        case .image:
+            return "photo"
+        case .vector:
+            return "scribble.variable"
+        case .pdf:
+            return "doc.richtext"
+        case .font:
+            return "character.textbox"
+        case .archive:
+            return "archivebox"
+        case .other:
+            return "doc"
+        }
+    }
+
+    var localizedAccessibilityLabel: String {
+        switch self {
+        case .directory:
+            return L10n.tr("a11y.project_files.kind.folder")
+        case .typ:
+            return L10n.tr("a11y.project_files.kind.typ")
+        case .bibliography:
+            return L10n.tr("a11y.project_files.kind.reference")
+        case .image, .vector, .pdf:
+            return L10n.tr("a11y.project_files.kind.image")
+        case .font:
+            return L10n.tr("a11y.project_files.kind.font")
+        case .text, .data, .configuration, .archive, .other:
+            return L10n.tr("a11y.project_files.kind.file")
+        }
+    }
+}
+
+struct ProjectTreeNode: Identifiable, Hashable {
     let relativePath: String
     let displayName: String
-    let kind: Kind
+    let kind: FileKind
     let children: [ProjectTreeNode]
 
     var id: String { relativePath }
-    var isDirectory: Bool { kind == .directory }
+    var isDirectory: Bool { kind.isDirectory }
 }
 
 struct EntryFileResolution {
@@ -99,14 +164,21 @@ struct ProjectReferenceCompletionSnapshot: Sendable {
 // MARK: - ProjectFileManager
 
 enum ProjectFileManager {
-    nonisolated static let supportedImageFileExtensions: Set<String> = [
-        "bmp", "eps", "gif", "heic", "heif", "jpg", "jpeg",
-        "pdf", "png", "svg", "tif", "tiff", "webp"
+    nonisolated static let bitmapImageFileExtensions: Set<String> = [
+        "bmp", "gif", "heic", "heif", "jpg", "jpeg", "png", "tif", "tiff", "webp"
     ]
+    nonisolated static let vectorFileExtensions: Set<String> = ["eps", "svg"]
+    nonisolated static let pdfFileExtensions: Set<String> = ["pdf"]
+    nonisolated static let supportedImageFileExtensions: Set<String> =
+        bitmapImageFileExtensions.union(vectorFileExtensions).union(pdfFileExtensions)
     nonisolated static let fontFileExtensions: Set<String> = ["otf", "ttf", "woff", "woff2"]
-    nonisolated static let referenceFileExtensions: Set<String> = [
-        "bib", "yml", "yaml", "csv", "json", "xml", "toml", "txt"
-    ]
+    nonisolated static let textFileExtensions: Set<String> = ["md", "markdown", "txt"]
+    nonisolated static let bibliographyFileExtensions: Set<String> = ["bib", "yaml", "yml"]
+    nonisolated static let dataFileExtensions: Set<String> = ["csv", "json", "xml"]
+    nonisolated static let configurationFileExtensions: Set<String> = ["ini", "plist", "toml"]
+    nonisolated static let archiveFileExtensions: Set<String> = ["zip", "tar", "gz", "tgz"]
+    nonisolated static let referenceFileExtensions: Set<String> =
+        bibliographyFileExtensions.union(dataFileExtensions).union(configurationFileExtensions).union(textFileExtensions)
 
     /// Shared StorageManager reference — set at app launch from InkPondApp.
     /// Protected by a lock for thread-safe access from any actor context.
@@ -520,21 +592,39 @@ enum ProjectFileManager {
         }
     }
 
-    static func fileKind(for relativePath: String, imageDirectoryName: String) -> ProjectTreeNode.Kind {
+    static func fileKind(for relativePath: String, imageDirectoryName: String) -> FileKind {
         let ext = (relativePath as NSString).pathExtension.lowercased()
         if ext == "typ" { return .typ }
-        if referenceFileExtensions.contains(ext) { return .reference }
 
         // The dedicated fonts directory is owned by font imports; classify its
         // contents as fonts before falling back to extension-based detection.
         if relativePath.hasPrefix("fonts/") { return .font }
-        if !imageDirectoryName.isEmpty, relativePath.hasPrefix(imageDirectoryName + "/") { return .image }
-        if supportedImageFileExtensions.contains(ext) {
-            return .image
+        if !imageDirectoryName.isEmpty,
+           relativePath.hasPrefix(imageDirectoryName + "/"),
+           supportedImageFileExtensions.contains(ext) {
+            return imageOrDocumentKind(forExtension: ext)
         }
-        if fontFileExtensions.contains(ext) {
-            return .font
-        }
+        if bibliographyFileExtensions.contains(ext) { return .bibliography }
+        if dataFileExtensions.contains(ext) { return .data }
+        if configurationFileExtensions.contains(ext) { return .configuration }
+        if textFileExtensions.contains(ext) { return .text }
+        if bitmapImageFileExtensions.contains(ext) { return .image }
+        if vectorFileExtensions.contains(ext) { return .vector }
+        if pdfFileExtensions.contains(ext) { return .pdf }
+        if fontFileExtensions.contains(ext) { return .font }
+        if archiveFileExtensions.contains(ext) { return .archive }
         return .other
+    }
+
+    private static func imageOrDocumentKind(forExtension ext: String) -> FileKind {
+        if bitmapImageFileExtensions.contains(ext) { return .image }
+        if vectorFileExtensions.contains(ext) { return .vector }
+        if pdfFileExtensions.contains(ext) { return .pdf }
+        return .image
+    }
+
+    static func removeFontReference(relativePath: String, from document: InkPondDocument) {
+        let fileName = (relativePath as NSString).lastPathComponent
+        document.fontFileNames.removeAll { $0 == fileName || $0 == relativePath }
     }
 }
