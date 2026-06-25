@@ -17,19 +17,7 @@ private struct HitTestShield: View {
     }
 }
 
-private struct RegularWorkspaceMetrics {
-    let totalWidth: CGFloat
-    let treeWidth: CGFloat
-    let treeDividerWidth: CGFloat
-    let projectHeaderWidth: CGFloat
-    let workspaceWidth: CGFloat
-    let editorWidth: CGFloat
-    let splitHandleWidth: CGFloat
-
-    var editorStartX: CGFloat { treeWidth + treeDividerWidth }
-    var previewStartX: CGFloat { editorStartX + editorWidth + splitHandleWidth }
-    var previewWidth: CGFloat { max(workspaceWidth - editorWidth - splitHandleWidth, 1) }
-}
+private typealias RegularWorkspaceMetrics = EditorWorkspaceLayoutMetrics
 
 private enum RegularToolbarActionLayout {
     case full
@@ -208,8 +196,7 @@ private extension View {
 }
 
 extension DocumentEditorView {
-    /// Sync is only useful on iPad where both panes are visible simultaneously.
-    private var isSyncEnabled: Bool { sizeClass == .regular }
+    private var isSyncEnabled: Bool { workspaceLayoutPolicy.usesSplitWorkspace }
     private var regularWorkspaceTopBarHeight: CGFloat { 56 }
     private var regularWorkspaceTopHitHeight: CGFloat { regularWorkspaceTopBarHeight + 14 }
     private var regularToolbarControlHeight: CGFloat { 48 }
@@ -233,7 +220,7 @@ extension DocumentEditorView {
     private var regularPreviewStatsCompactMinimumPreviewWidth: CGFloat { 340 }
     private var regularPreviewStatsFullMinimumPreviewWidth: CGFloat { 420 }
     private var usesSystemCompactToolbar: Bool {
-        sizeClass != .regular
+        workspaceLayoutPolicy.usesCompactWorkspace
     }
 
     private var regularToolbarForegroundColor: Color {
@@ -283,7 +270,10 @@ extension DocumentEditorView {
         )
     }
 
-    func editorPane(topViewportInset: CGFloat = 0) -> some View {
+    func editorPane(
+        topViewportInset: CGFloat = 0,
+        policy: EditorWorkspaceLayoutPolicy
+    ) -> some View {
         EditorView(
             text: $editorText,
             insertionRequest: $insertionRequest,
@@ -293,10 +283,10 @@ extension DocumentEditorView {
             fileLoadToken: fileLoadToken,
             focusCoordinator: focusCoordinator,
             topViewportInset: topViewportInset,
-            sourceMap: isSyncEnabled && isEditingEntryFile ? compiler.sourceMap : nil,
-            syncCoordinator: isSyncEnabled ? syncCoordinator : nil,
+            sourceMap: policy.usesSplitWorkspace && isEditingEntryFile ? compiler.sourceMap : nil,
+            syncCoordinator: policy.usesSplitWorkspace ? syncCoordinator : nil,
             theme: themeManager.currentTheme,
-            externalChromeBackgroundColor: editorExternalChromeBackgroundUIColor,
+            externalChromeBackgroundColor: editorExternalChromeBackgroundUIColor(for: policy),
             editorFont: editorFontSettings.uiFont,
             errorLines: compilationErrorLines,
             onPhotoTapped: { showingPhotoPicker = true },
@@ -335,14 +325,15 @@ extension DocumentEditorView {
         .ignoresSafeArea(edges: .bottom)
     }
 
-    private var editorExternalChromeBackgroundUIColor: UIColor {
-        sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemGroupedBackground
+    private func editorExternalChromeBackgroundUIColor(for policy: EditorWorkspaceLayoutPolicy) -> UIColor {
+        policy.usesSplitWorkspace ? regularWorkspaceChromeUIColor : .secondarySystemGroupedBackground
     }
 
     func previewPane(
         topViewportInset: CGFloat = 0,
         overlayTopInset: CGFloat = 0,
-        overlayBottomInset: CGFloat = 0
+        overlayBottomInset: CGFloat = 0,
+        policy: EditorWorkspaceLayoutPolicy
     ) -> some View {
         PreviewPane(
             compiler: compiler,
@@ -355,10 +346,10 @@ extension DocumentEditorView {
             previewCacheDescriptor: compiledPreviewCacheDescriptor,
             compileToken: compileToken,
             requiresExternalFolderLink: previewRequiresExternalFolderLink,
-            drivesCompilation: sizeClass == .regular,
-            cancelsCompilerOnDisappear: sizeClass == .regular,
+            drivesCompilation: policy.usesSplitWorkspace,
+            cancelsCompilerOnDisappear: policy.usesSplitWorkspace,
             focusCoordinator: focusCoordinator,
-            sourceMap: isSyncEnabled ? compiler.sourceMap : nil,
+            sourceMap: policy.usesSplitWorkspace ? compiler.sourceMap : nil,
             syncCoordinator: syncCoordinator,
             entryFileName: document.entryFileName,
             topViewportInset: topViewportInset,
@@ -367,7 +358,7 @@ extension DocumentEditorView {
             onGoToError: { file, line, column in
                 navigateToError(file: file, line: line, column: column)
             },
-            onCompactPreviewSwipe: sizeClass == .regular ? nil : {
+            onCompactPreviewSwipe: policy.usesSplitWorkspace ? nil : {
                 if selectedTab != editorTab {
                     pendingCompactSwipeFeedback = true
                     selectedTab = editorTab
@@ -376,12 +367,12 @@ extension DocumentEditorView {
             onLinkExternalFolder: previewRequiresExternalFolderLink ? {
                 showingExternalFolderLinkImporter = true
             } : nil,
-            showsStatisticsOverlay: sizeClass != .regular,
-            showsCompilingIndicatorOverlay: sizeClass != .regular,
-            backgroundColor: sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemBackground
+            showsStatisticsOverlay: policy.usesCompactWorkspace,
+            showsCompilingIndicatorOverlay: policy.usesCompactWorkspace,
+            backgroundColor: policy.usesSplitWorkspace ? regularWorkspaceChromeUIColor : .secondarySystemBackground
         )
-        .environment(\.colorScheme, sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
-        .liquidGlassColorScheme(sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
+        .environment(\.colorScheme, policy.usesSplitWorkspace ? regularWorkspaceColorScheme : colorScheme)
+        .liquidGlassColorScheme(policy.usesSplitWorkspace ? regularWorkspaceColorScheme : colorScheme)
     }
 
     func linkExternalFolderForPreview(from folderURL: URL) {
@@ -492,8 +483,13 @@ extension DocumentEditorView {
         let dragGesture = DragGesture(minimumDistance: 1, coordinateSpace: .named("splitContainer"))
             .onChanged { value in
                 let raw = value.location.x / totalWidth
+                let clamped = workspaceLayoutPolicy.clampedEditorFraction(
+                    raw,
+                    workspaceWidth: totalWidth,
+                    splitHandleWidth: regularSplitHandleWidth
+                )
                 withTransaction(Transaction(animation: nil)) {
-                    editorFraction = min(0.8, max(0.2, raw))
+                    editorFraction = clamped
                 }
             }
 
@@ -520,17 +516,25 @@ extension DocumentEditorView {
         .accessibilityElement()
         .accessibilityLabel(L10n.a11yEditorSplitLabel)
         .accessibilityHint(L10n.a11yEditorSplitHint)
-        .accessibilityValue(splitHandleAccessibilityValue)
+        .accessibilityValue(splitHandleAccessibilityValue(totalWidth: totalWidth))
         .accessibilityIdentifier("editor.split-handle")
         .accessibilityAdjustableAction { direction in
             let delta: CGFloat = 0.1
             switch direction {
             case .increment:
                 InteractionFeedback.selection()
-                editorFraction = min(0.8, editorFraction + delta)
+                editorFraction = workspaceLayoutPolicy.clampedEditorFraction(
+                    editorFraction + delta,
+                    workspaceWidth: totalWidth,
+                    splitHandleWidth: regularSplitHandleWidth
+                )
             case .decrement:
                 InteractionFeedback.selection()
-                editorFraction = max(0.2, editorFraction - delta)
+                editorFraction = workspaceLayoutPolicy.clampedEditorFraction(
+                    editorFraction - delta,
+                    workspaceWidth: totalWidth,
+                    splitHandleWidth: regularSplitHandleWidth
+                )
             @unknown default:
                 break
             }
@@ -542,13 +546,16 @@ extension DocumentEditorView {
     }
 
     @ViewBuilder
-    func workspaceEditorPane(topViewportInset: CGFloat = 0) -> some View {
+    func workspaceEditorPane(
+        topViewportInset: CGFloat = 0,
+        policy: EditorWorkspaceLayoutPolicy
+    ) -> some View {
         VStack(spacing: 0) {
-            if sizeClass != .regular, !usesCompactTabsInTopChrome {
+            if policy.usesCompactWorkspace, !usesCompactTabsInTopChrome(for: policy) {
                 compactProjectTabBar
             }
             if activeTabIsTextEditable {
-                editorPane(topViewportInset: topViewportInset)
+                editorPane(topViewportInset: topViewportInset, policy: policy)
         } else if let tab = activeProjectTab {
             ProjectFilePreviewView(
                 tab: tab,
@@ -557,7 +564,7 @@ extension DocumentEditorView {
                 backgroundColor: regularWorkspaceChromeUIColor
             )
         } else {
-            editorPane(topViewportInset: topViewportInset)
+            editorPane(topViewportInset: topViewportInset, policy: policy)
         }
         }
         .animation(.smooth(duration: 0.22, extraBounce: 0), value: openTabs.count)
@@ -597,10 +604,10 @@ extension DocumentEditorView {
     }
 
     @ViewBuilder
-    private var regularWorkspaceTopBar: some View {
+    private func regularWorkspaceTopBar(policy: EditorWorkspaceLayoutPolicy) -> some View {
         GeometryReader { geo in
-            let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
-            regularWorkspaceTopBarContent(metrics: metrics)
+            let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width, policy: policy)
+            regularWorkspaceTopBarContent(metrics: metrics, policy: policy)
                 .background {
                     regularWorkspaceTopBarBackdrop
                 }
@@ -609,9 +616,12 @@ extension DocumentEditorView {
         .frame(height: regularWorkspaceTopBarHeight)
     }
 
-    private func regularWorkspaceTopBarContent(metrics: RegularWorkspaceMetrics) -> some View {
+    private func regularWorkspaceTopBarContent(
+        metrics: RegularWorkspaceMetrics,
+        policy: EditorWorkspaceLayoutPolicy
+    ) -> some View {
         ZStack(alignment: .topLeading) {
-            regularWorkspaceProjectHeader
+            regularWorkspaceProjectHeader(policy: policy)
                 .padding(.horizontal, 12)
                 .frame(width: metrics.projectHeaderWidth, height: regularWorkspaceTopBarHeight, alignment: .leading)
                 .background {
@@ -641,9 +651,11 @@ extension DocumentEditorView {
         .frame(maxWidth: .infinity, minHeight: regularWorkspaceTopBarHeight, maxHeight: regularWorkspaceTopBarHeight, alignment: .topLeading)
     }
 
-    private var regularWorkspaceProjectHeader: some View {
+    private func regularWorkspaceProjectHeader(policy: EditorWorkspaceLayoutPolicy) -> some View {
         HStack(spacing: 12) {
-            regularProjectFileTreeToggleButton
+            if policy.allowsInlineProjectFileTree {
+                regularProjectFileTreeToggleButton
+            }
 
             if let onCloseProject {
                 Button {
@@ -1048,17 +1060,19 @@ extension DocumentEditorView {
     private func regularPreviewColumn(
         topViewportInset: CGFloat = 0,
         overlayTopInset: CGFloat = 0,
-        overlayBottomInset: CGFloat = 0
+        overlayBottomInset: CGFloat = 0,
+        policy: EditorWorkspaceLayoutPolicy
     ) -> some View {
         previewPane(
             topViewportInset: topViewportInset,
             overlayTopInset: overlayTopInset,
-            overlayBottomInset: overlayBottomInset
+            overlayBottomInset: overlayBottomInset,
+            policy: policy
         )
     }
 
-    private var usesCompactTabsInTopChrome: Bool {
-        guard sizeClass != .regular else { return false }
+    private func usesCompactTabsInTopChrome(for policy: EditorWorkspaceLayoutPolicy) -> Bool {
+        guard policy.usesCompactWorkspace else { return false }
         if #available(iOS 26.0, *) {
             return true
         }
@@ -1209,41 +1223,49 @@ extension DocumentEditorView {
         colorScheme
     }
 
+    private func updateWorkspaceLayoutPolicy(_ policy: EditorWorkspaceLayoutPolicy) {
+        guard workspaceLayoutPolicy != policy else { return }
+        workspaceLayoutPolicy = policy
+        if policy.usesSplitWorkspace {
+            recomputePreviewStatistics()
+        }
+    }
+
     @ViewBuilder
     var contentLayout: some View {
-        if sizeClass == .regular {
-            if #available(iOS 26, *) {
-                GeometryReader { geo in
-                    let overlayTopInset = geo.safeAreaInsets.top + regularWorkspaceTopBarHeight
-                    let overlayBottomInset = geo.safeAreaInsets.bottom
+        GeometryReader { geo in
+            let policy = EditorWorkspaceLayoutPolicy(size: geo.size)
 
-                    regularWorkspaceContent(
-                        topViewportInset: 0,
-                        overlayTopInset: overlayTopInset,
-                        overlayBottomInset: overlayBottomInset
-                    )
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                        .safeAreaBar(edge: .top, spacing: 0) {
-                            regularWorkspaceTopBar
-                                .frame(height: regularWorkspaceTopBarHeight)
-                                .containerCornerOffsetWhenAvailable()
+            Group {
+                if policy.usesSplitWorkspace {
+                    if #available(iOS 26, *) {
+                        let overlayTopInset = geo.safeAreaInsets.top + regularWorkspaceTopBarHeight
+                        let overlayBottomInset = geo.safeAreaInsets.bottom
+
+                        regularWorkspaceContent(
+                            topViewportInset: 0,
+                            overlayTopInset: overlayTopInset,
+                            overlayBottomInset: overlayBottomInset,
+                            policy: policy
+                        )
+                            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                            .safeAreaBar(edge: .top, spacing: 0) {
+                                regularWorkspaceTopBar(policy: policy)
+                                    .frame(height: regularWorkspaceTopBarHeight)
+                                    .containerCornerOffsetWhenAvailable()
+                            }
+                            .softScrollEdgeEffect(for: .top)
+                            .background(regularWorkspaceChromeColor)
+                            .clipped()
+                    } else {
+                        VStack(spacing: 0) {
+                            regularWorkspaceTopBar(policy: policy)
+                            regularWorkspaceTopBarSeparator
+                            regularWorkspaceContent(topViewportInset: 0, policy: policy)
                         }
-                        .softScrollEdgeEffect(for: .top)
                         .background(regularWorkspaceChromeColor)
-                        .clipped()
-                }
-                .ignoresSafeArea(edges: .bottom)
-            } else {
-                VStack(spacing: 0) {
-                    regularWorkspaceTopBar
-                    regularWorkspaceTopBarSeparator
-                    regularWorkspaceContent(topViewportInset: 0)
-                }
-                .background(regularWorkspaceChromeColor)
-                .ignoresSafeArea(edges: .bottom)
-            }
-        } else {
-            GeometryReader { geo in
+                    }
+                } else {
                 let topViewportInset = geo.safeAreaInsets.top
                 let overlayTopInset = topViewportInset + 56
                 let overlayBottomInset = geo.safeAreaInsets.bottom
@@ -1259,38 +1281,48 @@ extension DocumentEditorView {
                         compileToken: compileToken,
                         requiresExternalFolderLink: previewRequiresExternalFolderLink
                     )
-                    workspaceEditorPane(topViewportInset: topViewportInset)
+                    workspaceEditorPane(topViewportInset: topViewportInset, policy: policy)
                         .ignoresSafeArea(edges: .top)
                         .softScrollEdgeEffect()
                         .opacity(selectedTab == editorTab ? 1 : 0)
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
-                    previewPane(
-                        topViewportInset: 0,
-                        overlayTopInset: overlayTopInset,
-                        overlayBottomInset: overlayBottomInset
-                    )
-                        .ignoresSafeArea(edges: .top)
-                        .softScrollEdgeEffect()
-                        .opacity(selectedTab == previewTab ? 1 : 0)
-                        .allowsHitTesting(selectedTab == previewTab)
-                        .accessibilityHidden(selectedTab != previewTab)
+                    if selectedTab == previewTab {
+                        previewPane(
+                            topViewportInset: 0,
+                            overlayTopInset: overlayTopInset,
+                            overlayBottomInset: overlayBottomInset,
+                            policy: policy
+                        )
+                            .ignoresSafeArea(edges: .top)
+                            .softScrollEdgeEffect()
+                    }
                 }
                 .animation(nil, value: selectedTab)
                 .simultaneousGesture(compactModeSwipeGesture)
             }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .onAppear {
+                updateWorkspaceLayoutPolicy(policy)
+            }
+            .onChange(of: policy) { _, newValue in
+                updateWorkspaceLayoutPolicy(newValue)
+            }
         }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private func regularWorkspaceContent(
         topViewportInset: CGFloat,
         overlayTopInset: CGFloat = 0,
-        overlayBottomInset: CGFloat = 0
+        overlayBottomInset: CGFloat = 0,
+        policy: EditorWorkspaceLayoutPolicy
     ) -> some View {
         GeometryReader { geo in
-            let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width)
+            let metrics = regularWorkspaceMetrics(totalWidth: geo.size.width, policy: policy)
             HStack(spacing: 0) {
-                if isProjectFileTreeVisible {
+                if metrics.treeWidth > 0 {
                     projectFileTreeSidebar(topContentInset: topViewportInset)
                         .frame(width: metrics.treeWidth)
                         .transition(.move(edge: .leading).combined(with: .opacity))
@@ -1298,7 +1330,7 @@ extension DocumentEditorView {
                         .transition(.opacity)
                 }
                 HStack(spacing: 0) {
-                    workspaceEditorPane(topViewportInset: topViewportInset)
+                    workspaceEditorPane(topViewportInset: topViewportInset, policy: policy)
                         .softScrollEdgeEffect()
                         .frame(width: metrics.editorWidth)
                         .clipped()
@@ -1306,7 +1338,8 @@ extension DocumentEditorView {
                     regularPreviewColumn(
                         topViewportInset: topViewportInset,
                         overlayTopInset: overlayTopInset,
-                        overlayBottomInset: overlayBottomInset
+                        overlayBottomInset: overlayBottomInset,
+                        policy: policy
                     )
                         .softScrollEdgeEffect()
                 }
@@ -1315,7 +1348,7 @@ extension DocumentEditorView {
             .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             .background(regularWorkspaceChromeColor)
             .overlay(alignment: .topLeading) {
-                if topViewportInset > 0, isProjectFileTreeVisible {
+                if topViewportInset > 0, metrics.treeWidth > 0 {
                     regularWorkspaceTopFade
                         .frame(width: metrics.treeWidth + metrics.treeDividerWidth, alignment: .leading)
                 }
@@ -1414,29 +1447,17 @@ extension DocumentEditorView {
         return 24 + statsWidth + statsSpacing + actionCapsuleWidth
     }
 
-    private func regularWorkspaceMetrics(totalWidth: CGFloat) -> RegularWorkspaceMetrics {
-        let expandedTreeWidth = min(max(totalWidth * 0.22, 240), 320)
-        let treeWidth = isProjectFileTreeVisible ? expandedTreeWidth : 0
-        let treeDividerWidth: CGFloat = isProjectFileTreeVisible ? 1 : 0
-        let collapsedHeaderWidth = min(
-            max(totalWidth * 0.17, regularCollapsedProjectHeaderMinimumWidth),
-            regularCollapsedProjectHeaderMaximumWidth
-        )
-        let projectHeaderWidth = collapsedHeaderWidth
-        let workspaceWidth = max(totalWidth - treeWidth - treeDividerWidth, 1)
-        let maximumEditorWidth = max(workspaceWidth - regularSplitHandleWidth - 1, 1)
-        let minimumEditorWidth = isProjectFileTreeVisible
-            ? 1
-            : min(projectHeaderWidth + regularTabOverlayLeadingInset, maximumEditorWidth)
-        let editorWidth = min(max(workspaceWidth * editorFraction, minimumEditorWidth), maximumEditorWidth)
-        return RegularWorkspaceMetrics(
+    private func regularWorkspaceMetrics(
+        totalWidth: CGFloat,
+        policy: EditorWorkspaceLayoutPolicy
+    ) -> RegularWorkspaceMetrics {
+        policy.splitMetrics(
             totalWidth: totalWidth,
-            treeWidth: treeWidth,
-            treeDividerWidth: treeDividerWidth,
-            projectHeaderWidth: projectHeaderWidth,
-            workspaceWidth: workspaceWidth,
-            editorWidth: editorWidth,
-            splitHandleWidth: regularSplitHandleWidth
+            editorFraction: editorFraction,
+            isProjectFileTreeVisible: isProjectFileTreeVisible,
+            splitHandleWidth: regularSplitHandleWidth,
+            collapsedHeaderMinimumWidth: regularCollapsedProjectHeaderMinimumWidth,
+            collapsedHeaderMaximumWidth: regularCollapsedProjectHeaderMaximumWidth
         )
     }
 
@@ -1462,6 +1483,9 @@ extension DocumentEditorView {
                 if horizontal < 0, selectedTab == editorTab, startsAwayFromLeadingEdge {
                     pendingCompactSwipeFeedback = true
                     selectedTab = previewTab
+                } else if horizontal > 0, selectedTab == previewTab {
+                    pendingCompactSwipeFeedback = true
+                    selectedTab = editorTab
                 }
             }
     }
@@ -1473,7 +1497,7 @@ extension DocumentEditorView {
                 exporter.exportTypSource(for: document, fileName: currentFileName)
             }
         }
-        if sizeClass == .regular || selectedTab == previewTab {
+        if workspaceLayoutPolicy.usesSplitWorkspace || selectedTab == previewTab {
             return {
                 guard flushPendingSave() else { return }
                 if let fontResolutionError {
@@ -1491,7 +1515,7 @@ extension DocumentEditorView {
 
     var shareButtonLabel: String {
         if previewRequiresExternalFolderLink { return L10n.tr("Export .typ") }
-        if sizeClass == .regular || selectedTab == previewTab { return L10n.tr("Share PDF") }
+        if workspaceLayoutPolicy.usesSplitWorkspace || selectedTab == previewTab { return L10n.tr("Share PDF") }
         return L10n.tr("Export .typ")
     }
 
@@ -1516,7 +1540,7 @@ extension DocumentEditorView {
     }
 
     private func regularShouldShowPreviewStatistics(for previewWidth: CGFloat) -> Bool {
-        sizeClass == .regular
+        workspaceLayoutPolicy.usesSplitWorkspace
             && !previewRequiresExternalFolderLink
             && previewWidth >= regularPreviewStatsCompactMinimumPreviewWidth
             && !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1527,7 +1551,7 @@ extension DocumentEditorView {
     }
 
     private var toolbarPreviewStatistics: PreviewStatistics? {
-        guard sizeClass == .regular,
+        guard workspaceLayoutPolicy.usesSplitWorkspace,
               !previewRequiresExternalFolderLink,
               previewStatsAreReady,
               !entrySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -1541,7 +1565,7 @@ extension DocumentEditorView {
     }
 
     private func recomputePreviewStatistics() {
-        guard sizeClass == .regular else { return }
+        guard workspaceLayoutPolicy.usesSplitWorkspace else { return }
         let text = entrySource
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             previewStatsWordCount = 0
@@ -1619,7 +1643,7 @@ extension DocumentEditorView {
         }
 
         Section {
-            if sizeClass != .regular, !previewRequiresExternalFolderLink, selectedTab == previewTab {
+            if workspaceLayoutPolicy.usesCompactWorkspace, !previewRequiresExternalFolderLink, selectedTab == previewTab {
                 Button(action: shareButtonAction) {
                     Label(shareButtonLabel, systemImage: shareMenuSystemImage)
                 }
@@ -1850,7 +1874,7 @@ extension DocumentEditorView {
                 background: compactNavigationChromeColor,
                 colorScheme: compactNavigationColorScheme
             ))
-            .modifier(ConditionalNavigationBarVisibilityModifier(hidesNavigationBar: sizeClass == .regular))
+            .modifier(ConditionalNavigationBarVisibilityModifier(hidesNavigationBar: workspaceLayoutPolicy.usesSplitWorkspace))
             .tint(usesSystemCompactToolbar ? compactNavigationTextColor : regularToolbarForegroundColor)
             .toolbar {
                 if let onCloseProject {
@@ -1876,12 +1900,12 @@ extension DocumentEditorView {
                 }
             }
             .toolbar {
-                if sizeClass != .regular {
+                if workspaceLayoutPolicy.usesCompactWorkspace {
                     compactTopBarTrailingItems
                 }
             }
 
-        let chrome: AnyView = if sizeClass == .regular {
+        let chrome: AnyView = if workspaceLayoutPolicy.usesSplitWorkspace {
             AnyView(compactTabsTopChrome(editorChrome.toolbar(.hidden, for: .navigationBar)))
         } else {
             AnyView(compactTabsTopChrome(editorChrome))
@@ -1892,7 +1916,7 @@ extension DocumentEditorView {
 
     @ViewBuilder
     private func compactTabsTopChrome<Content: View>(_ content: Content) -> some View {
-        if sizeClass != .regular, openTabs.count > 1, #available(iOS 26.0, *) {
+        if workspaceLayoutPolicy.usesCompactWorkspace, openTabs.count > 1, #available(iOS 26.0, *) {
             content
                 .safeAreaBar(edge: .top, spacing: 0) {
                     compactProjectTabBar
@@ -2013,7 +2037,7 @@ extension DocumentEditorView {
             }
             .onChange(of: syncCoordinator.editorScrollTarget) { _, target in
                 guard let target else { return }
-                if sizeClass != .regular {
+                if workspaceLayoutPolicy.usesCompactWorkspace {
                     selectedTab = editorTab
                 }
                 if currentFileName != document.entryFileName {
@@ -2283,8 +2307,13 @@ extension DocumentEditorView {
         }
     }
 
-    var splitHandleAccessibilityValue: String {
-        let editorPercent = Int((editorFraction * 100).rounded())
+    func splitHandleAccessibilityValue(totalWidth: CGFloat) -> String {
+        let clampedFraction = workspaceLayoutPolicy.clampedEditorFraction(
+            editorFraction,
+            workspaceWidth: totalWidth,
+            splitHandleWidth: regularSplitHandleWidth
+        )
+        let editorPercent = Int((clampedFraction * 100).rounded())
         let previewPercent = max(0, 100 - editorPercent)
         return L10n.a11yEditorSplitValue(editorPercent: editorPercent, previewPercent: previewPercent)
     }

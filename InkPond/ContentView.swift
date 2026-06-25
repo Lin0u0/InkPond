@@ -99,7 +99,6 @@ struct ExternalTypFileOpenRequest: Equatable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var systemColorScheme
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(StorageManager.self) private var storageManager
     @State private var selectedDocument: InkPondDocument?
     @State private var externalFileDocument: InkPondDocument?
@@ -184,39 +183,44 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        NavigationStack {
-            ZStack {
-                if let document = selectedDocument {
-                    DocumentEditorView(
-                        document: document,
-                        isSidebarVisible: false,
-                        externalOpenRequest: externalOpenRequest,
-                        onInitialOpenFailure: { message in
-                            if selectedDocument == document {
-                                selectedDocument = nil
+        GeometryReader { geometry in
+            let layoutPolicy = EditorWorkspaceLayoutPolicy(size: geometry.size)
+
+            NavigationStack {
+                ZStack {
+                    if let document = selectedDocument {
+                        DocumentEditorView(
+                            document: document,
+                            isSidebarVisible: false,
+                            externalOpenRequest: externalOpenRequest,
+                            onInitialOpenFailure: { message in
+                                if selectedDocument == document {
+                                    selectedDocument = nil
+                                }
+                                documentOpenError = message
+                            },
+                            onCloseProject: {
+                                withAnimation(projectNavigationAnimation) {
+                                    selectedDocument = nil
+                                    externalOpenRequest = nil
+                                }
                             }
-                            documentOpenError = message
-                        },
-                        onCloseProject: {
-                            withAnimation(projectNavigationAnimation) {
-                                selectedDocument = nil
-                                externalOpenRequest = nil
-                            }
-                        }
-                    )
-                    .id(document.persistentModelID)
-                    .transition(projectContentTransition)
-                } else {
-                    ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)
-                        .id("project-home")
+                        )
+                        .id(document.persistentModelID)
                         .transition(projectContentTransition)
+                    } else {
+                        ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)
+                            .id("project-home")
+                            .transition(projectContentTransition)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(rootChromeColor.ignoresSafeArea())
+                .animation(projectNavigationAnimation, value: selectedDocument?.projectID)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(rootChromeColor.ignoresSafeArea())
-            .animation(projectNavigationAnimation, value: selectedDocument?.projectID)
+            .toolbar(hidesRootNavigationBarForSelectedProject(layoutPolicy: layoutPolicy) ? .hidden : .visible, for: .navigationBar)
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .toolbar(hidesRootNavigationBarForSelectedProject ? .hidden : .visible, for: .navigationBar)
         .background(rootChromeColor.ignoresSafeArea())
         .background(SceneTitleSetter(title: activeDocument?.title ?? L10n.appName))
         .environment(appAppearanceManager)
@@ -258,8 +262,8 @@ struct ContentView: View {
         externalFileDocument ?? selectedDocument
     }
 
-    private var hidesRootNavigationBarForSelectedProject: Bool {
-        selectedDocument != nil && horizontalSizeClass == .regular
+    private func hidesRootNavigationBarForSelectedProject(layoutPolicy: EditorWorkspaceLayoutPolicy) -> Bool {
+        selectedDocument != nil && layoutPolicy.usesSplitWorkspace
     }
 
     private var projectNavigationAnimation: Animation {

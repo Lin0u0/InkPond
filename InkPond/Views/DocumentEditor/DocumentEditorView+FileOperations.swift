@@ -668,11 +668,11 @@ extension DocumentEditorView {
         // wrong PDF positions.
         guard isEditingEntryFile else { return }
 
-        if sizeClass == .regular {
-            // iPad: both panes visible, sync preview alongside editor.
+        if workspaceLayoutPolicy.usesSplitWorkspace {
+            // Split workspace: both panes visible, sync preview alongside editor.
             syncPreviewToOffset(offset)
         } else if selectedTab == previewTab {
-            // iPhone preview tab: scroll the preview.
+            // Compact preview tab: scroll the preview.
             syncPreviewToOffset(offset)
         }
     }
@@ -926,8 +926,8 @@ extension DocumentEditorView {
     func navigateToError(file: String, line: Int, column: Int) {
         let resolvedFile = resolveErrorFileName(file)
 
-        // Switch to editor tab on iPhone
-        if sizeClass != .regular {
+        // Switch to editor tab when only one pane is visible.
+        if workspaceLayoutPolicy.usesCompactWorkspace {
             selectedTab = editorTab
         }
 
