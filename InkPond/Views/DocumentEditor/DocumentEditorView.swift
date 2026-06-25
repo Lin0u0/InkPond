@@ -32,7 +32,6 @@ struct DocumentEditorView: View {
     var onInitialOpenFailure: ((String) -> Void)?
 
     @Environment(AppFontLibrary.self) var appFontLibrary
-    @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.modelContext) var modelContext
     @Environment(ThemeManager.self) var themeManager
@@ -115,6 +114,7 @@ struct DocumentEditorView: View {
     @State var openTabs: [ProjectFileTab] = []
     @State var activeTabPath: String?
     @State var didRestoreProjectEditorState = false
+    @State var workspaceLayoutPolicy = EditorWorkspaceLayoutPolicy(size: .zero)
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     

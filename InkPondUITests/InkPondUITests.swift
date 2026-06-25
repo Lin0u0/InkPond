@@ -103,6 +103,21 @@ final class InkPondUITests: XCTestCase {
     }
 
     @MainActor
+    func testSplitWorkspaceExposesEditorPreviewAndHandleWhenWideEnough() throws {
+        let app = launchApp(seedDocument: true)
+        openSeededDocumentIfNeeded(in: app)
+
+        let splitHandle = app.otherElements["editor.split-handle"]
+        if !splitHandle.waitForExistence(timeout: 3) {
+            throw XCTSkip("Split workspace is not visible at this simulator size.")
+        }
+
+        XCTAssertTrue(app.textViews["editor.text-view"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["editor.preview"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.segmentedControls["editor.mode-picker"].exists)
+    }
+
+    @MainActor
     func testCompactSwipeSwitchesBetweenEditorAndPreview() throws {
         let app = launchApp(seedDocument: true)
         openSeededDocumentIfNeeded(in: app)

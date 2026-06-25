@@ -17,14 +17,14 @@ extension DocumentListView {
         )
     }
 
-    var documentList: some View {
+    func documentList(layoutPolicy: EditorWorkspaceLayoutPolicy) -> some View {
         ScrollView {
-            LazyVGrid(columns: projectGridColumns, spacing: 16) {
+            LazyVGrid(columns: projectGridColumns(layoutPolicy: layoutPolicy), spacing: 16) {
                 ForEach(sortedDocuments) { document in
                     documentRow(document)
                 }
             }
-            .padding(.horizontal, isIPad ? 24 : 16)
+            .padding(.horizontal, layoutPolicy.usesSplitWorkspace ? 24 : 16)
             .padding(.vertical, 16)
         }
         .softScrollEdgeEffect()
@@ -63,10 +63,10 @@ extension DocumentListView {
         }
     }
 
-    var projectGridColumns: [GridItem] {
+    func projectGridColumns(layoutPolicy: EditorWorkspaceLayoutPolicy) -> [GridItem] {
         [
             GridItem(
-                .adaptive(minimum: isIPad ? 220 : 155, maximum: 320),
+                .adaptive(minimum: layoutPolicy.usesSplitWorkspace ? 220 : 155, maximum: 320),
                 spacing: 16,
                 alignment: .top
             )
@@ -205,7 +205,7 @@ extension DocumentListView {
     }
 
     @ToolbarContentBuilder
-    var iPadToolbar: some ToolbarContent {
+    func iPadToolbar(usesExplicitTopSearch: Bool = false) -> some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
                 InteractionFeedback.impact(.light)
@@ -231,6 +231,9 @@ extension DocumentListView {
             .accessibilityLabel(L10n.a11yDocumentListAddLabel)
             .accessibilityHint(L10n.a11yDocumentListAddHint)
             .accessibilityIdentifier("document-list.add")
+        }
+        if usesExplicitTopSearch, #available(iOS 26, *) {
+            DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
         }
     }
 

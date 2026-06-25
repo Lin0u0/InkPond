@@ -49,7 +49,6 @@ struct DocumentListView: View {
 
     @Environment(StorageManager.self) var storageManager
     @Environment(\.modelContext) var modelContext
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.colorScheme) var colorScheme
     @Query(sort: \InkPondDocument.modifiedAt, order: .reverse) var documents: [InkPondDocument]
@@ -102,8 +101,6 @@ struct DocumentListView: View {
         deduplicatedDocuments.isEmpty && searchText.isEmpty
     }
 
-    var isIPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
-
     var projectHomeChromeUIColor: UIColor {
         if colorScheme == .dark {
             return UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
@@ -123,6 +120,18 @@ struct DocumentListView: View {
         colorScheme == .dark
             ? UIColor.white.withAlphaComponent(0.045)
             : UIColor.systemGroupedBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+    }
+
+    var isNativeIPadInterface: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    func usesIPadProjectHomeLayout(_ layoutPolicy: EditorWorkspaceLayoutPolicy) -> Bool {
+        isNativeIPadInterface || layoutPolicy.usesSplitWorkspace
+    }
+
+    func usesExplicitTopSearchItem(_ layoutPolicy: EditorWorkspaceLayoutPolicy) -> Bool {
+        layoutPolicy.usesSplitWorkspace && !isNativeIPadInterface
     }
 
     static func loadPreviewCacheEntriesByProjectID() -> [String: CompiledPreviewCacheEntry] {
@@ -161,19 +170,35 @@ struct DocumentListView: View {
     }
 
     private var baseContent: some View {
-        documentList
-            .searchable(
-                text: $searchText,
-                placement: isIPad ? .automatic : .toolbar,
-                prompt: Text(L10n.tr("Search"))
-            )
-            .toolbar { if isIPad { iPadToolbar } else { iPhoneToolbar } }
-            .modifier(ProjectHomeToolbarBackgroundModifier(background: Color(uiColor: projectHomeChromeUIColor)))
-            .overlay { documentListProgressOverlay }
-            .safeAreaInset(edge: .bottom) {
-                linkedFolderProgressInset
-            }
-            .animation(.snappy(duration: 0.25), value: folderLinkImportProgress)
+        GeometryReader { geometry in
+            let layoutPolicy = EditorWorkspaceLayoutPolicy(size: geometry.size)
+            let usesIPadLayout = usesIPadProjectHomeLayout(layoutPolicy)
+            let usesExplicitTopSearch = usesExplicitTopSearchItem(layoutPolicy)
+
+            documentList(layoutPolicy: layoutPolicy)
+                .searchable(
+                    text: $searchText,
+                    placement: usesExplicitTopSearch || !usesIPadLayout ? .toolbar : .automatic,
+                    prompt: Text(L10n.tr("Search"))
+                )
+                .toolbar {
+                    if usesIPadLayout {
+                        iPadToolbar(usesExplicitTopSearch: usesExplicitTopSearch)
+                    } else {
+                        iPhoneToolbar
+                    }
+                }
+                .modifier(ProjectHomeToolbarBackgroundModifier(
+                    background: Color(uiColor: projectHomeChromeUIColor),
+                    showsBottomBar: layoutPolicy.usesCompactWorkspace
+                ))
+                .overlay { documentListProgressOverlay }
+                .safeAreaInset(edge: .bottom) {
+                    linkedFolderProgressInset
+                }
+                .animation(.snappy(duration: 0.25), value: folderLinkImportProgress)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+        }
     }
 
     @ViewBuilder
@@ -208,28 +233,29 @@ struct DocumentListView: View {
 
 private struct ProjectHomeToolbarBackgroundModifier: ViewModifier {
     let background: Color
+    let showsBottomBar: Bool
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
                 .toolbar(.visible, for: .navigationBar)
-                .toolbar(.visible, for: .bottomBar)
+                .toolbar(showsBottomBar ? .visible : .hidden, for: .bottomBar)
         } else if #available(iOS 18.0, *) {
             content
                 .toolbar(.visible, for: .navigationBar)
-                .toolbar(.visible, for: .bottomBar)
+                .toolbar(showsBottomBar ? .visible : .hidden, for: .bottomBar)
                 .toolbarBackground(background, for: .navigationBar)
                 .toolbarBackgroundVisibility(.visible, for: .navigationBar)
                 .toolbarBackground(background, for: .bottomBar)
-                .toolbarBackgroundVisibility(.visible, for: .bottomBar)
+                .toolbarBackgroundVisibility(showsBottomBar ? .visible : .hidden, for: .bottomBar)
         } else {
             content
                 .toolbar(.visible, for: .navigationBar)
-                .toolbar(.visible, for: .bottomBar)
+                .toolbar(showsBottomBar ? .visible : .hidden, for: .bottomBar)
                 .toolbarBackground(background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbarBackground(background, for: .bottomBar)
-                .toolbarBackground(.visible, for: .bottomBar)
+                .toolbarBackground(showsBottomBar ? .visible : .hidden, for: .bottomBar)
         }
     }
 }

@@ -42,6 +42,13 @@ struct InkPondTests {
     private let editorFontIDDefaultsKey = "editorFontID"
     private let editorFontSizeDefaultsKey = "editorFontSize"
 
+    @Test func editorWorkspaceLayoutPolicyClassifiesFoldableThresholds() {
+        #expect(EditorWorkspaceLayoutPolicy(size: CGSize(width: 390, height: 844)).kind == .compact)
+        #expect(EditorWorkspaceLayoutPolicy(size: CGSize(width: 932, height: 430)).kind == .compact)
+        #expect(EditorWorkspaceLayoutPolicy(size: CGSize(width: 900, height: 700)).kind == .split)
+        #expect(EditorWorkspaceLayoutPolicy(size: CGSize(width: 1194, height: 834)).kind == .expandedSplit)
+    }
+
     @Test func zipImporterRejectsParentTraversalPath() throws {
         let zip = makeStoredZip(entries: [
             ("../evil.txt", Data("x".utf8))
