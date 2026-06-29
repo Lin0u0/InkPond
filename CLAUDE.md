@@ -9,7 +9,7 @@ This repository is a native iOS/iPadOS Typst editor built with SwiftUI, SwiftDat
 - Optional iOS 26-only UI enhancements are used behind availability checks
 - Data model: `InkPondDocument` (`@Model`)
 - Typst compilation: Rust static library packaged as `Frameworks/typst_ios.xcframework`
-- Pinned Typst version: `0.14.2` (see `rust-ffi/Cargo.toml`)
+- Pinned Typst version: `0.15.0` (see `rust-ffi/Cargo.toml`)
 
 ## Build Setup
 

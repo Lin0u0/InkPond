@@ -10,7 +10,7 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-iOS%2017%2B%20%26%20iPadOS%2017%2B-2563EB" alt="Platform">
   <img src="https://img.shields.io/badge/Language-Swift%205-F59E0B" alt="Language">
-  <img src="https://img.shields.io/badge/Typst-0.14.2-0EA5A4" alt="Typst Version">
+  <img src="https://img.shields.io/badge/Typst-0.15.0-0EA5A4" alt="Typst Version">
   <img src="https://img.shields.io/badge/License-Apache%202-1D4ED8" alt="License">
 </p>
 
@@ -41,7 +41,7 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 - Keyboard accessory bar with quick-insert buttons
 
 **Preview & Compile**
-- Typst `0.14.2` compilation through a Rust FFI bridge
+- Typst `0.15.0` compilation through a Rust FFI bridge
 - Live SVG/WKWebView preview with debounced recompilation (350ms)
 - Bidirectional editor-to-preview sync via source maps
 - `@preview` package downloads cached on device, plus local package resolution
@@ -133,7 +133,7 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
   - changing `rust-ffi/src/lib.rs`
 - If Xcode shows `Typst compiler library not linked`, the xcframework is missing, stale, or was built before switching branches. Re-run the build script and rebuild the app.
 
-Current pinned Typst version: `0.14.2` (see `rust-ffi/Cargo.toml`).
+Current pinned Typst version: `0.15.0` (see `rust-ffi/Cargo.toml`).
 
 ## Release Pipeline (CLI)
 

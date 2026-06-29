@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/平台-iOS%2017%2B%20%26%20iPadOS%2017%2B-2563EB" alt="Platform">
   <img src="https://img.shields.io/badge/语言-Swift%205-F59E0B" alt="Language">
-  <img src="https://img.shields.io/badge/Typst-0.14.2-0EA5A4" alt="Typst Version">
+  <img src="https://img.shields.io/badge/Typst-0.15.0-0EA5A4" alt="Typst Version">
   <img src="https://img.shields.io/badge/许可证-Apache%202-1D4ED8" alt="License">
 </p>
 
@@ -41,7 +41,7 @@
 - 键盘附件栏（快速插入按钮）
 
 **预览与编译**
-- 通过 Rust FFI 桥接 Typst `0.14.2` 编译能力
+- 通过 Rust FFI 桥接 Typst `0.15.0` 编译能力
 - SVG/WKWebView 实时预览，防抖编译（350ms）
 - 基于 Source Map 的编辑器 ↔ 预览双向同步
 - 支持 `@preview` 包下载缓存与本地包解析
@@ -132,7 +132,7 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
   - 升级 Typst / Rust 依赖
   - 修改 `rust-ffi/src/lib.rs`
 
-当前固定 Typst 版本：`0.14.2`（见 `rust-ffi/Cargo.toml`）。
+当前固定 Typst 版本：`0.15.0`（见 `rust-ffi/Cargo.toml`）。
 
 ## 发布流程（CLI）
 

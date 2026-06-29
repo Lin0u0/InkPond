@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::io::Read;
+use std::ops::Range;
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
@@ -9,19 +10,21 @@ use std::sync::{Arc, Mutex, OnceLock};
 use syntect::easy::ScopeRangeIterator;
 use syntect::parsing::{ParseState, Scope, ScopeStack};
 use typst::diag::{FileError, FileResult, PackageError, SourceDiagnostic};
-use typst::foundations::{Bytes, CastInfo, Datetime, Repr, Value};
-use typst::layout::{Frame, FrameItem, PagedDocument, Point, Transform};
+use typst::foundations::{Bytes, CastInfo, Datetime, Duration, Repr, Value};
+use typst::layout::{Frame, FrameItem, Point, Transform};
 use typst::syntax::ast::AstNode;
 use typst::syntax::package::PackageSpec;
 use typst::syntax::{
-    ast, highlight, parse, FileId, LinkedNode, Side, Source, Span, SyntaxKind, Tag, VirtualPath,
+    ast, highlight, parse, DiagSpan, DiagSpanKind, FileId, LinkedNode, RootedPath, Side, Source,
+    Span, SpanKind, SyntaxKind, Tag, VirtualPath, VirtualRoot,
 };
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
+use typst_layout::PagedDocument;
 use typst_library::text::RAW_SYNTAXES;
 use typst_pdf::{pdf, PdfOptions};
-use typst_svg::svg;
+use typst_svg::{svg, SvgOptions};
 
 const EXTRA_FONT_CACHE_LIMIT: usize = 16;
 const PACKAGE_DOWNLOAD_TIMEOUT_SECS: u64 = 30;
@@ -191,7 +194,7 @@ impl SimpleWorld {
 
         debug_log!("[typst-ffi] bundled fonts: {}", bundled_faces.len());
 
-        let main_id = FileId::new(None, VirtualPath::new("main.typ"));
+        let main_id = project_file_id("main.typ");
         let source = Source::new(main_id, source_text.to_string());
 
         Self {
@@ -275,10 +278,10 @@ impl SimpleWorld {
         result.map_err(FileError::Package)
     }
 
-    fn format_span_location(&self, span: Span) -> Option<String> {
+    fn format_span_location(&self, span: DiagSpan) -> Option<String> {
         let id = span.id()?;
         let source = self.source(id).ok()?;
-        let range = source.range(span).or_else(|| span.range())?;
+        let range = source_range_from_diag_span(&source, span)?;
         let (line, column) = source.lines().byte_to_line_column(range.start)?;
         Some(format!(
             "{}:{}:{}",
@@ -289,18 +292,14 @@ impl SimpleWorld {
     }
 
     fn display_file_label(&self, id: FileId) -> String {
-        if let Some(package) = id.package() {
-            format!("{package}{}", id.vpath().as_rooted_path().display())
-        } else {
-            id.vpath().as_rootless_path().display().to_string()
+        match id.root() {
+            VirtualRoot::Package(package) => format!("{package}{}", id.vpath().get_with_slash()),
+            VirtualRoot::Project => id.vpath().get_without_slash().to_string(),
         }
     }
 
     fn resolve_vpath(&self, root: &Path, id: FileId) -> FileResult<PathBuf> {
-        let resolved = id
-            .vpath()
-            .resolve(root)
-            .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
+        let resolved = id.vpath().realize(root).map_err(|_| vpath_not_found(id))?;
         let root = root
             .canonicalize()
             .map_err(|_| FileError::NotFound(root.to_owned()))?;
@@ -308,11 +307,41 @@ impl SimpleWorld {
             .canonicalize()
             .map_err(|_| FileError::NotFound(resolved.clone()))?;
         if !resolved.starts_with(&root) {
-            return Err(FileError::NotFound(
-                id.vpath().as_rootless_path().to_owned(),
-            ));
+            return Err(vpath_not_found(id));
         }
         Ok(resolved)
+    }
+}
+
+fn project_file_id(path: &str) -> FileId {
+    RootedPath::new(
+        VirtualRoot::Project,
+        VirtualPath::new(path).expect("valid project virtual path"),
+    )
+    .intern()
+}
+
+fn vpath_not_found(id: FileId) -> FileError {
+    FileError::NotFound(PathBuf::from(id.vpath().get_without_slash()))
+}
+
+fn source_range_from_span(source: &Source, span: Span) -> Option<Range<usize>> {
+    match span.get() {
+        SpanKind::Detached => None,
+        SpanKind::Number { id, num } if id == source.id() => source.range(num, None),
+        SpanKind::Range { id, range } if id == source.id() => Some(range),
+        _ => None,
+    }
+}
+
+fn source_range_from_diag_span(source: &Source, span: DiagSpan) -> Option<Range<usize>> {
+    match span.get() {
+        DiagSpanKind::Detached => None,
+        DiagSpanKind::Number { id, num, sub_range } if id == source.id() => {
+            source.range(num, sub_range)
+        }
+        DiagSpanKind::Range { id, range } if id == source.id() => Some(range),
+        _ => None,
     }
 }
 
@@ -580,15 +609,12 @@ impl World for SimpleWorld {
         }
 
         // Resolve the file path
-        let path = if let Some(spec) = id.package() {
+        let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
             self.resolve_vpath(&pkg_dir, id)?
         } else {
             // Local file — resolve against root_dir
-            let root = self
-                .root_dir
-                .as_ref()
-                .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
+            let root = self.root_dir.as_ref().ok_or_else(|| vpath_not_found(id))?;
             self.resolve_vpath(root, id)?
         };
 
@@ -605,15 +631,12 @@ impl World for SimpleWorld {
         }
 
         // Resolve the file path
-        let path = if let Some(spec) = id.package() {
+        let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
             self.resolve_vpath(&pkg_dir, id)?
         } else {
             // Local file (e.g. images) — resolve against root_dir
-            let root = self
-                .root_dir
-                .as_ref()
-                .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
+            let root = self.root_dir.as_ref().ok_or_else(|| vpath_not_found(id))?;
             self.resolve_vpath(root, id)?
         };
 
@@ -627,13 +650,16 @@ impl World for SimpleWorld {
         self.fonts.get(index).cloned()
     }
 
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
+    fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
         use std::time::{SystemTime, UNIX_EPOCH};
         let secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        let total = secs + offset.unwrap_or(0) * 3600;
+        let offset_secs = offset
+            .map(|duration| duration.seconds().round() as i64)
+            .unwrap_or(0);
+        let total = secs + offset_secs;
         let (y, m, d) = unix_days_to_ymd((total / 86400) as i32);
         Datetime::from_ymd(y, m, d)
     }
@@ -911,7 +937,7 @@ fn walk_frame(
                     } else {
                         continue;
                     }
-                    if let Some(range) = source.range(span).or_else(|| span.range()) {
+                    if let Some(range) = source_range_from_span(source, span) {
                         if let Some((line, col)) = source.lines().byte_to_line_column(range.start) {
                             entries.push(SourceMapEntry {
                                 page: page_index,
@@ -945,7 +971,7 @@ fn walk_frame(
 fn extract_source_map(document: &PagedDocument, source: &Source) -> Vec<SourceMapEntry> {
     let mut entries = Vec::new();
 
-    for (page_index, page) in document.pages.iter().enumerate() {
+    for (page_index, page) in document.pages().iter().enumerate() {
         walk_frame(
             &page.frame,
             page_index as u32,
@@ -1293,11 +1319,12 @@ fn preview_result_from_document(
 }
 
 fn svg_pages_for_document(document: &PagedDocument) -> Vec<TypstSvgPage> {
+    let options = SvgOptions::default();
     document
-        .pages
+        .pages()
         .iter()
         .map(|page| TypstSvgPage {
-            svg: string_into_raw(svg(page)),
+            svg: string_into_raw(svg(page, &options)),
             width_pt: page.frame.width().to_pt() as f32,
             height_pt: page.frame.height().to_pt() as f32,
         })
@@ -1475,7 +1502,8 @@ fn collect_embedded_raw_tokens(
     byte_to_utf16: &[usize],
 ) {
     let Some(language) = raw_node.children().find_map(|child| {
-        (child.kind() == SyntaxKind::RawLang).then(|| child.text().as_str().to_ascii_lowercase())
+        (child.kind() == SyntaxKind::RawLang)
+            .then(|| child.leaf_text().as_str().to_ascii_lowercase())
     }) else {
         return;
     };
@@ -1493,7 +1521,7 @@ fn collect_embedded_raw_tokens(
             continue;
         }
 
-        let line = child.text();
+        let line = child.leaf_text();
         let Ok(ops) = parse_state.parse_line(line.as_str(), syntax_set) else {
             return;
         };
@@ -1651,6 +1679,7 @@ fn highlight_tag_id(tag: Tag) -> u32 {
         Tag::ListMarker => 10,
         Tag::ListTerm => 11,
         Tag::MathDelimiter => 12,
+        Tag::MathGroupingParens => 12,
         Tag::MathOperator => 13,
         Tag::Keyword => 14,
         Tag::Operator => 15,
@@ -1805,7 +1834,7 @@ fn collect_heading_title_text(node: &typst::syntax::SyntaxNode, title: &mut Stri
         | SyntaxKind::Shorthand
         | SyntaxKind::SmartQuote
         | SyntaxKind::Link => {
-            title.push_str(node.text());
+            title.push_str(node.leaf_text());
             return;
         }
         _ => {}
@@ -2421,22 +2450,27 @@ fn completion_symbol_for_value(
         Value::Func(func) => {
             let params = func
                 .params()
-                .unwrap_or(&[])
-                .iter()
-                .map(|param| OwnedCompletionParam {
-                    name: param.name.to_string(),
-                    docs: trim_docs(param.docs),
-                    input: cast_info_summary(&param.input),
-                    default_value: param
-                        .default
-                        .map(|default| default().repr().to_string())
-                        .unwrap_or_default(),
-                    values: cast_info_values(&param.input),
-                    positional: param.positional,
-                    named: param.named,
-                    variadic: param.variadic,
-                    required: param.required,
-                    settable: param.settable,
+                .map(|param| {
+                    let native = param.to_native();
+                    OwnedCompletionParam {
+                        name: param.name().unwrap_or_default().to_string(),
+                        docs: native.map(|info| trim_docs(info.docs)).unwrap_or_default(),
+                        input: native
+                            .map(|info| cast_info_summary(&info.input))
+                            .unwrap_or_default(),
+                        default_value: param
+                            .default()
+                            .map(|default| default.repr().to_string())
+                            .unwrap_or_default(),
+                        values: native
+                            .map(|info| cast_info_values(&info.input))
+                            .unwrap_or_default(),
+                        positional: param.positional(),
+                        named: param.named(),
+                        variadic: param.variadic(),
+                        required: param.required(),
+                        settable: param.settable(),
+                    }
                 })
                 .collect();
 
@@ -2553,39 +2587,17 @@ fn collect_local_completion_symbols(
         }
     } else if let Some(for_loop) = node.get().cast::<ast::ForLoop>() {
         let body = for_loop.body().to_untyped();
-        let visible_from = utf16_location_for_byte(
-            body.span()
-                .range()
-                .map(|range| range.start)
-                .unwrap_or(node.range().start),
-            byte_to_utf16,
-        );
-        let visible_until = utf16_location_for_byte(
-            body.span()
-                .range()
-                .map(|range| range.end)
-                .unwrap_or(node.range().end),
-            byte_to_utf16,
-        );
+        let body_range = linked_range_for_syntax(node, body).unwrap_or_else(|| node.range());
+        let visible_from = utf16_location_for_byte(body_range.start, byte_to_utf16);
+        let visible_until = utf16_location_for_byte(body_range.end, byte_to_utf16);
         for ident in for_loop.pattern().bindings() {
             push_local_symbol(symbols, ident, "loop binding", visible_from, visible_until);
         }
     } else if let Some(closure) = node.get().cast::<ast::Closure>() {
         let body = closure.body().to_untyped();
-        let visible_from = utf16_location_for_byte(
-            body.span()
-                .range()
-                .map(|range| range.start)
-                .unwrap_or(node.range().start),
-            byte_to_utf16,
-        );
-        let visible_until = utf16_location_for_byte(
-            body.span()
-                .range()
-                .map(|range| range.end)
-                .unwrap_or(node.range().end),
-            byte_to_utf16,
-        );
+        let body_range = linked_range_for_syntax(node, body).unwrap_or_else(|| node.range());
+        let visible_from = utf16_location_for_byte(body_range.start, byte_to_utf16);
+        let visible_until = utf16_location_for_byte(body_range.end, byte_to_utf16);
         for param in closure.params().children() {
             for ident in param_bindings(param) {
                 push_local_symbol(symbols, ident, "parameter", visible_from, visible_until);
@@ -2596,6 +2608,23 @@ fn collect_local_completion_symbols(
     for child in node.children() {
         collect_local_completion_symbols(symbols, &child, byte_to_utf16, current_scope_end_byte);
     }
+}
+
+fn linked_range_for_syntax(
+    node: &LinkedNode,
+    target: &typst::syntax::SyntaxNode,
+) -> Option<Range<usize>> {
+    if std::ptr::eq(node.get(), target) {
+        return Some(node.range());
+    }
+
+    for child in node.children() {
+        if let Some(range) = linked_range_for_syntax(&child, target) {
+            return Some(range);
+        }
+    }
+
+    None
 }
 
 fn local_scope_end_for_node(node: &LinkedNode) -> Option<usize> {
@@ -3066,7 +3095,7 @@ fn format_diagnostic(world: &SimpleWorld, diag: &SourceDiagnostic) -> String {
         lines.push(format!("({location})"));
     }
 
-    lines.extend(diag.hints.iter().map(|hint| format!("Hint: {hint}")));
+    lines.extend(diag.hints.iter().map(|hint| format!("Hint: {}", hint.v)));
 
     lines.join("\n")
 }
@@ -3222,7 +3251,7 @@ mod tests {
     #[test]
     fn format_diagnostics_includes_source_location() {
         let world = unsafe { SimpleWorld::new("= broken", std::ptr::null()) };
-        let span = Span::from_range(world.main(), 0..1);
+        let span = DiagSpan::from_range(world.main(), 0..1);
         let rendered =
             format_diagnostics(&world, &[SourceDiagnostic::error(span, "unexpected token")]);
 
@@ -3303,14 +3332,7 @@ mod tests {
 
     #[test]
     fn simple_world_rejects_local_virtual_path_escape() {
-        let root = make_temp_dir();
-        let world = unsafe { SimpleWorld::new("= Hello", std::ptr::null()) };
-        let escape_id = FileId::new(None, VirtualPath::new("../outside.txt"));
-
-        let result = world.resolve_vpath(&root, escape_id);
-
-        assert!(result.is_err());
-        let _ = std::fs::remove_dir_all(root);
+        assert!(VirtualPath::new("../outside.txt").is_err());
     }
 
     #[test]
@@ -3320,7 +3342,7 @@ mod tests {
         std::fs::write(outside.join("secret.txt"), "secret").unwrap();
         std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("link.txt")).unwrap();
         let world = unsafe { SimpleWorld::new("= Hello", std::ptr::null()) };
-        let link_id = FileId::new(None, VirtualPath::new("link.txt"));
+        let link_id = project_file_id("link.txt");
 
         let result = world.resolve_vpath(&root, link_id);
 
@@ -3727,10 +3749,10 @@ yaml-key:
 
         let pdf = unsafe { std::slice::from_raw_parts(result.pdf_data, result.pdf_len) }.to_vec();
         unsafe { typst_free_result(result) };
+        let raw = String::from_utf8_lossy(&pdf);
 
         assert!(
-            pdf.windows(b"/Subtype /Image".len())
-                .any(|window| window == b"/Subtype /Image"),
+            raw.contains("/Subtype /Image") || raw.contains("/Subtype/Image"),
             "sbix emoji should be emitted as a PDF image XObject"
         );
     }

@@ -50,7 +50,28 @@ SIM_ARM64_LIB="$SCRIPT_DIR/target/aarch64-apple-ios-sim/release/libtypst_ios.a"
 SIM_X86_64_LIB="$SCRIPT_DIR/target/x86_64-apple-ios/release/libtypst_ios.a"
 SIM_UNIVERSAL_LIB="$SCRIPT_DIR/target/ios-simulator-universal/release/libtypst_ios.a"
 
+STRIP_TOOL="$(xcrun -sdk iphoneos -f strip 2>/dev/null || true)"
+if [[ -z "$STRIP_TOOL" ]]; then
+  STRIP_TOOL="$(command -v strip || true)"
+fi
+
+strip_static_library() {
+  local lib="$1"
+
+  if [[ -z "$STRIP_TOOL" ]]; then
+    echo "warning: strip tool not found; keeping unstripped library: $lib" >&2
+    return
+  fi
+
+  echo "▸ Stripping static library symbols: $lib"
+  "$STRIP_TOOL" -S -x "$lib"
+}
+
 mkdir -p "$(dirname "$SIM_UNIVERSAL_LIB")"
+
+strip_static_library "$DEVICE_LIB"
+strip_static_library "$SIM_ARM64_LIB"
+strip_static_library "$SIM_X86_64_LIB"
 
 echo "▸ Creating universal simulator static library (arm64 + x86_64)..."
 lipo -create "$SIM_ARM64_LIB" "$SIM_X86_64_LIB" -output "$SIM_UNIVERSAL_LIB"
