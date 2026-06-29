@@ -60,6 +60,26 @@ struct InkPondTests {
         #expect(gotUnsafePath)
     }
 
+    @Test func zipImporterRejectsOversizedDeclaredEntry() throws {
+        let zip = makeStoredZipWithReportedSize(
+            name: "main.typ",
+            data: Data(),
+            reportedUncompressedSize: ZipImporter.maxSingleEntryUncompressedBytes + 1
+        )
+        let dest = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dest) }
+
+        var rejected = false
+        do {
+            _ = try ZipImporter.extract(data: zip, to: dest)
+        } catch let error as ZipImporterError {
+            if case .invalidData = error {
+                rejected = true
+            }
+        } catch {}
+        #expect(rejected)
+    }
+
     @Test func zipImporterExtractsSingleTopLevelDirectory() throws {
         let zip = makeStoredZip(entries: [
             ("project/main.typ", Data("Hello".utf8)),
@@ -105,6 +125,101 @@ struct InkPondTests {
         )
     }
 
+    @Test func localPackageStoreRejectsManifestNameAndVersionTraversal() throws {
+        let root = makeTempDirectory()
+        let packageRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: packageRoot)
+        }
+
+        let source = packageRoot.appendingPathComponent("bad", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+
+        for manifest in [
+            "[package]\nname = \"../bad\"\nversion = \"0.1.0\"\n",
+            "[package]\nname = \"bad\"\nversion = \"../0.1.0\"\n"
+        ] {
+            try Data(manifest.utf8).write(to: source.appendingPathComponent("typst.toml"))
+
+            var rejected = false
+            do {
+                _ = try LocalPackageStore(rootURL: root).importItem(at: source, defaultNamespace: "local")
+            } catch let error as LocalPackageError {
+                if case .invalidManifest = error {
+                    rejected = true
+                }
+            } catch {}
+            #expect(rejected)
+        }
+    }
+
+    @Test func localPackageStoreRejectsFolderImportWithSymlink() throws {
+        let root = makeTempDirectory()
+        let packageRoot = makeTempDirectory()
+        let outsideRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: packageRoot)
+            try? FileManager.default.removeItem(at: outsideRoot)
+        }
+
+        let source = packageRoot.appendingPathComponent("bad", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("[package]\nname = \"bad\"\nversion = \"0.1.0\"\n".utf8)
+            .write(to: source.appendingPathComponent("typst.toml"))
+        let outsideFile = outsideRoot.appendingPathComponent("secret.typ")
+        try Data("#let secret = true".utf8).write(to: outsideFile)
+        try FileManager.default.createSymbolicLink(
+            at: source.appendingPathComponent("link.typ"),
+            withDestinationURL: outsideFile
+        )
+
+        var rejected = false
+        do {
+            _ = try LocalPackageStore(rootURL: root).importItem(at: source, defaultNamespace: "local")
+        } catch let error as LocalPackageError {
+            if case .invalidManifest = error {
+                rejected = true
+            }
+        } catch {}
+        #expect(rejected)
+    }
+
+    @Test func localPackageStoreRejectsDestinationWithSymlinkAncestor() throws {
+        let root = makeTempDirectory()
+        let packageRoot = makeTempDirectory()
+        let outsideRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: packageRoot)
+            try? FileManager.default.removeItem(at: outsideRoot)
+        }
+
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("local"),
+            withDestinationURL: outsideRoot
+        )
+        let source = packageRoot.appendingPathComponent("kit", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("[package]\nname = \"kit\"\nversion = \"0.1.0\"\n".utf8)
+            .write(to: source.appendingPathComponent("typst.toml"))
+        try Data("#let answer = 42".utf8)
+            .write(to: source.appendingPathComponent("lib.typ"))
+
+        var rejected = false
+        do {
+            _ = try LocalPackageStore(rootURL: root).importItem(at: source, defaultNamespace: "local")
+        } catch let error as LocalPackageError {
+            if case .invalidManifest = error {
+                rejected = true
+            }
+        } catch {}
+
+        #expect(rejected)
+        #expect(!FileManager.default.fileExists(atPath: outsideRoot.appendingPathComponent("kit/0.1.0/lib.typ").path))
+    }
+
     @Test func localPackageStoreImportsTarGzArchiveAndKeepsManifestNamespace() throws {
         let root = makeTempDirectory()
         let archiveRoot = makeTempDirectory()
@@ -131,6 +246,29 @@ struct InkPondTests {
                     .path
             )
         )
+    }
+
+    @Test func packageArchiveImporterRejectsOversizedTarEntry() throws {
+        let root = makeTempDirectory()
+        let archiveURL = root.appendingPathComponent("oversized.tar")
+        let dest = root.appendingPathComponent("dest", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tar = makeTarWithReportedSize(
+            name: "package/typst.toml",
+            reportedSize: PackageArchiveImporter.maxSingleEntryUncompressedBytes + 1
+        )
+        try tar.write(to: archiveURL)
+
+        var rejected = false
+        do {
+            _ = try PackageArchiveImporter.extract(from: archiveURL, to: dest)
+        } catch let error as LocalPackageError {
+            if case .invalidArchive = error {
+                rejected = true
+            }
+        } catch {}
+        #expect(rejected)
     }
 
     @Test func localPackageStoreChangesNamespaceAfterImport() throws {
@@ -664,6 +802,24 @@ struct InkPondTests {
         #expect(ProjectFileManager.fontDirectoryCandidates(from: files) == ["", "fonts", "vendor", "vendor/fonts", "vendor/fonts/nested"])
     }
 
+    @Test func projectFileManagerSavesImagesInNestedConfiguredDirectory() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        doc.imageDirectoryName = "assets/icons"
+        ProjectFileManager.ensureProjectStructure(for: doc)
+        defer { try? ProjectFileManager.deleteProjectDirectory(for: doc) }
+
+        let reference = try ProjectFileManager.saveImage(data: Data([0x01, 0x02]), fileName: "mark.png", for: doc)
+
+        #expect(reference == "assets/icons/mark.png")
+        #expect(
+            FileManager.default.fileExists(
+                atPath: ProjectFileManager.projectDirectory(for: doc)
+                    .appendingPathComponent("assets/icons/mark.png")
+                    .path
+            )
+        )
+    }
+
     @Test func projectFileManagerTreatsPDFEPSBitmapAndTIFFAsImages() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         ProjectFileManager.ensureProjectStructure(for: doc)
@@ -1117,6 +1273,26 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func editorFocusCoordinatorDoesNotBlockModeSwipeAfterKeyboardDismissalWithSelection() async {
+        let coordinator = EditorFocusCoordinator()
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.text = "alpha beta"
+        textView.selectedRange = NSRange(location: 0, length: 5)
+        coordinator.register(textView)
+
+        _ = textView.becomeFirstResponder()
+        await waitUntil { textView.isFirstResponder }
+        coordinator.updateSelectionState(selectedLength: textView.selectedRange.length)
+        #expect(coordinator.isTextSelectionInteractionActive)
+
+        coordinator.dismissKeyboard()
+        await waitUntil { !textView.isFirstResponder }
+
+        #expect(!coordinator.isTextSelectionInteractionActive)
+    }
+
+    @MainActor
     @Test func editorCoordinatorIgnoresSelectionChangesDuringProgrammaticTextUpdate() {
         var text = "First line\nSecond line"
         var insertionRequest: EditorInsertionRequest?
@@ -1211,6 +1387,19 @@ struct InkPondTests {
         await waitUntil { textView.isFirstResponder }
         #expect(textView.isFirstResponder)
         #expect(!textView.suppressResignFirstResponder)
+    }
+
+    @Test func previewTextStatisticsCacheReusesCountsForIdenticalSource() {
+        let source = "#let subject = [InkPond]\nHello world from \\(subject)."
+        let signature = PreviewTextStatisticsCache.signature(for: source)
+
+        let first = PreviewTextStatisticsCache.statistics(for: source, signature: signature)
+        let second = PreviewTextStatisticsCache.cachedStatistics(forSignature: signature)
+
+        #expect(second == first)
+        #expect(first.wordCount == source.previewWordCount)
+        #expect(first.characterCount == source.previewCharacterCount)
+        #expect(PreviewTextStatisticsCache.signature(for: source + "\n") != signature)
     }
 
     @MainActor
@@ -2666,7 +2855,7 @@ struct InkPondTests {
         ))
         #expect(sourceChanged != base)
 
-        try Data([0x01, 0x02]).write(to: assetURL, options: .atomic)
+        try Data([0x02]).write(to: assetURL, options: .atomic)
         let projectChanged = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
             for: doc,
             source: "= Fingerprint",
@@ -2674,6 +2863,61 @@ struct InkPondTests {
             typstVersion: "1.0"
         ))
         #expect(projectChanged != base)
+
+        let localPackagesRoot = extraRoot.appendingPathComponent("LocalPackages", isDirectory: true)
+        let localPackageSource = #"#import "@local/kit:0.1.0": *\#n= Fingerprint"#
+        try makeCachePackage(
+            root: localPackagesRoot,
+            namespace: "local",
+            name: "kit",
+            version: "0.1.0",
+            files: [
+                (path: "typst.toml", data: Data("[package]\nname = \"kit\"\nversion = \"0.1.0\"\n".utf8)),
+                (path: "lib.typ", data: Data("#let value = 1".utf8))
+            ]
+        )
+        try makeCachePackage(
+            root: localPackagesRoot,
+            namespace: "local",
+            name: "unused",
+            version: "0.1.0",
+            files: [
+                (path: "typst.toml", data: Data("[package]\nname = \"unused\"\nversion = \"0.1.0\"\n".utf8)),
+                (path: "lib.typ", data: Data("#let value = 1".utf8))
+            ]
+        )
+        let localPackageBase = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: localPackageSource,
+            fontPaths: [fontURL.path],
+            typstVersion: "1.0",
+            localPackagesDir: localPackagesRoot.path
+        ))
+        try Data("#let value = 2".utf8).write(
+            to: localPackagesRoot.appendingPathComponent("local/unused/0.1.0/lib.typ"),
+            options: .atomic
+        )
+        let unrelatedLocalPackageChanged = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: localPackageSource,
+            fontPaths: [fontURL.path],
+            typstVersion: "1.0",
+            localPackagesDir: localPackagesRoot.path
+        ))
+        #expect(unrelatedLocalPackageChanged == localPackageBase)
+
+        try Data("#let value = 2".utf8).write(
+            to: localPackagesRoot.appendingPathComponent("local/kit/0.1.0/lib.typ"),
+            options: .atomic
+        )
+        let localPackageChanged = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: localPackageSource,
+            fontPaths: [fontURL.path],
+            typstVersion: "1.0",
+            localPackagesDir: localPackagesRoot.path
+        ))
+        #expect(localPackageChanged != localPackageBase)
 
         let fontChanged = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
             for: doc,
@@ -2692,6 +2936,104 @@ struct InkPondTests {
         #expect(versionChanged != projectChanged)
     }
 
+    @Test func compiledPreviewCacheFingerprintTracksProjectFileLocalPackageReferences() throws {
+        let doc = makeDocument(projectID: "cached-indirect-package")
+        let extraRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: extraRoot)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: #"#import "chapter.typ": *"#, for: doc)
+        try ProjectFileManager.writeTypFile(named: "chapter.typ", content: #"#import "@local/kit:0.1.0": *"#, for: doc)
+
+        let localPackagesRoot = extraRoot.appendingPathComponent("LocalPackages", isDirectory: true)
+        try makeCachePackage(
+            root: localPackagesRoot,
+            namespace: "local",
+            name: "kit",
+            version: "0.1.0",
+            files: [
+                (path: "typst.toml", data: Data("[package]\nname = \"kit\"\nversion = \"0.1.0\"\n".utf8)),
+                (path: "lib.typ", data: Data("#let value = 1".utf8))
+            ]
+        )
+
+        let store = CompiledPreviewCacheStore(rootURL: makeTempDirectory())
+        defer { try? FileManager.default.removeItem(at: store.rootURL!) }
+        let base = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: #"#import "chapter.typ": *"#,
+            localPackagesDir: localPackagesRoot.path
+        ))
+
+        try Data("#let value = 2".utf8).write(
+            to: localPackagesRoot.appendingPathComponent("local/kit/0.1.0/lib.typ"),
+            options: .atomic
+        )
+        let changed = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: #"#import "chapter.typ": *"#,
+            localPackagesDir: localPackagesRoot.path
+        ))
+
+        #expect(changed != base)
+    }
+
+    @Test func compiledPreviewCacheFingerprintTracksTransitiveLocalPackageReferences() throws {
+        let doc = makeDocument(projectID: "cached-transitive-package")
+        let extraRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: extraRoot)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        let localPackagesRoot = extraRoot.appendingPathComponent("LocalPackages", isDirectory: true)
+        try makeCachePackage(
+            root: localPackagesRoot,
+            namespace: "local",
+            name: "parent",
+            version: "0.1.0",
+            files: [
+                (path: "typst.toml", data: Data("[package]\nname = \"parent\"\nversion = \"0.1.0\"\n".utf8)),
+                (path: "lib.typ", data: Data(#"#import "@local/child:0.1.0": *"#.utf8))
+            ]
+        )
+        try makeCachePackage(
+            root: localPackagesRoot,
+            namespace: "local",
+            name: "child",
+            version: "0.1.0",
+            files: [
+                (path: "typst.toml", data: Data("[package]\nname = \"child\"\nversion = \"0.1.0\"\n".utf8)),
+                (path: "lib.typ", data: Data("#let value = 1".utf8))
+            ]
+        )
+
+        let store = CompiledPreviewCacheStore(rootURL: makeTempDirectory())
+        defer { try? FileManager.default.removeItem(at: store.rootURL!) }
+        let source = #"#import "@local/parent:0.1.0": *"#
+        let base = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: source,
+            localPackagesDir: localPackagesRoot.path
+        ))
+
+        try Data("#let value = 2".utf8).write(
+            to: localPackagesRoot.appendingPathComponent("local/child/0.1.0/lib.typ"),
+            options: .atomic
+        )
+        let changed = try store.inputFingerprint(for: makeCompiledPreviewCacheInput(
+            for: doc,
+            source: source,
+            localPackagesDir: localPackagesRoot.path
+        ))
+
+        #expect(changed != base)
+    }
+
     private func makeDocument(projectID: String) -> InkPondDocument {
         let doc = InkPondDocument(title: "Test", content: "")
         doc.projectID = projectID
@@ -2704,7 +3046,8 @@ struct InkPondTests {
         for document: InkPondDocument,
         source: String,
         fontPaths: [String] = [],
-        typstVersion: String? = "1.0"
+        typstVersion: String? = "1.0",
+        localPackagesDir: String? = nil
     ) -> CompiledPreviewCacheInput {
         CompiledPreviewCacheInput(
             descriptor: CompiledPreviewCacheDescriptor(
@@ -2715,6 +3058,7 @@ struct InkPondTests {
             source: source,
             fontPaths: fontPaths,
             rootDir: ProjectFileManager.projectDirectory(for: document).path,
+            localPackagesDir: localPackagesDir,
             typstVersion: typstVersion
         )
     }
@@ -2832,6 +3176,64 @@ struct InkPondTests {
         return localSection + centralSection + eocd
     }
 
+    private func makeStoredZipWithReportedSize(
+        name: String,
+        data: Data,
+        reportedUncompressedSize: Int
+    ) -> Data {
+        let nameBytes = Array(name.utf8)
+        let dataBytes = [UInt8](data)
+        var localSection = Data()
+
+        localSection.appendU32LE(0x0403_4B50)
+        localSection.appendU16LE(20)
+        localSection.appendU16LE(0)
+        localSection.appendU16LE(0)
+        localSection.appendU16LE(0)
+        localSection.appendU16LE(0)
+        localSection.appendU32LE(0)
+        localSection.appendU32LE(UInt32(dataBytes.count))
+        localSection.appendU32LE(UInt32(dataBytes.count))
+        localSection.appendU16LE(UInt16(nameBytes.count))
+        localSection.appendU16LE(0)
+        localSection.append(contentsOf: nameBytes)
+        localSection.append(contentsOf: dataBytes)
+
+        var centralSection = Data()
+        centralSection.appendU32LE(0x0201_4B50)
+        centralSection.appendU16LE(20)
+        centralSection.appendU16LE(20)
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU32LE(0)
+        centralSection.appendU32LE(UInt32(dataBytes.count))
+        centralSection.appendU32LE(UInt32(reportedUncompressedSize))
+        centralSection.appendU16LE(UInt16(nameBytes.count))
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU16LE(0)
+        centralSection.appendU32LE(0)
+        centralSection.appendU32LE(0)
+        centralSection.append(contentsOf: nameBytes)
+
+        let centralOffset = UInt32(localSection.count)
+        let centralSize = UInt32(centralSection.count)
+        var eocd = Data()
+        eocd.appendU32LE(0x0605_4B50)
+        eocd.appendU16LE(0)
+        eocd.appendU16LE(0)
+        eocd.appendU16LE(1)
+        eocd.appendU16LE(1)
+        eocd.appendU32LE(centralSize)
+        eocd.appendU32LE(centralOffset)
+        eocd.appendU16LE(0)
+
+        return localSection + centralSection + eocd
+    }
+
     private func makeTarGz(entries: [(name: String, data: Data)]) throws -> Data {
         try gzip(makeTar(entries: entries))
     }
@@ -2866,6 +3268,28 @@ struct InkPondTests {
             }
         }
 
+        archive.append(Data(repeating: 0, count: 1024))
+        return archive
+    }
+
+    private func makeTarWithReportedSize(name: String, reportedSize: Int) -> Data {
+        var archive = Data()
+        var header = [UInt8](repeating: 0, count: 512)
+
+        writeTarString(name, to: &header, offset: 0, length: 100)
+        writeTarOctal(0o644, to: &header, offset: 100, length: 8)
+        writeTarOctal(0, to: &header, offset: 108, length: 8)
+        writeTarOctal(0, to: &header, offset: 116, length: 8)
+        writeTarOctal(reportedSize, to: &header, offset: 124, length: 12)
+        writeTarOctal(0, to: &header, offset: 136, length: 12)
+        header.replaceSubrange(148..<156, with: repeatElement(UInt8(32), count: 8))
+        header[156] = 48
+        writeTarString("ustar", to: &header, offset: 257, length: 6)
+        writeTarString("00", to: &header, offset: 263, length: 2)
+
+        let checksum = header.reduce(0) { $0 + Int($1) }
+        writeTarChecksum(checksum, to: &header, offset: 148, length: 8)
+        archive.append(contentsOf: header)
         archive.append(Data(repeating: 0, count: 1024))
         return archive
     }

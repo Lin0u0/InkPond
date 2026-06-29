@@ -297,7 +297,7 @@ final class InkPondUITests: XCTestCase {
 
     private func waitForRenderedPreview(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
         let renderedMarker = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier == %@", "editor.preview.stats"))
+            .matching(NSPredicate(format: "identifier == %@", "editor.preview.rendered"))
             .firstMatch
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

@@ -378,7 +378,8 @@ extension DocumentEditorView {
             } : nil,
             showsStatisticsOverlay: sizeClass != .regular,
             showsCompilingIndicatorOverlay: sizeClass != .regular,
-            backgroundColor: sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemBackground
+            backgroundColor: sizeClass == .regular ? regularWorkspaceChromeUIColor : .secondarySystemBackground,
+            isAccessibilityVisible: sizeClass == .regular || selectedTab == previewTab
         )
         .environment(\.colorScheme, sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
         .liquidGlassColorScheme(sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
@@ -825,7 +826,7 @@ extension DocumentEditorView {
                             compilePreviewNow()
                         }
                     } label: {
-                        Label("Compile Now", systemImage: "play.circle")
+                        Label(L10n.tr("Compile Now"), systemImage: "play.circle")
                     }
                     .disabled(!canTriggerPreviewActions)
 
@@ -835,7 +836,7 @@ extension DocumentEditorView {
                             clearCachesAndRecompile()
                         }
                     } label: {
-                        Label("Recompile", systemImage: "arrow.clockwise.circle")
+                        Label(L10n.tr("Recompile"), systemImage: "arrow.clockwise.circle")
                     }
                     .disabled(!canTriggerPreviewActions)
                 }
@@ -870,7 +871,7 @@ extension DocumentEditorView {
             ? regularToolbarPreviewStatsCompactEstimatedWidth
             : regularToolbarPreviewStatsFullEstimatedWidth
         let hasStats = stats != nil
-        let isUpdatingPreview = compiler.isPreviewUpdating
+        let isUpdatingPreview = compiler.isPreviewUpdating && !hasStats
 
         return Button {
             guard hasStats else { return }
@@ -1462,6 +1463,9 @@ extension DocumentEditorView {
                 if horizontal < 0, selectedTab == editorTab, startsAwayFromLeadingEdge {
                     pendingCompactSwipeFeedback = true
                     selectedTab = previewTab
+                } else if horizontal > 0, selectedTab == previewTab, !canPresentSlideshow, startsAwayFromLeadingEdge {
+                    pendingCompactSwipeFeedback = true
+                    selectedTab = editorTab
                 }
             }
     }
@@ -1541,23 +1545,40 @@ extension DocumentEditorView {
     }
 
     private func recomputePreviewStatistics() {
-        guard sizeClass == .regular else { return }
+        guard sizeClass == .regular else {
+            previewStatsTask?.cancel()
+            previewStatsTask = nil
+            previewStatsPendingID = nil
+            return
+        }
         let text = entrySource
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            previewStatsTask?.cancel()
+            previewStatsTask = nil
             previewStatsWordCount = 0
             previewStatsCharacterCount = 0
             previewStatsAreReady = false
+            previewStatsSourceSignature = nil
+            previewStatsPendingID = nil
             return
         }
+
         previewStatsAreReady = false
-        Task.detached(priority: .utility) {
-            let wordCount = text.previewWordCount
-            let characterCount = text.previewCharacterCount
+        let requestID = UUID()
+        previewStatsPendingID = requestID
+        previewStatsTask?.cancel()
+        previewStatsTask = Task.detached(priority: .utility) {
+            let statistics = PreviewTextStatisticsCache.statistics(for: text)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
-                guard entrySource == text else { return }
-                previewStatsWordCount = wordCount
-                previewStatsCharacterCount = characterCount
+                guard previewStatsPendingID == requestID,
+                      entrySource == text else { return }
+                previewStatsWordCount = statistics.wordCount
+                previewStatsCharacterCount = statistics.characterCount
+                previewStatsSourceSignature = statistics.signature
+                previewStatsPendingID = nil
                 previewStatsAreReady = true
+                previewStatsTask = nil
             }
         }
     }
@@ -1603,18 +1624,18 @@ extension DocumentEditorView {
                 InteractionFeedback.impact(.light)
                 showingProjectSettings = true
             } label: {
-                Label("Project Settings", systemImage: "gearshape")
+                Label(L10n.tr("Project Settings"), systemImage: "gearshape")
             }
             Button {
                 newProjectFileName = ""
                 showingNewProjectFileAlert = true
             } label: {
-                Label("New .typ File", systemImage: "doc.badge.plus")
+                Label(L10n.tr("New .typ File"), systemImage: "doc.badge.plus")
             }
             Button {
                 showingProjectFileImporter = true
             } label: {
-                Label("Import File", systemImage: "square.and.arrow.down")
+                Label(L10n.tr("Import File"), systemImage: "square.and.arrow.down")
             }
         }
 
@@ -1630,12 +1651,12 @@ extension DocumentEditorView {
                 guard flushPendingSave() else { return }
                 exporter.exportTypSource(for: document, fileName: currentFileName)
             } label: {
-                Label("Export .typ", systemImage: "square.and.arrow.up.on.square")
+                Label(L10n.tr("Export .typ"), systemImage: "square.and.arrow.up.on.square")
             }
             .disabled(exporter.exportButtonPhase != .idle)
 
             Button { triggerZipExport() } label: {
-                Label("Export Project as Zip", systemImage: "archivebox")
+                Label(L10n.tr("Export Project as Zip"), systemImage: "archivebox")
             }
             .disabled(exporter.exportButtonPhase != .idle)
         }
@@ -1648,7 +1669,7 @@ extension DocumentEditorView {
                 InteractionFeedback.impact(.light)
                 showingFileBrowser = true
             } label: {
-                Label("Project Files", systemImage: "folder")
+                Label(L10n.tr("Project Files"), systemImage: "folder")
             }
         }
 
@@ -1679,7 +1700,7 @@ extension DocumentEditorView {
                     compilePreviewNow()
                 }
             } label: {
-                Label("Compile Now", systemImage: "play.circle")
+                Label(L10n.tr("Compile Now"), systemImage: "play.circle")
             }
             .disabled(!canTriggerPreviewActions)
 
@@ -1689,7 +1710,7 @@ extension DocumentEditorView {
                     clearCachesAndRecompile()
                 }
             } label: {
-                Label("Recompile", systemImage: "arrow.clockwise.circle")
+                Label(L10n.tr("Recompile"), systemImage: "arrow.clockwise.circle")
             }
             .disabled(!canTriggerPreviewActions)
         }
@@ -1979,6 +2000,8 @@ extension DocumentEditorView {
                 positionRestoreDismissTask = nil
                 positionSyncTask?.cancel()
                 positionSyncTask = nil
+                previewStatsTask?.cancel()
+                previewStatsTask = nil
                 fontFamilyRefreshTask?.cancel()
                 fontFamilyRefreshTask = nil
                 externalFolderLinkTask?.cancel()
@@ -2196,53 +2219,53 @@ extension DocumentEditorView {
                     SlideshowView(pages: pages)
                 }
             }
-            .alert("New Source File", isPresented: $showingNewProjectFileAlert) {
-                TextField("filename.typ", text: $newProjectFileName)
+            .alert(L10n.tr("New Source File"), isPresented: $showingNewProjectFileAlert) {
+                TextField(L10n.tr("filename.typ"), text: $newProjectFileName)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                Button("Create") { createNewProjectFileFromMenu() }
-                Button("Cancel", role: .cancel) {}
+                Button(L10n.tr("Create")) { createNewProjectFileFromMenu() }
+                Button(L10n.tr("Cancel"), role: .cancel) {}
             } message: {
-                Text("Enter a name for the new .typ file.")
+                Text(L10n.tr("Enter a name for the new .typ file."))
             }
-            .alert("Export Error", isPresented: Binding(
+            .alert(L10n.tr("Export Error"), isPresented: Binding(
                 get: { exporter.exportError != nil },
                 set: { if !$0 { exporter.exportError = nil } }
             )) {
-                Button("OK") { exporter.exportError = nil }
+                Button(L10n.tr("OK")) { exporter.exportError = nil }
             } message: {
                 Text(exporter.exportError ?? "")
             }
             .alert(L10n.appFontsExportWarningTitle, isPresented: $showingZipExportWarning) {
-                Button("Cancel", role: .cancel) {}
-                Button("Continue") {
+                Button(L10n.tr("Cancel"), role: .cancel) {}
+                Button(L10n.tr("Continue")) {
                     guard flushPendingSave() else { return }
                     exporter.exportZip(for: document)
                 }
             } message: {
                 Text(L10n.appFontsExportWarningMessage)
             }
-            .alert("Image Import Error", isPresented: Binding(
+            .alert(L10n.tr("Image Import Error"), isPresented: Binding(
                 get: { imageImportError != nil },
                 set: { if !$0 { imageImportError = nil } }
             )) {
-                Button("OK") { imageImportError = nil }
+                Button(L10n.tr("OK")) { imageImportError = nil }
             } message: {
                 Text(imageImportError ?? "")
             }
-            .alert("File Error", isPresented: Binding(
+            .alert(L10n.tr("File Error"), isPresented: Binding(
                 get: { fileSaveError != nil },
                 set: { if !$0 { fileSaveError = nil } }
             )) {
-                Button("OK") { fileSaveError = nil }
+                Button(L10n.tr("OK")) { fileSaveError = nil }
             } message: {
                 Text(fileSaveError ?? "")
             }
-            .alert("Cache Error", isPresented: Binding(
+            .alert(L10n.tr("Cache Error"), isPresented: Binding(
                 get: { previewActionError != nil },
                 set: { if !$0 { previewActionError = nil } }
             )) {
-                Button("OK") { previewActionError = nil }
+                Button(L10n.tr("OK")) { previewActionError = nil }
             } message: {
                 Text(previewActionError ?? "")
             }

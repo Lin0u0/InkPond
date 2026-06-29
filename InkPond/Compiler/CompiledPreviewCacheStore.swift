@@ -17,6 +17,7 @@ struct CompiledPreviewCacheInput: Equatable, Sendable {
     nonisolated let source: String
     nonisolated let fontPaths: [String]
     nonisolated let rootDir: String?
+    nonisolated let localPackagesDir: String?
     nonisolated let typstVersion: String?
 }
 
@@ -379,7 +380,12 @@ struct CompiledPreviewCacheStore: Sendable {
             rootDir: input.rootDir,
             typstVersion: input.typstVersion,
             fontFiles: try input.fontPaths.map(resourceFingerprint(forFontPath:)),
-            projectFiles: try projectFileFingerprints(rootDir: input.rootDir)
+            projectFiles: try directoryFileFingerprints(rootDir: input.rootDir),
+            localPackageFiles: try localPackageFingerprints(
+                source: input.source,
+                projectRootDir: input.rootDir,
+                localPackagesRootDir: input.localPackagesDir
+            )
         )
 
         let data = try JSONSerialization.data(withJSONObject: payload.jsonObject, options: [.sortedKeys])
@@ -398,16 +404,20 @@ struct CompiledPreviewCacheStore: Sendable {
         )
     }
 
-    private nonisolated func projectFileFingerprints(rootDir: String?) throws -> [ResourceFingerprint] {
+    private nonisolated func directoryFileFingerprints(rootDir: String?) throws -> [ResourceFingerprint] {
         guard let rootDir else { return [] }
 
         let rootURL = URL(fileURLWithPath: rootDir, isDirectory: true).standardizedFileURL
+        return try directoryFileFingerprints(rootURL: rootURL)
+    }
+
+    private nonisolated func directoryFileFingerprints(rootURL: URL, pathPrefix: String? = nil) throws -> [ResourceFingerprint] {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
 
         guard let enumerator = fileManager.enumerator(
             at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else {
             return []
@@ -415,10 +425,13 @@ struct CompiledPreviewCacheStore: Sendable {
 
         var items: [ResourceFingerprint] = []
         for case let fileURL as URL in enumerator {
-            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-            guard values.isRegularFile == true else { continue }
+            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isSymbolicLink != true, values.isRegularFile == true else { continue }
 
-            let relativePath = String(fileURL.standardizedFileURL.path.dropFirst(rootURL.path.count + 1))
+            var relativePath = String(fileURL.standardizedFileURL.path.dropFirst(rootURL.path.count + 1))
+            if let pathPrefix {
+                relativePath = "\(pathPrefix)/\(relativePath)"
+            }
             items.append(try resourceFingerprint(url: fileURL, path: relativePath))
         }
 
@@ -426,10 +439,130 @@ struct CompiledPreviewCacheStore: Sendable {
         return items
     }
 
+    private nonisolated func localPackageFingerprints(
+        source: String,
+        projectRootDir: String?,
+        localPackagesRootDir: String?
+    ) throws -> [ResourceFingerprint] {
+        guard let localPackagesRootDir else { return [] }
+
+        let rootURL = URL(fileURLWithPath: localPackagesRootDir, isDirectory: true).standardizedFileURL
+        var pendingReferences = try Self.localPackageReferences(
+            in: referenceSources(source: source, projectRootDir: projectRootDir)
+        )
+        guard !pendingReferences.isEmpty else { return [] }
+
+        var items: [ResourceFingerprint] = []
+        var processedReferences = Set<String>()
+        while !pendingReferences.isEmpty {
+            let reference = pendingReferences.removeFirst()
+            let referenceKey = "\(reference.namespace)/\(reference.name)/\(reference.version)"
+            guard processedReferences.insert(referenceKey).inserted else { continue }
+
+            let relativePackagePath = "\(reference.namespace)/\(reference.name)/\(reference.version)"
+            let packageURL = rootURL
+                .appendingPathComponent(reference.namespace, isDirectory: true)
+                .appendingPathComponent(reference.name, isDirectory: true)
+                .appendingPathComponent(reference.version, isDirectory: true)
+            if FileManager.default.fileExists(atPath: packageURL.path) {
+                items.append(contentsOf: try directoryFileFingerprints(
+                    rootURL: packageURL.standardizedFileURL,
+                    pathPrefix: relativePackagePath
+                ))
+                pendingReferences.append(contentsOf: try Self.localPackageReferences(
+                    in: packageReferenceSources(packageURL: packageURL.standardizedFileURL)
+                ))
+            } else {
+                items.append(ResourceFingerprint(
+                    path: relativePackagePath,
+                    exists: false,
+                    sizeInBytes: nil,
+                    modifiedAt: nil,
+                    contentHash: nil
+                ))
+            }
+        }
+
+        items.sort { $0.path < $1.path }
+        return items
+    }
+
+    private nonisolated func referenceSources(source: String, projectRootDir: String?) throws -> [String] {
+        var sources = [source]
+        guard let projectRootDir else { return sources }
+
+        let projectRootURL = URL(fileURLWithPath: projectRootDir, isDirectory: true).standardizedFileURL
+        sources.append(contentsOf: try packageReferenceSources(packageURL: projectRootURL))
+        return sources
+    }
+
+    private nonisolated func packageReferenceSources(packageURL: URL) throws -> [String] {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: packageURL.path),
+              let enumerator = fileManager.enumerator(
+                at: packageURL,
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return []
+        }
+
+        var sources: [String] = []
+        for case let fileURL as URL in enumerator {
+            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            let ext = fileURL.pathExtension.lowercased()
+            guard ext == "typ" || ext == "toml" else { continue }
+            if let text = try? String(contentsOf: fileURL, encoding: .utf8) {
+                sources.append(text)
+            }
+        }
+        return sources
+    }
+
+    private nonisolated static func localPackageReferences(in sources: [String]) -> [(namespace: String, name: String, version: String)] {
+        var references: [(namespace: String, name: String, version: String)] = []
+        var seen = Set<String>()
+        for source in sources {
+            for reference in localPackageReferences(in: source) {
+                let key = "\(reference.namespace)/\(reference.name)/\(reference.version)"
+                if seen.insert(key).inserted {
+                    references.append(reference)
+                }
+            }
+        }
+        return references
+    }
+
+    private nonisolated static func localPackageReferences(in source: String) -> [(namespace: String, name: String, version: String)] {
+        let pattern = #"@([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+):([A-Za-z0-9_.+\-]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+
+        let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
+        var references: [(namespace: String, name: String, version: String)] = []
+        var seen = Set<String>()
+        for match in matches {
+            guard let namespaceRange = Range(match.range(at: 1), in: source),
+                  let nameRange = Range(match.range(at: 2), in: source),
+                  let versionRange = Range(match.range(at: 3), in: source) else {
+                continue
+            }
+
+            let namespace = String(source[namespaceRange])
+            let name = String(source[nameRange])
+            let version = String(source[versionRange])
+            let key = "\(namespace)/\(name)/\(version)"
+            if seen.insert(key).inserted {
+                references.append((namespace, name, version))
+            }
+        }
+        return references
+    }
+
     private nonisolated func resourceFingerprint(url: URL, path: String) throws -> ResourceFingerprint {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: url.path) else {
-            return ResourceFingerprint(path: path, exists: false, sizeInBytes: nil, modifiedAt: nil)
+            return ResourceFingerprint(path: path, exists: false, sizeInBytes: nil, modifiedAt: nil, contentHash: nil)
         }
 
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
@@ -437,8 +570,23 @@ struct CompiledPreviewCacheStore: Sendable {
             path: path,
             exists: true,
             sizeInBytes: Int64(values.fileSize ?? 0),
-            modifiedAt: values.contentModificationDate?.timeIntervalSince1970
+            modifiedAt: values.contentModificationDate?.timeIntervalSince1970,
+            contentHash: try contentHash(for: url)
         )
+    }
+
+    private nonisolated func contentHash(for url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while true {
+            let chunk = try handle.read(upToCount: 1024 * 1024) ?? Data()
+            guard !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private nonisolated func decodeManifest(at url: URL) throws -> CompiledPreviewCacheManifest {
@@ -580,6 +728,7 @@ private struct FingerprintPayload {
     nonisolated let typstVersion: String?
     nonisolated let fontFiles: [ResourceFingerprint]
     nonisolated let projectFiles: [ResourceFingerprint]
+    nonisolated let localPackageFiles: [ResourceFingerprint]
 
     nonisolated var jsonObject: [String: Any] {
         [
@@ -588,7 +737,8 @@ private struct FingerprintPayload {
             "rootDir": rootDir ?? NSNull(),
             "typstVersion": typstVersion ?? NSNull(),
             "fontFiles": fontFiles.map(\.jsonObject),
-            "projectFiles": projectFiles.map(\.jsonObject)
+            "projectFiles": projectFiles.map(\.jsonObject),
+            "localPackageFiles": localPackageFiles.map(\.jsonObject)
         ]
     }
 }
@@ -598,13 +748,15 @@ private struct ResourceFingerprint {
     nonisolated let exists: Bool
     nonisolated let sizeInBytes: Int64?
     nonisolated let modifiedAt: TimeInterval?
+    nonisolated let contentHash: String?
 
     nonisolated var jsonObject: [String: Any] {
         [
             "path": path,
             "exists": exists,
             "sizeInBytes": sizeInBytes ?? NSNull(),
-            "modifiedAt": modifiedAt ?? NSNull()
+            "modifiedAt": modifiedAt ?? NSNull(),
+            "contentHash": contentHash ?? NSNull()
         ]
     }
 }

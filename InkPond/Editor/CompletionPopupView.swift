@@ -176,7 +176,7 @@ private final class CompletionCell: UITableViewCell {
 
         modeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         modeLabel.textAlignment = .center
-        modeLabel.text = "Hint"
+        modeLabel.text = L10n.tr("Hint")
         modeLabel.textColor = .secondaryLabel
         modeLabel.backgroundColor = .systemGray5
         modeLabel.layer.cornerRadius = 8

@@ -8,7 +8,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
-    private static let githubIssuesURL = URL(string: "https://github.com/lin0u0/Typist/issues")!
+    private static let githubIssuesURL = URL(string: "https://github.com/Lin0u0/InkPond/issues")!
 
     @Environment(AppFontLibrary.self) var appFontLibrary
     @Environment(AppAppearanceManager.self) var appAppearanceManager

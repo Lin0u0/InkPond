@@ -56,17 +56,17 @@
 			</array>
 			<key>UTTypeDescription</key>
 			<string>Typst document</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.p0int.inkpond.typst</string>
-			<key>UTTypeIconFiles</key>
-			<array>
-				<string>typst-icon-64</string>
-				<string>typst-icon-128</string>
-				<string>typst-icon-256</string>
-				<string>typst-icon-512</string>
-				<string>typst-icon-1024</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
+				<key>UTTypeIdentifier</key>
+				<string>com.p0int.inkpond.typst</string>
+				<key>UTTypeIconFiles</key>
+				<array>
+					<string>typst-icon-64</string>
+					<string>typst-icon-128</string>
+					<string>typst-icon-256</string>
+					<string>typst-icon-512</string>
+					<string>typst-icon-1024</string>
+				</array>
+				<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>

@@ -58,6 +58,7 @@ struct LocalPackageStore: Sendable {
         var entries: [LocalPackageEntry] = []
 
         for namespaceURL in namespaceURLs where try isDirectory(namespaceURL) {
+            guard let namespace = try? validatedNamespace(namespaceURL.lastPathComponent) else { continue }
             let packageURLs = try fileManager.contentsOfDirectory(
                 at: namespaceURL,
                 includingPropertiesForKeys: [.isDirectoryKey],
@@ -65,6 +66,7 @@ struct LocalPackageStore: Sendable {
             )
 
             for packageURL in packageURLs where try isDirectory(packageURL) {
+                guard let name = try? validatedPackagePathComponent(packageURL.lastPathComponent, field: "package name") else { continue }
                 let versionURLs = try fileManager.contentsOfDirectory(
                     at: packageURL,
                     includingPropertiesForKeys: [.isDirectoryKey],
@@ -72,15 +74,16 @@ struct LocalPackageStore: Sendable {
                 )
 
                 for versionURL in versionURLs where try isDirectory(versionURL) {
+                    guard let version = try? validatedPackagePathComponent(versionURL.lastPathComponent, field: "package version") else { continue }
                     // Only list directories that contain a typst.toml
                     let manifest = versionURL.appendingPathComponent("typst.toml")
                     guard fileManager.fileExists(atPath: manifest.path) else { continue }
 
                     entries.append(
                         LocalPackageEntry(
-                            namespace: namespaceURL.lastPathComponent,
-                            name: packageURL.lastPathComponent,
-                            version: versionURL.lastPathComponent,
+                            namespace: namespace,
+                            name: name,
+                            version: version,
                             sizeInBytes: try directorySize(at: versionURL),
                             url: versionURL
                         )
@@ -198,6 +201,7 @@ struct LocalPackageStore: Sendable {
 
     nonisolated func ensureRootDirectory() throws {
         guard let rootURL else { return }
+        try validateNoSymbolicLinkAncestors(for: rootURL.standardizedFileURL, under: rootURL.standardizedFileURL)
         guard !FileManager.default.fileExists(atPath: rootURL.path) else { return }
         try createDirectory(at: rootURL)
     }
@@ -220,10 +224,12 @@ struct LocalPackageStore: Sendable {
 
         let manifest = try readString(at: manifestURL)
         let updatedManifest = try updatingManifestNamespace(in: manifest, to: namespace)
-        let destinationDirectory = rootURL
+        let packageName = try validatedPackagePathComponent(entry.name, field: "package name")
+        let packageVersion = try validatedPackagePathComponent(entry.version, field: "package version")
+        let destinationDirectory = try validatedPackageDestination(rootURL
             .appendingPathComponent(namespace, isDirectory: true)
-            .appendingPathComponent(entry.name, isDirectory: true)
-            .appendingPathComponent(entry.version, isDirectory: true)
+            .appendingPathComponent(packageName, isDirectory: true)
+            .appendingPathComponent(packageVersion, isDirectory: true), under: rootURL)
 
         guard entry.url.standardizedFileURL != destinationDirectory.standardizedFileURL else {
             return entry
@@ -238,6 +244,7 @@ struct LocalPackageStore: Sendable {
         try createDirectory(at: destinationDirectory)
 
         do {
+            try validateNoSymbolicLinks(in: entry.url)
             let contents = try fileManager.contentsOfDirectory(
                 at: entry.url,
                 includingPropertiesForKeys: nil,
@@ -283,13 +290,14 @@ struct LocalPackageStore: Sendable {
         guard fileManager.fileExists(atPath: manifestURL.path) else {
             throw LocalPackageError.missingManifest
         }
+        try validateNoSymbolicLinks(in: sourceURL)
 
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
         let (name, version, namespace) = try parseManifest(manifest, defaultNamespace: defaultNamespace)
-        let destinationDirectory = rootURL
+        let destinationDirectory = try validatedPackageDestination(rootURL
             .appendingPathComponent(namespace, isDirectory: true)
             .appendingPathComponent(name, isDirectory: true)
-            .appendingPathComponent(version, isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true), under: rootURL)
         let usesCoordination = isUsingICloudStorage(at: destinationDirectory)
 
         if fileManager.fileExists(atPath: destinationDirectory.path) {
@@ -338,12 +346,14 @@ struct LocalPackageStore: Sendable {
             }
         }
 
-        guard let pkgName = name, !pkgName.isEmpty else {
+        guard let rawName = name, !rawName.isEmpty else {
             throw LocalPackageError.invalidManifest("missing package name")
         }
-        guard let pkgVersion = version, !pkgVersion.isEmpty else {
+        guard let rawVersion = version, !rawVersion.isEmpty else {
             throw LocalPackageError.invalidManifest("missing package version")
         }
+        let pkgName = try validatedPackagePathComponent(rawName, field: "package name")
+        let pkgVersion = try validatedPackagePathComponent(rawVersion, field: "package version")
 
         return (pkgName, pkgVersion, namespace)
     }
@@ -420,6 +430,22 @@ struct LocalPackageStore: Sendable {
     }
 
     private nonisolated func validatedNamespace(_ value: String) throws -> String {
+        do {
+            return try validatedPathComponent(value)
+        } catch {
+            throw LocalPackageError.invalidNamespace
+        }
+    }
+
+    private nonisolated func validatedPackagePathComponent(_ value: String, field: String) throws -> String {
+        do {
+            return try validatedPathComponent(value)
+        } catch {
+            throw LocalPackageError.invalidManifest("invalid \(field)")
+        }
+    }
+
+    private nonisolated func validatedPathComponent(_ value: String) throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw LocalPackageError.invalidNamespace
@@ -427,10 +453,67 @@ struct LocalPackageStore: Sendable {
         guard trimmed != ".", trimmed != ".." else {
             throw LocalPackageError.invalidNamespace
         }
-        guard !trimmed.contains("/"), !trimmed.contains("\\") else {
+        guard !trimmed.hasPrefix("~"),
+              !trimmed.contains("/"),
+              !trimmed.contains("\\"),
+              !trimmed.contains(":"),
+              trimmed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
             throw LocalPackageError.invalidNamespace
         }
         return trimmed
+    }
+
+    private nonisolated func validatedPackageDestination(_ url: URL, under rootURL: URL) throws -> URL {
+        let root = rootURL.standardizedFileURL
+        let destination = url.standardizedFileURL
+        let rootPath = root.path
+        let destinationPath = destination.path
+        guard destinationPath.hasPrefix(rootPath + "/") else {
+            throw LocalPackageError.invalidManifest("invalid package destination")
+        }
+        try validateNoSymbolicLinkAncestors(for: destination, under: root)
+        return destination
+    }
+
+    private nonisolated func validateNoSymbolicLinkAncestors(for url: URL, under rootURL: URL) throws {
+        let fileManager = FileManager.default
+        let stopURL = rootURL.deletingLastPathComponent().standardizedFileURL
+        var currentURL = url.standardizedFileURL
+
+        while true {
+            if (try? fileManager.destinationOfSymbolicLink(atPath: currentURL.path)) != nil {
+                throw LocalPackageError.invalidManifest("symbolic links are not supported")
+            }
+
+            if currentURL == stopURL {
+                break
+            }
+
+            let parentURL = currentURL.deletingLastPathComponent().standardizedFileURL
+            if parentURL == currentURL {
+                break
+            }
+            currentURL = parentURL
+        }
+    }
+
+    private nonisolated func validateNoSymbolicLinks(in rootURL: URL) throws {
+        let keys: Set<URLResourceKey> = [.isSymbolicLinkKey]
+        if try rootURL.resourceValues(forKeys: keys).isSymbolicLink == true {
+            throw LocalPackageError.invalidManifest("symbolic links are not supported")
+        }
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: Array(keys),
+            options: []
+        ) else { return }
+
+        for case let itemURL as URL in enumerator {
+            if try itemURL.resourceValues(forKeys: keys).isSymbolicLink == true {
+                throw LocalPackageError.invalidManifest("symbolic links are not supported")
+            }
+        }
     }
 
     private nonisolated func integrateLooseRootItems(defaultNamespace: String) throws {
@@ -512,7 +595,10 @@ struct LocalPackageStore: Sendable {
             let standardizedPath = standardized.path
             guard !seenPaths.contains(standardizedPath) else { return }
 
-            let values = try standardized.resourceValues(forKeys: [.isDirectoryKey])
+            let values = try standardized.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                return
+            }
             if values.isDirectory == true {
                 let manifestURL = standardized.appendingPathComponent("typst.toml")
                 if FileManager.default.fileExists(atPath: manifestURL.path) {
@@ -544,22 +630,22 @@ struct LocalPackageStore: Sendable {
     }
 
     private nonisolated func isDirectory(_ url: URL) throws -> Bool {
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-        return values.isDirectory == true
+        let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        return values.isSymbolicLink != true && values.isDirectory == true
     }
 
     private nonisolated func directorySize(at url: URL) throws -> Int64 {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(
             at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         ) else { return 0 }
 
         var totalSize: Int64 = 0
         for case let fileURL as URL in enumerator {
-            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            guard values.isRegularFile == true else { continue }
+            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+            guard values.isSymbolicLink != true, values.isRegularFile == true else { continue }
             totalSize += Int64(values.fileSize ?? 0)
         }
         return totalSize
@@ -576,6 +662,9 @@ struct LocalPackageStore: Sendable {
     }
 
     private nonisolated func createDirectory(at url: URL) throws {
+        if let rootURL {
+            try validateNoSymbolicLinkAncestors(for: url.standardizedFileURL, under: rootURL.standardizedFileURL)
+        }
         if isUsingICloudStorage(at: url) {
             try CloudFileCoordinator.createDirectory(at: url)
         } else {
@@ -599,6 +688,9 @@ struct LocalPackageStore: Sendable {
     }
 
     private nonisolated func writeString(_ string: String, to url: URL) throws {
+        if let rootURL {
+            try validateNoSymbolicLinkAncestors(for: url.standardizedFileURL, under: rootURL.standardizedFileURL)
+        }
         if isUsingICloudStorage(at: url) {
             try CloudFileCoordinator.writeString(string, to: url)
         } else {
@@ -608,6 +700,9 @@ struct LocalPackageStore: Sendable {
 
     private nonisolated func copyItemReplacingSafely(from sourceURL: URL, to destinationURL: URL, usesCoordination: Bool) throws {
         guard sourceURL.standardizedFileURL != destinationURL.standardizedFileURL else { return }
+        if let rootURL {
+            try validateNoSymbolicLinkAncestors(for: destinationURL.standardizedFileURL, under: rootURL.standardizedFileURL)
+        }
 
         if usesCoordination {
             try CloudFileCoordinator.copyItem(from: sourceURL, to: destinationURL)

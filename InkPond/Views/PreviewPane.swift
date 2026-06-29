@@ -49,6 +49,15 @@ private extension Character {
 
 private extension View {
     @ViewBuilder
+    func previewRootAccessibilityIdentifier(_ isVisible: Bool) -> some View {
+        if isVisible {
+            accessibilityIdentifier("editor.preview")
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
     func compilationErrorSurface(cornerRadius: CGFloat = 18) -> some View {
         self
             .systemFloatingSurface(cornerRadius: cornerRadius)
@@ -470,6 +479,10 @@ final class SVGPreviewContainerView: UIView {
         contentView.bounds.width * scrollView.zoomScale > scrollView.bounds.width + 1
     }
 
+    private var isAtLeadingHorizontalEdge: Bool {
+        scrollView.contentOffset.x <= -scrollView.adjustedContentInset.left + 2
+    }
+
     private func updateTransientZoomScaleLimits() {
         scrollView.minimumZoomScale = minimumVisualZoomScale
         scrollView.maximumZoomScale = maximumVisualZoomScale
@@ -625,7 +638,7 @@ final class SVGPreviewContainerView: UIView {
             defer { horizontalPanStartLocation = nil }
             let translation = recognizer.translation(in: self)
             guard let startLocation = horizontalPanStartLocation,
-                  !allowsHorizontalScroll,
+                  (!allowsHorizontalScroll || isAtLeadingHorizontalEdge),
                   startLocation.x > reservedNavigationEdgeWidth,
                   translation.x >= 70,
                   abs(translation.x) > abs(translation.y) * 1.35 else {
@@ -700,7 +713,7 @@ extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
         }
         let startLocation = panRecognizer.location(in: self)
         let velocity = panRecognizer.velocity(in: self)
-        return !allowsHorizontalScroll
+        return (!allowsHorizontalScroll || isAtLeadingHorizontalEdge)
             && startLocation.x > reservedNavigationEdgeWidth
             && velocity.x > 0
             && abs(velocity.x) > abs(velocity.y) * 1.35
@@ -752,6 +765,7 @@ struct SVGPreviewView: UIViewRepresentable {
     var bottomViewportInset: CGFloat = 0
     var scrollTarget: PreviewScrollTarget?
     var backgroundColor: UIColor = .secondarySystemBackground
+    var isAccessibilityVisible = true
     var onTapLocation: ((_ page: Int, _ yPoints: Float) -> Void)?
     var onCompactPreviewSwipe: (() -> Void)? = nil
 
@@ -763,8 +777,7 @@ struct SVGPreviewView: UIViewRepresentable {
         let container = SVGPreviewContainerView()
         container.onLoadingStateChange = loadingStateHandler
         container.previewBackgroundColor = backgroundColor
-        container.isAccessibilityElement = true
-        container.accessibilityIdentifier = "editor.preview"
+        applyAccessibility(to: container)
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
@@ -778,6 +791,7 @@ struct SVGPreviewView: UIViewRepresentable {
         container.onTapLocation = onTapLocation
         container.onLoadingStateChange = loadingStateHandler
         container.onHorizontalSwipe = horizontalSwipeHandler
+        applyAccessibility(to: container)
         container.accessibilityLabel = L10n.a11yPreviewLabel
         container.accessibilityHint = L10n.a11yPreviewHint
         container.accessibilityValue = L10n.a11yPreviewValueReady
@@ -793,6 +807,11 @@ struct SVGPreviewView: UIViewRepresentable {
                 context.coordinator.lastAppliedScrollTarget = target
             }
         }
+    }
+
+    private func applyAccessibility(to container: SVGPreviewContainerView) {
+        container.isAccessibilityElement = isAccessibilityVisible
+        container.accessibilityIdentifier = isAccessibilityVisible ? "editor.preview" : nil
     }
 
     private var horizontalSwipeHandler: ((UISwipeGestureRecognizer.Direction) -> Void)? {
@@ -845,25 +864,27 @@ struct PreviewPane: View {
     var showsStatisticsOverlay: Bool = true
     var showsCompilingIndicatorOverlay: Bool = true
     var backgroundColor: UIColor = .secondarySystemBackground
+    var isAccessibilityVisible = true
     @ScaledMetric(relativeTo: .caption2) private var previewStatsCardWidth = 126
     @ScaledMetric(relativeTo: .caption2) private var previewStatsMinHeight = 34
     @ScaledMetric(relativeTo: .caption2) private var previewStatsHorizontalPadding = 8
     @ScaledMetric(relativeTo: .caption2) private var previewStatsVerticalPadding = 7
     @State private var isShowingErrorDetails = false
     @State private var isShowingStatsDetails = false
-    @State private var cachedWordCount: Int = 0
-    @State private var cachedCharacterCount: Int = 0
+    @State private var cachedTextStatistics: PreviewTextStatistics?
+    @State private var pendingTextStatisticsID: UUID?
+    @State private var textStatisticsTask: Task<Void, Never>?
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
     @State private var isSVGPreviewRendering = false
     @State private var lastCompileSignature: PreviewCompileInputSignature?
 
     private var previewStatistics: PreviewStatistics? {
-        guard compiler.compiledOnce else { return nil }
+        guard compiler.compiledOnce, let cachedTextStatistics else { return nil }
         return PreviewStatistics(
             pageCount: max(compiler.pageCount, 0),
-            wordCount: cachedWordCount,
-            characterCount: cachedCharacterCount
+            wordCount: cachedTextStatistics.wordCount,
+            characterCount: cachedTextStatistics.characterCount
         )
     }
 
@@ -896,6 +917,7 @@ struct PreviewPane: View {
                     bottomViewportInset: previewBottomViewportInset,
                     scrollTarget: syncCoordinator?.previewScrollTarget,
                     backgroundColor: backgroundColor,
+                    isAccessibilityVisible: isAccessibilityVisible,
                     onTapLocation: { page, yPoints in
                         guard let syncCoordinator,
                               let sourceMap,
@@ -918,7 +940,7 @@ struct PreviewPane: View {
                 .accessibilityValue(
                     compiler.errorMessage == nil ? L10n.a11yPreviewValueReady : L10n.a11yPreviewValueError
                 )
-                .accessibilityIdentifier("editor.preview")
+                .previewRootAccessibilityIdentifier(isAccessibilityVisible)
             } else if isPreviewLoading {
                 compilingPlaceholderView
                     .padding(.top, topViewportInset)
@@ -933,6 +955,10 @@ struct PreviewPane: View {
 
             if showsBottomStatusOverlay {
                 statusOverlay
+            }
+
+            if isAccessibilityVisible && hasRenderablePreview && !isSVGPreviewRendering {
+                renderedPreviewMarker
             }
         }
             .background(Color(uiColor: backgroundColor))
@@ -994,6 +1020,9 @@ struct PreviewPane: View {
             }
             .onDisappear {
                 focusCoordinator?.clearFocusPreservation()
+                textStatisticsTask?.cancel()
+                textStatisticsTask = nil
+                pendingTextStatisticsID = nil
                 if cancelsCompilerOnDisappear {
                     compiler.cancel()
                 }
@@ -1031,6 +1060,15 @@ struct PreviewPane: View {
             bottomStatusOverlay(bottomAvoidanceInset: bottomAvoidanceInset(safeAreaBottom: geometry.safeAreaInsets.bottom))
         }
         .zIndex(2)
+    }
+
+    private var renderedPreviewMarker: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("editor.preview.rendered")
+            .allowsHitTesting(false)
+            .zIndex(-1)
     }
 
     private func topOverlayPadding(safeAreaTop: CGFloat) -> CGFloat {
@@ -1078,12 +1116,19 @@ struct PreviewPane: View {
 
     private func recomputeTextStatistics() {
         let text = source
-        Task.detached(priority: .utility) {
-            let wordCount = text.previewWordCount
-            let charCount = text.previewCharacterCount
+        let requestID = UUID()
+        cachedTextStatistics = nil
+        pendingTextStatisticsID = requestID
+        textStatisticsTask?.cancel()
+        textStatisticsTask = Task.detached(priority: .utility) {
+            let statistics = PreviewTextStatisticsCache.statistics(for: text)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
-                cachedWordCount = wordCount
-                cachedCharacterCount = charCount
+                guard pendingTextStatisticsID == requestID,
+                      source == text else { return }
+                cachedTextStatistics = statistics
+                pendingTextStatisticsID = nil
+                textStatisticsTask = nil
             }
         }
     }
@@ -1169,7 +1214,7 @@ struct PreviewPane: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.tr("Compiling…"))
         .accessibilityValue(L10n.a11yPreviewValueEmpty)
-        .accessibilityIdentifier("editor.preview")
+        .previewRootAccessibilityIdentifier(isAccessibilityVisible)
     }
 
     private var placeholderView: some View {
@@ -1193,7 +1238,7 @@ struct PreviewPane: View {
         .accessibilityLabel(L10n.a11yPreviewPlaceholderLabel)
         .accessibilityHint(L10n.a11yPreviewPlaceholderHint)
         .accessibilityValue(compiler.errorMessage == nil ? L10n.a11yPreviewValueEmpty : L10n.a11yPreviewValueError)
-        .accessibilityIdentifier("editor.preview")
+        .previewRootAccessibilityIdentifier(isAccessibilityVisible)
     }
 
     private func bottomStatusOverlay(bottomAvoidanceInset: CGFloat) -> some View {

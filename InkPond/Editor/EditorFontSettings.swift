@@ -31,7 +31,7 @@ struct EditorFontFamilyOption: Identifiable, Hashable {
 @Observable
 final class EditorFontSettings {
     static let systemMonospacedFontID = "system.monospaced"
-    static let systemMonospacedDisplayName = "System Monospaced"
+    static var systemMonospacedDisplayName: String { L10n.tr("System Monospaced") }
     static let defaultFontSize: Double = 15
     static let minimumFontSize: Double = 11
     static let maximumFontSize: Double = 28

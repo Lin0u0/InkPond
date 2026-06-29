@@ -296,7 +296,7 @@ final class CompletionEngine {
         if filtered.count == 1, filtered[0] == typed { return nil }
 
         let items = filtered.map { spec in
-            CompletionItem(label: spec, insertText: spec, kind: .value, detail: "Package")
+            CompletionItem(label: spec, insertText: spec, kind: .value, detail: L10n.tr("Package"))
         }
         return .value(prefix: typed, isQuoted: true, items: items)
     }
@@ -389,7 +389,7 @@ final class CompletionEngine {
         let candidates: [CompletionItem]
         if funcName == "image" || funcName == "figure" {
             candidates = imageFiles.map {
-                CompletionItem(label: $0, insertText: $0, kind: .value, detail: "Image")
+                CompletionItem(label: $0, insertText: $0, kind: .value, detail: L10n.tr("Image"))
             }
         } else {
             // For bibliography, csv, json, etc. — no candidates yet (can be extended)
@@ -723,7 +723,7 @@ final class CompletionEngine {
         switch paramName {
         case "font":
             return fontFamilies.map {
-                CompletionItem(label: $0, insertText: $0, kind: .value, detail: "Font family")
+                CompletionItem(label: $0, insertText: $0, kind: .value, detail: L10n.tr("Font family"))
             }
         default:
             guard let functionName,

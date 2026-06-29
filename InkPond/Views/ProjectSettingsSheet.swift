@@ -47,8 +47,8 @@ struct ProjectSettingsSheet: View {
         NavigationStack {
             Form {
                 // MARK: Entry File
-                Section("Entry File") {
-                    Picker("Entry File", selection: $document.entryFileName) {
+                Section(L10n.tr("Entry File")) {
+                    Picker(L10n.tr("Entry File"), selection: $document.entryFileName) {
                         ForEach(typFiles, id: \.self) { name in
                             Text(name).tag(name)
                         }
@@ -59,22 +59,22 @@ struct ProjectSettingsSheet: View {
                 }
 
                 // MARK: Image
-                Section("Image Insertion") {
-                    Picker("Format", selection: $document.imageInsertMode) {
+                Section(L10n.tr("Image Insertion")) {
+                    Picker(L10n.tr("Format"), selection: $document.imageInsertMode) {
                         Text(verbatim: "#image(\"path\")").tag("image")
                         Text(verbatim: "#figure(image(\"path\"), caption: [...])").tag("figure")
                     }
                 }
 
-                Section("Image Directory") {
-                    TextField("Subdirectory name", text: $document.imageDirectoryName)
+                Section(L10n.tr("Image Directory")) {
+                    TextField(L10n.tr("Subdirectory name"), text: $document.imageDirectoryName)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
 
                 // MARK: Fonts
                 Section(
-                    header: Text("Fonts"),
+                    header: Text(L10n.tr("Fonts")),
                     footer: Text(L10n.projectFontsFooter)
                 ) {
                     ExpandableFontList(
@@ -110,25 +110,25 @@ struct ProjectSettingsSheet: View {
                         InteractionFeedback.impact(.light)
                         showingFontPicker = true
                     } label: {
-                        Label("Add Font…", systemImage: "plus.circle")
+                        Label(L10n.tr("Add Font…"), systemImage: "plus.circle")
                     }
                 }
             }
-            .navigationTitle("Project Settings")
+            .navigationTitle(L10n.tr("Project Settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                    Button(L10n.tr("Done")) {
                         InteractionFeedback.impact(.light)
                         dismiss()
                     }
                 }
             }
-            .alert("Error", isPresented: Binding(
+            .alert(L10n.tr("Error"), isPresented: Binding(
                 get: { actionError != nil },
                 set: { if !$0 { actionError = nil } }
             )) {
-                Button("OK") { actionError = nil }
+                Button(L10n.tr("OK")) { actionError = nil }
             } message: {
                 Text(actionError ?? "")
             }

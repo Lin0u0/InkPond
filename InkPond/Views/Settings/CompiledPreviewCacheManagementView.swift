@@ -22,32 +22,32 @@ struct CompiledPreviewCacheManagementView: View {
             actionsSection
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Compile Cache")
+        .navigationTitle(L10n.tr("Compile Cache"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await refresh() }
         .refreshable { await refresh() }
-        .alert("Cache Error", isPresented: Binding(
+        .alert(L10n.tr("Cache Error"), isPresented: Binding(
             get: { cacheError != nil },
             set: { if !$0 { cacheError = nil } }
         )) {
-            Button("OK") { cacheError = nil }
+            Button(L10n.tr("OK")) { cacheError = nil }
         } message: {
             Text(cacheError ?? "")
         }
-        .alert("Clear All Compile Cache?", isPresented: $showingClearAllConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) {
+        .alert(L10n.tr("Clear All Compile Cache?"), isPresented: $showingClearAllConfirmation) {
+            Button(L10n.tr("Cancel"), role: .cancel) {}
+            Button(L10n.tr("Clear All"), role: .destructive) {
                 Task { await clearAll() }
             }
         } message: {
-            Text("This removes all cached compiled previews. Documents will recompile the next time they open.")
+            Text(L10n.tr("This removes all cached compiled previews. Documents will recompile the next time they open."))
         }
     }
 
     private var overviewSection: some View {
-        Section("Overview") {
+        Section(L10n.tr("Overview")) {
             HStack {
-                Label("Total Size", systemImage: "internaldrive")
+                Label(L10n.tr("Total Size"), systemImage: "internaldrive")
                 Spacer()
                 if isLoading {
                     ProgressView()
@@ -58,7 +58,7 @@ struct CompiledPreviewCacheManagementView: View {
             }
 
             HStack {
-                Label("Cached Documents", systemImage: "doc.richtext")
+                Label(L10n.tr("Cached Documents"), systemImage: "doc.richtext")
                 Spacer()
                 Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
@@ -68,9 +68,9 @@ struct CompiledPreviewCacheManagementView: View {
 
     @ViewBuilder
     private var entriesSection: some View {
-        Section("Documents") {
+        Section(L10n.tr("Documents")) {
             if !isLoading && snapshot.entries.isEmpty {
-                Text("No cached document previews")
+                Text(L10n.tr("No cached document previews"))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(snapshot.entries) { entry in
@@ -93,7 +93,7 @@ struct CompiledPreviewCacheManagementView: View {
                             .foregroundStyle(.secondary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Delete", role: .destructive) {
+                        Button(L10n.tr("Delete"), role: .destructive) {
                             Task { await delete(entry) }
                         }
                     }
@@ -104,7 +104,7 @@ struct CompiledPreviewCacheManagementView: View {
 
     private var actionsSection: some View {
         Section {
-            Button("Clear All Compile Cache", role: .destructive) {
+            Button(L10n.tr("Clear All Compile Cache"), role: .destructive) {
                 showingClearAllConfirmation = true
             }
             .disabled(isLoading || snapshot.entries.isEmpty)
@@ -163,10 +163,7 @@ struct CompiledPreviewCacheManagementView: View {
     }
 
     private func updatedAtText(for date: Date) -> String {
-        String.localizedStringWithFormat(
-            NSLocalizedString("Updated %@", comment: "Compiled preview cache updated time"),
-            date.formatted(date: .abbreviated, time: .shortened)
-        )
+        L10n.format("Updated %@", date.formatted(date: .abbreviated, time: .shortened))
     }
 
     private func formattedSize(_ bytes: Int64) -> String {

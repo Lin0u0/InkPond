@@ -11,7 +11,7 @@ final class EditorFocusCoordinator {
     private(set) var hasActiveTextSelection = false
 
     var isTextSelectionInteractionActive: Bool {
-        isTextSelectionDragActive || hasActiveTextSelection
+        isTextSelectionDragActive || (isEditorFocused && hasActiveTextSelection)
     }
 
     var isEditorFocused: Bool {
@@ -65,6 +65,7 @@ final class EditorFocusCoordinator {
 
     func dismissKeyboard() {
         clearFocusPreservation()
+        isTextSelectionDragActive = false
         textView?.resignFirstResponder()
     }
 

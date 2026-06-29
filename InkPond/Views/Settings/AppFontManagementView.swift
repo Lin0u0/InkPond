@@ -42,7 +42,7 @@ struct AppFontManagementView: View {
             get: { actionError != nil },
             set: { if !$0 { actionError = nil } }
         )) {
-            Button("OK") { actionError = nil }
+            Button(L10n.tr("OK")) { actionError = nil }
         } message: {
             Text(actionError ?? "")
         }
@@ -80,7 +80,7 @@ struct AppFontManagementView: View {
                 InteractionFeedback.impact(.light)
                 showingFontPicker = true
             } label: {
-                Label("Add Font…", systemImage: "plus.circle")
+                Label(L10n.tr("Add Font…"), systemImage: "plus.circle")
                     .foregroundStyle(.primary)
             }
         }

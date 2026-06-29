@@ -22,15 +22,21 @@ enum ZipImporterError: LocalizedError {
 }
 
 struct ZipImporter {
+    nonisolated static let maxArchiveBytes = 256 * 1024 * 1024
+    nonisolated static let maxEntryCount = 4_096
+    nonisolated static let maxSingleEntryUncompressedBytes = 128 * 1024 * 1024
+    nonisolated static let maxTotalUncompressedBytes = 512 * 1024 * 1024
+
     /// Extract a ZIP archive to `destDir`. Returns the relative paths of extracted files.
     @discardableResult
     nonisolated static func extract(from zipURL: URL, to destDir: URL) throws -> [String] {
-        let data = try Data(contentsOf: zipURL)
+        let data = try archiveData(from: zipURL)
         return try extract(data: data, to: destDir)
     }
 
     @discardableResult
     nonisolated static func extract(data: Data, to destDir: URL) throws -> [String] {
+        guard data.count <= maxArchiveBytes else { throw ZipImporterError.invalidData }
         let bytes = [UInt8](data)
         let count = bytes.count
         guard count >= 22 else { throw ZipImporterError.invalidData }
@@ -48,6 +54,11 @@ struct ZipImporter {
 
         let cdCount  = Int(u16(bytes, eocdOff + 10))
         let cdOffset = Int(u32(bytes, eocdOff + 16))
+        guard cdCount <= maxEntryCount,
+              cdOffset >= 0,
+              cdOffset < count else {
+            throw ZipImporterError.invalidData
+        }
 
         // 2. Parse central directory
         struct Entry {
@@ -59,6 +70,7 @@ struct ZipImporter {
         }
         var entries: [Entry] = []
         var pos = cdOffset
+        var totalUncompressedSize = 0
         for _ in 0..<cdCount {
             guard pos + 46 <= count,
                   bytes[pos] == 0x50, bytes[pos+1] == 0x4B,
@@ -68,6 +80,12 @@ struct ZipImporter {
             let method          = Int(u16(bytes, pos + 10))
             let compressedSize  = Int(u32(bytes, pos + 20))
             let uncompressedSize = Int(u32(bytes, pos + 24))
+            guard compressedSize <= maxArchiveBytes,
+                  uncompressedSize <= maxSingleEntryUncompressedBytes,
+                  totalUncompressedSize <= maxTotalUncompressedBytes - uncompressedSize else {
+                throw ZipImporterError.invalidData
+            }
+            totalUncompressedSize += uncompressedSize
             let nameLen         = Int(u16(bytes, pos + 28))
             let extraLen        = Int(u16(bytes, pos + 30))
             let commentLen      = Int(u16(bytes, pos + 32))
@@ -124,7 +142,11 @@ struct ZipImporter {
             let compressed = Data(bytes[dataStart..<dataEnd])
             let outData: Data
             switch entry.method {
-            case 0:  outData = compressed   // STORE
+            case 0:
+                guard compressed.count == entry.uncompressedSize else {
+                    throw ZipImporterError.invalidData
+                }
+                outData = compressed   // STORE
             case 8:  outData = try decompressDeflate(compressed, uncompressedSize: entry.uncompressedSize)
             default: throw ZipImporterError.unsupportedCompressionMethod(entry.method)
             }
@@ -137,6 +159,16 @@ struct ZipImporter {
     }
 
     // MARK: - Helpers
+
+    private nonisolated static func archiveData(from zipURL: URL) throws -> Data {
+        if let fileSize = try zipURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           fileSize > maxArchiveBytes {
+            throw ZipImporterError.invalidData
+        }
+        let data = try Data(contentsOf: zipURL)
+        guard data.count <= maxArchiveBytes else { throw ZipImporterError.invalidData }
+        return data
+    }
 
     private nonisolated static func u16(_ b: [UInt8], _ i: Int) -> UInt16 {
         UInt16(b[i]) | (UInt16(b[i+1]) << 8)
@@ -190,6 +222,9 @@ struct ZipImporter {
 
     /// Decompress raw DEFLATE data (no zlib wrapper) using zlib.
     private nonisolated static func decompressDeflate(_ compressed: Data, uncompressedSize: Int) throws -> Data {
+        guard uncompressedSize <= maxSingleEntryUncompressedBytes else {
+            throw ZipImporterError.invalidData
+        }
         let bufSize = max(uncompressedSize, 1)
         var result = Data(count: bufSize)
         var stream = z_stream()
@@ -212,6 +247,8 @@ struct ZipImporter {
         }
 
         guard inflateRC == Z_STREAM_END else { throw ZipImporterError.decompressionFailed(inflateRC) }
-        return result
+        let produced = Int(stream.total_out)
+        guard produced == uncompressedSize else { throw ZipImporterError.invalidData }
+        return Data(result.prefix(produced))
     }
 }

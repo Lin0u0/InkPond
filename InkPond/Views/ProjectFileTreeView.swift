@@ -84,17 +84,17 @@ struct ProjectFileTreeView: View {
                 }
             }
         }
-        .alert("New Source File", isPresented: $showingNewFileAlert) {
-            TextField("filename.typ", text: $newFileName)
+        .alert(L10n.tr("New Source File"), isPresented: $showingNewFileAlert) {
+            TextField(L10n.tr("filename.typ"), text: $newFileName)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-            Button("Create") { createNewFile() }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.tr("Create")) { createNewFile() }
+            Button(L10n.tr("Cancel"), role: .cancel) {}
         } message: {
-            Text("Enter a name for the new .typ file.")
+            Text(L10n.tr("Enter a name for the new .typ file."))
         }
-        .alert("Error", isPresented: $showingActionError) {
-            Button("OK") {}
+        .alert(L10n.tr("Error"), isPresented: $showingActionError) {
+            Button(L10n.tr("OK")) {}
         } message: {
             Text(actionError ?? "")
         }
@@ -193,12 +193,12 @@ struct ProjectFileTreeView: View {
                 newFileName = ""
                 showingNewFileAlert = true
             } label: {
-                Label("New .typ File", systemImage: "doc.badge.plus")
+                Label(L10n.tr("New .typ File"), systemImage: "doc.badge.plus")
             }
             Button {
                 showingImporter = true
             } label: {
-                Label("Import File", systemImage: "square.and.arrow.down")
+                Label(L10n.tr("Import File"), systemImage: "square.and.arrow.down")
             }
         } label: {
             projectControlIcon("plus")
@@ -246,14 +246,14 @@ struct ProjectFileTreeView: View {
                             refreshProjectState()
                         }
                     } label: {
-                        Label("Set Entry", systemImage: "target")
+                        Label(L10n.tr("Set Entry"), systemImage: "target")
                     }
                 }
 
                 Button(role: .destructive) {
                     deleteFile(node)
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(L10n.tr("Delete"), systemImage: "trash")
                 }
                 .disabled(node.relativePath == document.entryFileName)
             }
@@ -264,7 +264,7 @@ struct ProjectFileTreeView: View {
                     openNode(node)
                     if closeAfterOpen { dismiss() }
                 } label: {
-                    Label(node.kind.isTextEditable ? "Open" : "Preview", systemImage: node.kind.iconName)
+                    Label(L10n.tr(node.kind.isTextEditable ? "Open" : "Preview"), systemImage: node.kind.iconName)
                 }
 
                 if node.kind == .typ, node.relativePath != document.entryFileName {
@@ -273,14 +273,14 @@ struct ProjectFileTreeView: View {
                             refreshProjectState()
                         }
                     } label: {
-                        Label("Set Entry", systemImage: "target")
+                        Label(L10n.tr("Set Entry"), systemImage: "target")
                     }
                 }
 
                 Button(role: .destructive) {
                     deleteFile(node)
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(L10n.tr("Delete"), systemImage: "trash")
                 }
                 .disabled(node.relativePath == document.entryFileName)
             }

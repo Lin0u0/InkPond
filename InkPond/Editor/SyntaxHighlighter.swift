@@ -324,7 +324,7 @@ final class SyntaxHighlighter {
             var contentEnd = NSMaxRange(lineRange)
             while contentEnd > lineRange.location,
                   contentEnd - 1 < length,
-                  nsText.character(at: contentEnd - 1) == 10 /* \n */ || nsText.character(at: contentEnd - 1) == 13 /* \r */ {
+                  (nsText.character(at: contentEnd - 1) == 10 /* \n */ || nsText.character(at: contentEnd - 1) == 13 /* \r */) {
                 contentEnd -= 1
             }
             let contentRange = NSRange(location: lineRange.location, length: contentEnd - lineRange.location)

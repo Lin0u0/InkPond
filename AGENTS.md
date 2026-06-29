@@ -33,10 +33,10 @@ xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Debug -dest
 xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Release -destination 'generic/platform=iOS' archive
 
 # Unit tests
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 
 # UI tests
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 ```
 
 If the named simulator is unavailable locally, inspect options first:
@@ -49,7 +49,7 @@ xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 
 ### App Shell
 - `InkPond/InkPondApp.swift`: `@main` entry point; sets up SwiftData `ModelContainer` with `InkPondDocument` schema; initializes `SnippetStore`; runs startup cleanup (temp exports, font cache pruning)
-- `InkPond/ContentView.swift`: `NavigationSplitView` shell; sidebar = document list, detail = editor; injects `ThemeManager`, `AppAppearanceManager`, `AppFontLibrary` into environment; onboarding gate
+- `InkPond/ContentView.swift`: `NavigationStack` project home shell; presents document editor, settings, onboarding, import/link flows; injects `ThemeManager`, `AppAppearanceManager`, `AppFontLibrary` into environment
 
 ### Data Model
 - `InkPond/Models/InkPondDocument.swift`: `@Model` with properties: `title`, `content`, `createdAt`, `modifiedAt`, `fontFileNames[]`, `projectID`, `entryFileName`, `imageInsertMode`, `imageDirectoryName`, `lastEditedFileName`, `lastCursorLocation`, `requiresInitialEntrySelection`, import option arrays
@@ -68,7 +68,7 @@ xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 
 ### Compiler Layer
 - `InkPond/Compiler/TypstBridge.swift`: Rust FFI wrapper; `compile()` → PDF data; `compileWithSourceMap()` → PDF + `SourceMap`; null-terminated UTF-8 source, explicitly resolved font paths, rootDir for local file resolution
-- `InkPond/Compiler/TypstCompiler.swift`: `@Observable @MainActor`; debounced compilation (350ms, `.utility` priority) and immediate compilation (`.medium` priority, for export); 30s timeout; integrates `CompiledPreviewCacheStore`; exposes `pdfDocument`, `errorMessage`, `sourceMap`
+- `InkPond/Compiler/TypstCompiler.swift`: `@Observable @MainActor`; debounced compilation (350ms, `.utility` priority) and immediate compilation (`.medium` priority, for export); 30s timeout, 120s first uncached `@preview` package timeout; integrates `CompiledPreviewCacheStore`; exposes `previewArtifact` (SVG pages + optional PDF/source map), `pdfData`, `errorMessage`, `sourceMap`
 - `InkPond/Compiler/SourceMap.swift`: sorted arrays by source offset and by (page, yPoints); binary search lookup for both directions
 - `InkPond/Compiler/ProjectFileManager.swift` (+ Files/Listing/Sync extensions): per-project directory management; file CRUD with path traversal validation; rename with atomic directory move; import files; build recursive project tree; supported image extensions (bmp/eps/gif/heic/jpg/png/svg/webp/etc), font extensions (otf/ttf/woff/woff2)
 - `InkPond/Compiler/FontManager.swift`: project/app font metadata helpers plus system-font parsing from OTF/TTF name tables; compile-time selection is handled separately by the font resolver
@@ -82,20 +82,20 @@ xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 - `InkPond/Views/DocumentEditor/DocumentEditorView.swift` (+ Layout/FileOperations/Images extensions): file-based editing state (`currentFileName`, `editorText`, `entrySource`, `compileToken`, `compileFontPaths`); iPad HStack split (adjustable 0.2–0.8), iPhone segmented tabs; toolbar with project files, image insert, fonts, project settings
 - `InkPond/Views/DocumentEditor/OutlineView.swift`: parses headings from editor text; tap to jump
 - `InkPond/Views/EditorView.swift`: `UIViewRepresentable` wrapping `TypstTextView`; `insertionRequest` binding for cursor insertion
-- `InkPond/Views/PreviewPane.swift`: `PDFKitView` (UIViewRepresentable wrapping PDFView); error banner with expandable details; statistics card (pages, words/tokens, characters; CJK-aware via `NLTokenizer`); progress indicator; sync marker animation
-- `InkPond/Views/SlideshowView.swift`: full-screen PDF presentation with swipe navigation
+- `InkPond/Views/PreviewPane.swift`: `SVGPreviewView` (UIViewRepresentable wrapping a WKWebView-backed scroll container); error banner with expandable details; statistics card (pages, words/tokens, characters; CJK-aware via `NLTokenizer`); progress indicator; sync marker animation
+- `InkPond/Views/SlideshowView.swift`: full-screen SVG slideshow with swipe navigation
 - `InkPond/Views/OnboardingView.swift`: first-launch onboarding flow
 - `InkPond/Views/SnippetBrowserSheet.swift` + `SnippetEditorSheet.swift`: snippet library UI and custom snippet editor
 - `InkPond/Views/ProjectFileBrowserSheet.swift`: file browser with .typ/images/fonts sections; tap to open, swipe delete (entry file protected), new file, file import
 - `InkPond/Views/ProjectSettingsSheet.swift`: entry file picker, image insert format, image subdirectory name
-- `InkPond/Views/Settings/`: settings root (`SettingsView`), app font management, keyboard shortcuts (iOS 26+), compiled preview cache, package cache, acknowledgements
+- `InkPond/Views/Settings/`: settings root (`SettingsView`), iCloud, appearance/editor font, local packages, app font management, keyboard shortcuts (iOS 26+), compiled preview cache, package cache, system font cache, acknowledgements
 
 ### Supporting Modules
 - `InkPond/Storage/AppFontLibrary.swift`: app-wide font import tracking and registration cache
 - `InkPond/Shared/UI/ActivityView.swift`: `UIActivityViewController` wrapper
 - `InkPond/Shared/UI/SystemSurface.swift`: glass/blur effect view
 - `InkPond/Support/InteractionSupport.swift`: haptic feedback helpers + `AccessibilitySupport.announce()`
-- `InkPond/Localization/L10n.swift`: generated localization lookup (`L10n.tr("key")`, `L10n.format("key", args...)`); languages: en, zh-Hans, zh-Hant-HK, zh-Hant-TW
+- `InkPond/Localization/L10n.swift`: hand-written localization wrapper (`L10n.tr("key")`, `L10n.format("key", args...)`) backed by `InkPond/Resources/Localization/Localizable.xcstrings` and `InfoPlist.xcstrings`; languages: en, zh-Hans, zh-Hant-HK, zh-Hant-TW
 - `InkPond/Bridging/typst_ffi.h`: C header for Rust FFI (`typst_compile`, `typst_compile_with_source_map`, `typst_version`; structs: `TypstResult`, `TypstResultWithMap`, `SourceMapEntry`, `TypstOptions`)
 
 ### Rust FFI
@@ -112,7 +112,7 @@ xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
 - The project uses `PBXFileSystemSynchronizedRootGroup` — new Swift files are auto-discovered by Xcode without manual xcodeproj edits
 - The project is Xcode + Cargo only; there is no npm/Electron stack in this repository
 - `@Observable` + `@State` for reactive managers (ThemeManager, SyncCoordinator, TypstCompiler, etc.)
-- `UIViewRepresentable` for all UIKit integrations (TypstTextView, PDFKitView)
+- `UIViewRepresentable` for UIKit/WebKit integrations (TypstTextView, SVGPreviewView)
 - All user-facing strings go through `L10n.tr()` / `L10n.format()` for localization
 - Accessibility is first-class: all interactive elements have `accessibilityLabel`/`accessibilityHint`/`accessibilityValue`
 - Detail views use `.id(document.persistentModelID)` to prevent stale reloads

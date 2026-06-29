@@ -42,7 +42,7 @@ InkPond (墨池) is a native iOS/iPadOS editor for [Typst](https://typst.app/), 
 
 **Preview & Compile**
 - Typst `0.14.2` compilation through a Rust FFI bridge
-- Live PDF preview with debounced recompilation (350ms)
+- Live SVG/WKWebView preview with debounced recompilation (350ms)
 - Bidirectional editor-to-preview sync via source maps
 - `@preview` package downloads cached on device, plus local package resolution
 - Document statistics (pages, words/tokens, characters; CJK-aware)
@@ -113,10 +113,10 @@ xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Debug -dest
 xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Release -destination 'generic/platform=iOS' archive
 
 # Unit tests
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 
 # UI tests
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 
 # If your local simulator list differs, inspect available destinations first:
 # xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
@@ -131,7 +131,6 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
 - Re-run `rust-ffi/build-ios.sh` when:
   - updating Typst / Rust dependencies
   - changing `rust-ffi/src/lib.rs`
-  - rebuilding release artifacts for distribution
 - If Xcode shows `Typst compiler library not linked`, the xcframework is missing, stale, or was built before switching branches. Re-run the build script and rebuild the app.
 
 Current pinned Typst version: `0.14.2` (see `rust-ffi/Cargo.toml`).
@@ -161,7 +160,7 @@ Public App Store listing: [apps.apple.com/us/app/inkpond/id6760032537](https://a
 InkPond/
 ├── InkPond/
 │   ├── InkPondApp.swift                 # @main entry point, SwiftData ModelContainer
-│   ├── ContentView.swift                # NavigationSplitView shell, environment setup
+│   ├── ContentView.swift                # NavigationStack project home, environment setup
 │   ├── AppAppearanceManager.swift       # App-wide light/dark/system appearance
 │   ├── Models/
 │   │   └── InkPondDocument.swift        # @Model: document data + project config
@@ -179,7 +178,7 @@ InkPond/
 │   │   └── KeyboardAccessoryView.swift # Accessory bar (photo/snippet buttons)
 │   ├── Compiler/
 │   │   ├── TypstBridge.swift           # Rust FFI wrapper (compile + source map)
-│   │   ├── TypstCompiler.swift         # Debounced compilation pipeline + cache
+│   │   ├── TypstCompiler.swift         # Debounced SVG/PDF preview pipeline + cache
 │   │   ├── SourceMap.swift             # Line↔page bidirectional mapping
 │   │   ├── ProjectFileManager.swift    # Per-project file CRUD + validation
 │   │   ├── FontManager.swift           # Project/app font metadata + parsing helpers
@@ -199,14 +198,15 @@ InkPond/
 │   │   ├── DocumentEditor/             # Editor/preview split, file ops, images
 │   │   │   └── OutlineView.swift       # Heading outline navigation
 │   │   ├── EditorView.swift            # UIViewRepresentable for TypstTextView
-│   │   ├── PreviewPane.swift           # PDFKit live preview + stats + sync marker
-│   │   ├── SlideshowView.swift         # Full-screen PDF presentation
+│   │   ├── PreviewPane.swift           # SVG/WKWebView live preview + stats + sync marker
+│   │   ├── SlideshowView.swift         # Full-screen SVG slideshow
 │   │   ├── OnboardingView.swift        # First-launch onboarding
 │   │   ├── SnippetBrowserSheet.swift   # Snippet library browser
 │   │   ├── ProjectFileBrowserSheet.swift
 │   │   ├── ProjectSettingsSheet.swift
-│   │   └── Settings/                   # iCloud, packages, fonts, caches, shortcuts
-│   ├── Localization/                   # L10n.swift + .strings (en, zh-Hans, zh-Hant)
+│   │   └── Settings/                   # iCloud, appearance, editor font, packages, fonts, caches, shortcuts
+│   ├── Localization/                   # L10n.swift lookup helpers
+│   ├── Resources/Localization/         # Localizable.xcstrings (en, zh-Hans, zh-Hant-HK, zh-Hant-TW)
 │   ├── Storage/
 │   │   ├── StorageManager.swift        # Local/iCloud mode and migration
 │   │   ├── Cloud*.swift                # iCloud coordination, availability, sync monitor

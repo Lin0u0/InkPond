@@ -18,32 +18,32 @@ struct MaterializedFontCacheManagementView: View {
             actionsSection
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("System Font Cache")
+        .navigationTitle(L10n.tr("System Font Cache"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await refresh() }
         .refreshable { await refresh() }
-        .alert("Cache Error", isPresented: Binding(
+        .alert(L10n.tr("Cache Error"), isPresented: Binding(
             get: { cacheError != nil },
             set: { if !$0 { cacheError = nil } }
         )) {
-            Button("OK") { cacheError = nil }
+            Button(L10n.tr("OK")) { cacheError = nil }
         } message: {
             Text(cacheError ?? "")
         }
-        .alert("Clear System Font Cache?", isPresented: $showingClearAllConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) {
+        .alert(L10n.tr("Clear System Font Cache?"), isPresented: $showingClearAllConfirmation) {
+            Button(L10n.tr("Cancel"), role: .cancel) {}
+            Button(L10n.tr("Clear All"), role: .destructive) {
                 Task { await clearAll() }
             }
         } message: {
-            Text("This removes generated system font files. InkPond will rebuild them the next time a document needs them.")
+            Text(L10n.tr("This removes generated system font files. InkPond will rebuild them the next time a document needs them."))
         }
     }
 
     private var overviewSection: some View {
-        Section("Overview") {
+        Section(L10n.tr("Overview")) {
             HStack {
-                Label("Total Size", systemImage: "internaldrive")
+                Label(L10n.tr("Total Size"), systemImage: "internaldrive")
                 Spacer()
                 if isLoading {
                     ProgressView()
@@ -54,13 +54,13 @@ struct MaterializedFontCacheManagementView: View {
             }
 
             HStack {
-                Label("Cached Fonts", systemImage: "textformat")
+                Label(L10n.tr("Cached Fonts"), systemImage: "textformat")
                 Spacer()
                 Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
             }
 
-            Text("Generated system font files stay local to this device and are excluded from iCloud Backup.")
+            Text(L10n.tr("Generated system font files stay local to this device and are excluded from iCloud Backup."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -68,9 +68,9 @@ struct MaterializedFontCacheManagementView: View {
 
     @ViewBuilder
     private var fontsSection: some View {
-        Section("Fonts") {
+        Section(L10n.tr("Fonts")) {
             if !isLoading && snapshot.entries.isEmpty {
-                Text("No cached system fonts")
+                Text(L10n.tr("No cached system fonts"))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(snapshot.entries) { entry in
@@ -98,7 +98,7 @@ struct MaterializedFontCacheManagementView: View {
                         .foregroundStyle(.secondary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Delete", role: .destructive) {
+                        Button(L10n.tr("Delete"), role: .destructive) {
                             Task { await delete(entry) }
                         }
                     }
@@ -109,7 +109,7 @@ struct MaterializedFontCacheManagementView: View {
 
     private var actionsSection: some View {
         Section {
-            Button("Clear System Font Cache", role: .destructive) {
+            Button(L10n.tr("Clear System Font Cache"), role: .destructive) {
                 showingClearAllConfirmation = true
             }
             .disabled(isLoading || snapshot.entries.isEmpty)
@@ -161,10 +161,7 @@ struct MaterializedFontCacheManagementView: View {
     }
 
     private func updatedAtText(for date: Date) -> String {
-        String.localizedStringWithFormat(
-            NSLocalizedString("Updated %@", comment: "System font cache updated time"),
-            date.formatted(date: .abbreviated, time: .shortened)
-        )
+        L10n.format("Updated %@", date.formatted(date: .abbreviated, time: .shortened))
     }
 
     private func formattedSize(_ bytes: Int64) -> String {

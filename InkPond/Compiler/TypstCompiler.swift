@@ -222,6 +222,7 @@ final class TypstCompiler {
         debounceTask = nil
         activeTask?.cancel()
         activeTask = nil
+        TypstBridge.clearAllPreviewSessions()
         cancelDelayedError()
         scheduledRequest = nil
         pendingRequest = nil
@@ -284,12 +285,35 @@ final class TypstCompiler {
             forSource: request.source,
             packageCacheDirectory: packageCacheDirectory
         )
+        let timeout = Self.timeout(forSource: request.source, packageCacheDirectory: packageCacheDirectory)
         activeTask = Task { [weak self] in
             if !packageSpecs.isEmpty {
                 let preflightTask = Task.detached(priority: priority) {
                     previewPackagePrefetcher(packageSpecs)
                 }
-                let preflightResult = await preflightTask.value
+                let preflightResult: Result<Void, TypstBridgeError>
+                do {
+                    preflightResult = try await Self.awaitPreviewPackagePrefetch(preflightTask, timeout: timeout)
+                } catch is TypstCompileTimeoutError {
+                    preflightTask.cancel()
+                    self?.finishCompilation(
+                        .failure(.compilationFailed(L10n.tr("error.typst.compilation_timeout"))),
+                        generation: request.generation,
+                        request: request
+                    )
+                    return
+                } catch is CancellationError {
+                    preflightTask.cancel()
+                    return
+                } catch {
+                    preflightTask.cancel()
+                    self?.finishCompilation(
+                        .failure(.compilationFailed(error.localizedDescription)),
+                        generation: request.generation,
+                        request: request
+                    )
+                    return
+                }
                 guard !Task.isCancelled else { return }
 
                 if case .failure(let error) = preflightResult {
@@ -308,9 +332,6 @@ final class TypstCompiler {
                 )
             }
 
-            let timeout = packageSpecs.isEmpty
-                ? Self.timeout(forSource: request.source, packageCacheDirectory: packageCacheDirectory)
-                : Self.compileTimeout
             let workerResult: TypstWorkerResult
             do {
                 workerResult = try await withTaskCancellationHandler(operation: {
@@ -510,6 +531,7 @@ final class TypstCompiler {
                 source: request.source,
                 fontPaths: materializedFontPaths,
                 rootDir: request.rootDir,
+                localPackagesDir: TypstBridge.localPackagesDirectoryURL?.standardizedFileURL.path,
                 typstVersion: typstVersion
             )
         }
@@ -550,6 +572,26 @@ final class TypstCompiler {
         case .failure(let error):
             return .failure(error)
         }
+    }
+
+    nonisolated private static func awaitPreviewPackagePrefetch(
+        _ preflightTask: Task<Result<Void, TypstBridgeError>, Never>,
+        timeout: Duration
+    ) async throws -> Result<Void, TypstBridgeError> {
+        try await withTaskCancellationHandler(operation: {
+            try await withThrowingTaskGroup(of: Result<Void, TypstBridgeError>.self) { group in
+                group.addTask { await preflightTask.value }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw TypstCompileTimeoutError()
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
+        }, onCancel: {
+            preflightTask.cancel()
+        })
     }
 
     nonisolated private static func loadCachedPreview(

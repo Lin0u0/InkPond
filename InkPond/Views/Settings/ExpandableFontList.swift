@@ -55,7 +55,7 @@ struct ExpandableFontList: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if let onDeleteGroup, !group.fileNames.isEmpty {
-                        Button("Delete", role: .destructive) {
+                        Button(L10n.tr("Delete"), role: .destructive) {
                             onDeleteGroup(group)
                         }
                     }

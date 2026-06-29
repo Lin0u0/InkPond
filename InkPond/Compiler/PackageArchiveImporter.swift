@@ -12,6 +12,11 @@ enum PackageArchiveKind: Sendable {
 }
 
 struct PackageArchiveImporter {
+    nonisolated static let maxArchiveBytes = 256 * 1024 * 1024
+    nonisolated static let maxEntryCount = 4_096
+    nonisolated static let maxSingleEntryUncompressedBytes = 128 * 1024 * 1024
+    nonisolated static let maxTotalUncompressedBytes = 512 * 1024 * 1024
+
     @discardableResult
     nonisolated static func extract(from archiveURL: URL, to destDir: URL) throws -> [String] {
         guard let kind = archiveKind(for: archiveURL) else {
@@ -22,10 +27,10 @@ struct PackageArchiveImporter {
         case .zip:
             return try ZipImporter.extract(from: archiveURL, to: destDir)
         case .tar:
-            let data = try Data(contentsOf: archiveURL)
+            let data = try archiveData(from: archiveURL)
             return try extractTar(data: data, to: destDir)
         case .tarGz:
-            let data = try Data(contentsOf: archiveURL)
+            let data = try archiveData(from: archiveURL)
             let tarData = try gunzip(data)
             return try extractTar(data: tarData, to: destDir)
         }
@@ -77,6 +82,9 @@ struct PackageArchiveImporter {
 
     @discardableResult
     private nonisolated static func extractTar(data: Data, to destDir: URL) throws -> [String] {
+        guard data.count <= maxTotalUncompressedBytes else {
+            throw LocalPackageError.invalidArchive
+        }
         let bytes = [UInt8](data)
         let root = destDir.standardizedFileURL
         let rootPath = root.path
@@ -119,6 +127,7 @@ struct PackageArchiveImporter {
         var entries: [TarEntry] = []
         var offset = 0
         var pendingPathOverride: String?
+        var totalFileSize = 0
 
         while offset + 512 <= bytes.count {
             let header = Array(bytes[offset..<(offset + 512)])
@@ -127,6 +136,10 @@ struct PackageArchiveImporter {
             }
 
             let size = try parseOctal(header[124..<136])
+            guard size <= maxSingleEntryUncompressedBytes,
+                  totalFileSize <= maxTotalUncompressedBytes - size else {
+                throw LocalPackageError.invalidArchive
+            }
             let typeFlag = header[156]
             let dataStart = offset + 512
             let dataEnd = dataStart + size
@@ -140,6 +153,12 @@ struct PackageArchiveImporter {
 
             switch typeFlag {
             case 0, 48, 53:
+                guard entries.count < maxEntryCount else {
+                    throw LocalPackageError.invalidArchive
+                }
+                if typeFlag != 53 {
+                    totalFileSize += size
+                }
                 entries.append(
                     TarEntry(
                         name: entryName,
@@ -206,6 +225,18 @@ struct PackageArchiveImporter {
 
     // MARK: - GZIP
 
+    private nonisolated static func archiveData(from archiveURL: URL) throws -> Data {
+        if let fileSize = try archiveURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           fileSize > maxArchiveBytes {
+            throw LocalPackageError.invalidArchive
+        }
+        let data = try Data(contentsOf: archiveURL)
+        guard data.count <= maxArchiveBytes else {
+            throw LocalPackageError.invalidArchive
+        }
+        return data
+    }
+
     private nonisolated static func gunzip(_ data: Data) throws -> Data {
         guard !data.isEmpty else { return Data() }
 
@@ -250,6 +281,9 @@ struct PackageArchiveImporter {
                     let result = inflate(&stream, Z_NO_FLUSH)
                     let produced = chunkCount - Int(stream.avail_out)
                     if produced > 0 {
+                        guard output.count <= maxTotalUncompressedBytes - produced else {
+                            return Z_MEM_ERROR
+                        }
                         let producedBytes = UnsafeBufferPointer(
                             start: outputBaseAddress.assumingMemoryBound(to: UInt8.self),
                             count: produced

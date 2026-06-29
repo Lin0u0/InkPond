@@ -183,7 +183,7 @@ struct DocumentListView: View {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
-                ProgressView("Compiling…")
+                ProgressView(L10n.tr("Compiling…"))
                     .padding()
                     .systemFloatingSurface(cornerRadius: 12)
             }
@@ -313,14 +313,14 @@ private struct DocumentListAlertsModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(item: $exporter.exportURL) { _ in exportSheet }
-            .alert("Export Error", isPresented: isExportErrorPresented) {
-                Button("OK") { exporter.exportError = nil }
+            .alert(L10n.tr("Export Error"), isPresented: isExportErrorPresented) {
+                Button(L10n.tr("OK")) { exporter.exportError = nil }
             } message: {
                 exportErrorAlertMessage
             }
-            .alert("Rename Document", isPresented: isRenamingPresented) {
-                TextField("Title", text: $newTitle)
-                Button("Rename") {
+            .alert(L10n.tr("Rename Document"), isPresented: isRenamingPresented) {
+                TextField(L10n.tr("Title"), text: $newTitle)
+                Button(L10n.tr("Rename")) {
                     if let doc = renamingDocument {
                         if doc.isExternalFolder {
                             doc.title = newTitle
@@ -344,10 +344,10 @@ private struct DocumentListAlertsModifier: ViewModifier {
                     }
                     renamingDocument = nil
                 }
-                Button("Cancel", role: .cancel) { renamingDocument = nil }
+                Button(L10n.tr("Cancel"), role: .cancel) { renamingDocument = nil }
             }
-            .alert(documentToDelete?.isExternalFolder == true ? "Unlink Folder" : "Delete Document", isPresented: isDeletePresented) {
-                Button(documentToDelete?.isExternalFolder == true ? "Unlink" : "Delete", role: .destructive) {
+            .alert(L10n.tr(documentToDelete?.isExternalFolder == true ? "Unlink Folder" : "Delete Document"), isPresented: isDeletePresented) {
+                Button(L10n.tr(documentToDelete?.isExternalFolder == true ? "Unlink" : "Delete"), role: .destructive) {
                     if let doc = documentToDelete {
                         do {
                             if doc.isExternalFolder {
@@ -364,7 +364,7 @@ private struct DocumentListAlertsModifier: ViewModifier {
                         documentToDelete = nil
                     }
                 }
-                Button("Cancel", role: .cancel) { documentToDelete = nil }
+                Button(L10n.tr("Cancel"), role: .cancel) { documentToDelete = nil }
             } message: {
                 if let doc = documentToDelete {
                     if doc.isExternalFolder {
@@ -374,8 +374,8 @@ private struct DocumentListAlertsModifier: ViewModifier {
                     }
                 }
             }
-            .alert("Project Error", isPresented: isProjectErrorPresented) {
-                Button("OK") { projectActionError = nil }
+            .alert(L10n.tr("Project Error"), isPresented: isProjectErrorPresented) {
+                Button(L10n.tr("OK")) { projectActionError = nil }
             } message: {
                 projectErrorAlertMessage
             }
@@ -398,8 +398,8 @@ private struct DocumentListAlertsModifier: ViewModifier {
                 guard newValue != nil else { return }
                 InteractionFeedback.selection()
             }
-            .alert("Import Error", isPresented: isImportErrorPresented) {
-                Button("OK") { zipImportError = nil }
+            .alert(L10n.tr("Import Error"), isPresented: isImportErrorPresented) {
+                Button(L10n.tr("OK")) { zipImportError = nil }
             } message: {
                 importErrorAlertMessage
             }

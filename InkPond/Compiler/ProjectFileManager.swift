@@ -472,13 +472,22 @@ enum ProjectFileManager {
     nonisolated static func safeImageDirectoryName(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "" }
-        guard !trimmed.contains("/"),
-              !trimmed.contains("\\"),
-              trimmed != ".",
-              trimmed != ".." else {
+        guard !trimmed.hasPrefix("/"),
+              !trimmed.hasPrefix("~"),
+              !trimmed.contains("\\") else {
             return "images"
         }
-        return String(trimmed.prefix(80))
+
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty,
+              components.count <= 8,
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            return "images"
+        }
+
+        return components
+            .map { String($0.prefix(80)) }
+            .joined(separator: "/")
     }
 
     static func relevantDirectoryCandidates(from relativePaths: [String], matching extensions: Set<String>) -> [String] {

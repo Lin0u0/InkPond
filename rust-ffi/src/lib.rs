@@ -24,6 +24,11 @@ use typst_pdf::{pdf, PdfOptions};
 use typst_svg::svg;
 
 const EXTRA_FONT_CACHE_LIMIT: usize = 16;
+const PACKAGE_DOWNLOAD_TIMEOUT_SECS: u64 = 30;
+const MAX_PACKAGE_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
+const MAX_PACKAGE_ARCHIVE_ENTRIES: usize = 4_096;
+const MAX_PACKAGE_ENTRY_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_PACKAGE_EXTRACTED_BYTES: u64 = 512 * 1024 * 1024;
 
 static BUNDLED_FONT_FACES: OnceLock<Arc<Vec<Font>>> = OnceLock::new();
 static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> = OnceLock::new();
@@ -210,6 +215,7 @@ impl SimpleWorld {
 
     fn replace_main_source(&self, source_text: &str) {
         self.source.lock().unwrap().replace(source_text);
+        self.pkg_dirs.lock().unwrap().clear();
         self.source_cache.lock().unwrap().clear();
         self.file_cache.lock().unwrap().clear();
     }
@@ -232,8 +238,10 @@ impl SimpleWorld {
                 .join(spec.name.as_str())
                 .join(spec.version.to_string());
             if local_dir.exists() {
-                debug_log!("[typst-ffi] resolved local package: {}", key);
-                let result = Ok(local_dir);
+                let result = validate_local_package_dir(local_root, &local_dir);
+                if result.is_ok() {
+                    debug_log!("[typst-ffi] resolved local package: {}", key);
+                }
                 self.pkg_dirs.lock().unwrap().insert(key, result.clone());
                 return result.map_err(FileError::Package);
             }
@@ -287,6 +295,25 @@ impl SimpleWorld {
             id.vpath().as_rootless_path().display().to_string()
         }
     }
+
+    fn resolve_vpath(&self, root: &Path, id: FileId) -> FileResult<PathBuf> {
+        let resolved = id
+            .vpath()
+            .resolve(root)
+            .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
+        let root = root
+            .canonicalize()
+            .map_err(|_| FileError::NotFound(root.to_owned()))?;
+        let resolved = resolved
+            .canonicalize()
+            .map_err(|_| FileError::NotFound(resolved.clone()))?;
+        if !resolved.starts_with(&root) {
+            return Err(FileError::NotFound(
+                id.vpath().as_rootless_path().to_owned(),
+            ));
+        }
+        Ok(resolved)
+    }
 }
 
 fn bundled_font_faces() -> Arc<Vec<Font>> {
@@ -310,6 +337,24 @@ fn package_fetch_lock(key: &str) -> Arc<Mutex<()>> {
         .entry(key.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
+}
+
+fn validate_local_package_dir(
+    local_root: &Path,
+    local_dir: &Path,
+) -> Result<PathBuf, PackageError> {
+    let root = local_root
+        .canonicalize()
+        .map_err(|e| PackageError::Other(Some(format!("local package root failed: {e}").into())))?;
+    let dir = local_dir
+        .canonicalize()
+        .map_err(|e| PackageError::Other(Some(format!("local package path failed: {e}").into())))?;
+    if !dir.starts_with(&root) {
+        return Err(PackageError::Other(Some(
+            "local package path escapes package root".into(),
+        )));
+    }
+    Ok(dir)
 }
 
 fn extra_font_faces(paths: &[String]) -> Arc<Vec<Font>> {
@@ -357,15 +402,28 @@ fn extra_font_faces(paths: &[String]) -> Arc<Vec<Font>> {
 
 /// Download a `.tar.gz` from `url` and extract it into `dest`.
 fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError> {
-    let response = ureq::get(url)
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(
+            PACKAGE_DOWNLOAD_TIMEOUT_SECS,
+        ))
+        .build();
+    let response = agent
+        .get(url)
         .call()
         .map_err(|e| PackageError::NetworkFailed(Some(format!("{e}").into())))?;
 
     let mut buf = Vec::new();
-    response
+    let mut reader = response
         .into_reader()
+        .take((MAX_PACKAGE_ARCHIVE_BYTES + 1) as u64);
+    reader
         .read_to_end(&mut buf)
         .map_err(|e| PackageError::NetworkFailed(Some(format!("{e}").into())))?;
+    if buf.len() > MAX_PACKAGE_ARCHIVE_BYTES {
+        return Err(PackageError::MalformedArchive(Some(
+            "package archive exceeds size limit".into(),
+        )));
+    }
 
     let staging_dir =
         make_staging_directory(dest).map_err(|e| PackageError::Other(Some(e.into())))?;
@@ -421,9 +479,15 @@ fn extract_tar_gz_bytes(bytes: &[u8], dest: &Path) -> Result<(), String> {
         .entries()
         .map_err(|e| format!("archive entries failed: {e}"))?;
 
+    let mut entry_count = 0usize;
+    let mut extracted_bytes = 0u64;
     for entry in entries {
         let mut entry = entry.map_err(|e| format!("archive entry failed: {e}"))?;
         let entry_type = entry.header().entry_type();
+        entry_count += 1;
+        if entry_count > MAX_PACKAGE_ARCHIVE_ENTRIES {
+            return Err("archive contains too many entries".to_string());
+        }
 
         if entry_type.is_symlink() || entry_type.is_hard_link() {
             return Err("archive contains unsupported link entries".to_string());
@@ -449,6 +513,20 @@ fn extract_tar_gz_bytes(bytes: &[u8], dest: &Path) -> Result<(), String> {
             return Err(format!(
                 "archive contains unsupported entry type: {entry_type:?}"
             ));
+        }
+
+        let entry_size = entry
+            .header()
+            .size()
+            .map_err(|e| format!("archive entry size failed: {e}"))?;
+        if entry_size > MAX_PACKAGE_ENTRY_BYTES {
+            return Err("archive entry exceeds size limit".to_string());
+        }
+        extracted_bytes = extracted_bytes
+            .checked_add(entry_size)
+            .ok_or_else(|| "archive extracted size overflow".to_string())?;
+        if extracted_bytes > MAX_PACKAGE_EXTRACTED_BYTES {
+            return Err("archive extracted size exceeds limit".to_string());
         }
 
         if let Some(parent) = target_path.parent() {
@@ -504,14 +582,14 @@ impl World for SimpleWorld {
         // Resolve the file path
         let path = if let Some(spec) = id.package() {
             let pkg_dir = self.package_dir(spec)?;
-            pkg_dir.join(id.vpath().as_rootless_path())
+            self.resolve_vpath(&pkg_dir, id)?
         } else {
             // Local file — resolve against root_dir
             let root = self
                 .root_dir
                 .as_ref()
                 .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
-            root.join(id.vpath().as_rootless_path())
+            self.resolve_vpath(root, id)?
         };
 
         let text = std::fs::read_to_string(&path).map_err(|_| FileError::NotFound(path.clone()))?;
@@ -529,14 +607,14 @@ impl World for SimpleWorld {
         // Resolve the file path
         let path = if let Some(spec) = id.package() {
             let pkg_dir = self.package_dir(spec)?;
-            pkg_dir.join(id.vpath().as_rootless_path())
+            self.resolve_vpath(&pkg_dir, id)?
         } else {
             // Local file (e.g. images) — resolve against root_dir
             let root = self
                 .root_dir
                 .as_ref()
                 .ok_or_else(|| FileError::NotFound(id.vpath().as_rootless_path().to_owned()))?;
-            root.join(id.vpath().as_rootless_path())
+            self.resolve_vpath(root, id)?
         };
 
         let data = std::fs::read(&path).map_err(|_| FileError::NotFound(path.clone()))?;
@@ -692,7 +770,8 @@ fn parse_prefetch_package_spec(spec: &str) -> Result<(String, String, String), S
     if name.is_empty() || version.is_empty() {
         return Err("package spec must include a name and version".to_string());
     }
-    if name.contains('/') || name.contains('\\') || version.contains('/') || version.contains('\\') {
+    if name.contains('/') || name.contains('\\') || version.contains('/') || version.contains('\\')
+    {
         return Err("package spec contains an unsafe path component".to_string());
     }
     Ok(("preview".to_string(), name.to_string(), version.to_string()))
@@ -1131,7 +1210,9 @@ unsafe fn preview_session_key(
     match CStr::from_ptr(session_key).to_str() {
         Ok(key) if key.is_empty() => Ok(None),
         Ok(key) => Ok(Some(key.to_string())),
-        Err(_) => Err(error_result_preview("preview session key is not valid UTF-8")),
+        Err(_) => Err(error_result_preview(
+            "preview session key is not valid UTF-8",
+        )),
     }
 }
 
@@ -3128,6 +3209,17 @@ mod tests {
     }
 
     #[test]
+    fn extract_tar_gz_bytes_rejects_oversized_entries() {
+        let archive = build_tar_gz_with_reported_size("huge.typ", MAX_PACKAGE_ENTRY_BYTES + 1);
+        let dest = make_temp_dir();
+
+        let error = extract_tar_gz_bytes(&archive, &dest).unwrap_err();
+
+        assert!(error.contains("size limit"));
+        let _ = std::fs::remove_dir_all(dest);
+    }
+
+    #[test]
     fn format_diagnostics_includes_source_location() {
         let world = unsafe { SimpleWorld::new("= broken", std::ptr::null()) };
         let span = Span::from_range(world.main(), 0..1);
@@ -3210,12 +3302,71 @@ mod tests {
     }
 
     #[test]
+    fn simple_world_rejects_local_virtual_path_escape() {
+        let root = make_temp_dir();
+        let world = unsafe { SimpleWorld::new("= Hello", std::ptr::null()) };
+        let escape_id = FileId::new(None, VirtualPath::new("../outside.txt"));
+
+        let result = world.resolve_vpath(&root, escape_id);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn simple_world_rejects_symlink_escape() {
+        let root = make_temp_dir();
+        let outside = make_temp_dir();
+        std::fs::write(outside.join("secret.txt"), "secret").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("link.txt")).unwrap();
+        let world = unsafe { SimpleWorld::new("= Hello", std::ptr::null()) };
+        let link_id = FileId::new(None, VirtualPath::new("link.txt"));
+
+        let result = world.resolve_vpath(&root, link_id);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_dir_all(outside);
+    }
+
+    #[test]
+    fn simple_world_rejects_local_package_symlink_ancestor() {
+        let local_root = make_temp_dir();
+        let outside = make_temp_dir();
+        let package_dir = outside.join("kit").join("0.1.0");
+        std::fs::create_dir_all(&package_dir).unwrap();
+        std::fs::write(package_dir.join("typst.toml"), "[package]").unwrap();
+        std::os::unix::fs::symlink(&outside, local_root.join("local")).unwrap();
+        let local_root_string = CString::new(local_root.to_string_lossy().as_ref()).unwrap();
+        let options = TypstOptions {
+            font_paths: std::ptr::null(),
+            font_path_count: 0,
+            cache_dir: std::ptr::null(),
+            root_dir: std::ptr::null(),
+            local_packages_dir: local_root_string.as_ptr(),
+        };
+        let world = unsafe { SimpleWorld::new("= Hello", &options) };
+        let spec: PackageSpec = "@local/kit:0.1.0".parse().unwrap();
+
+        let result = world.package_dir(&spec);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(local_root);
+        let _ = std::fs::remove_dir_all(outside);
+    }
+
+    #[test]
     fn preview_compile_returns_svg_pdf_and_source_map() {
         let source = CString::new("= Hello\n\nThis is a preview artifact.").unwrap();
         let session_key = CString::new("preview-test-session").unwrap();
 
         let result = unsafe {
-            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), true)
+            typst_compile_preview_impl(
+                source.as_ptr(),
+                std::ptr::null(),
+                session_key.as_ptr(),
+                true,
+            )
         };
         assert!(result.success);
         assert!(!result.pdf_data.is_null());
@@ -3243,7 +3394,12 @@ mod tests {
         let session_key = CString::new("preview-svg-test-session").unwrap();
 
         let result = unsafe {
-            typst_compile_preview_impl(source.as_ptr(), std::ptr::null(), session_key.as_ptr(), false)
+            typst_compile_preview_impl(
+                source.as_ptr(),
+                std::ptr::null(),
+                session_key.as_ptr(),
+                false,
+            )
         };
         assert!(result.success);
         assert!(result.pdf_data.is_null());
@@ -3629,6 +3785,45 @@ yaml-key:
         }
 
         builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    fn build_tar_gz_with_reported_size(path: &str, size: u64) -> Vec<u8> {
+        let mut header = [0u8; 512];
+        write_tar_string(path, &mut header, 0, 100);
+        write_tar_octal(0o644, &mut header, 100, 8);
+        write_tar_octal(0, &mut header, 108, 8);
+        write_tar_octal(0, &mut header, 116, 8);
+        write_tar_octal(size, &mut header, 124, 12);
+        write_tar_octal(0, &mut header, 136, 12);
+        for byte in &mut header[148..156] {
+            *byte = b' ';
+        }
+        header[156] = b'0';
+        write_tar_string("ustar", &mut header, 257, 6);
+        write_tar_string("00", &mut header, 263, 2);
+        let checksum: u32 = header.iter().map(|byte| u32::from(*byte)).sum();
+        write_tar_octal(u64::from(checksum), &mut header, 148, 8);
+
+        let mut tar = Vec::new();
+        tar.extend_from_slice(&header);
+        tar.extend_from_slice(&[0u8; 1024]);
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        std::io::Write::write_all(&mut encoder, &tar).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    fn write_tar_string(value: &str, header: &mut [u8], offset: usize, length: usize) {
+        let bytes = value.as_bytes();
+        let count = bytes.len().min(length.saturating_sub(1));
+        header[offset..offset + count].copy_from_slice(&bytes[..count]);
+    }
+
+    fn write_tar_octal(value: u64, header: &mut [u8], offset: usize, length: usize) {
+        let encoded = format!("{:0width$o}\0", value, width = length - 1);
+        let bytes = encoded.as_bytes();
+        let count = bytes.len().min(length);
+        header[offset..offset + count].copy_from_slice(&bytes[..count]);
     }
 
     fn make_temp_dir() -> PathBuf {

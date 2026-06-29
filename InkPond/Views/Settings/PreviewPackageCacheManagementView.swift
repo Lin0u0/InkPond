@@ -20,32 +20,32 @@ struct PreviewPackageCacheManagementView: View {
             actionsSection
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Package Cache")
+        .navigationTitle(L10n.tr("Package Cache"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await refresh() }
         .refreshable { await refresh() }
-        .alert("Cache Error", isPresented: Binding(
+        .alert(L10n.tr("Cache Error"), isPresented: Binding(
             get: { cacheError != nil },
             set: { if !$0 { cacheError = nil } }
         )) {
-            Button("OK") { cacheError = nil }
+            Button(L10n.tr("OK")) { cacheError = nil }
         } message: {
             Text(cacheError ?? "")
         }
-        .alert("Clear All Package Cache?", isPresented: $showingClearAllConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) {
+        .alert(L10n.tr("Clear All Package Cache?"), isPresented: $showingClearAllConfirmation) {
+            Button(L10n.tr("Cancel"), role: .cancel) {}
+            Button(L10n.tr("Clear All"), role: .destructive) {
                 Task { await clearAll() }
             }
         } message: {
-            Text("This removes all downloaded @preview packages. They will be downloaded again on the next compile.")
+            Text(L10n.tr("This removes all downloaded @preview packages. They will be downloaded again on the next compile."))
         }
     }
 
     private var overviewSection: some View {
-        Section("Overview") {
+        Section(L10n.tr("Overview")) {
             HStack {
-                Label("Total Size", systemImage: "internaldrive")
+                Label(L10n.tr("Total Size"), systemImage: "internaldrive")
                 Spacer()
                 if isLoading {
                     ProgressView()
@@ -56,7 +56,7 @@ struct PreviewPackageCacheManagementView: View {
             }
 
             HStack {
-                Label("Cached Packages", systemImage: "shippingbox")
+                Label(L10n.tr("Cached Packages"), systemImage: "shippingbox")
                 Spacer()
                 Text(snapshot.entries.count, format: .number)
                     .foregroundStyle(.secondary)
@@ -66,9 +66,9 @@ struct PreviewPackageCacheManagementView: View {
 
     @ViewBuilder
     private var packagesSection: some View {
-        Section("Packages") {
+        Section(L10n.tr("Packages")) {
             if !isLoading && snapshot.entries.isEmpty {
-                Text("No cached @preview packages")
+                Text(L10n.tr("No cached @preview packages"))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(snapshot.entries) { entry in
@@ -86,7 +86,7 @@ struct PreviewPackageCacheManagementView: View {
                             .foregroundStyle(.secondary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Delete", role: .destructive) {
+                        Button(L10n.tr("Delete"), role: .destructive) {
                             Task { await delete(entry) }
                         }
                     }
@@ -97,7 +97,7 @@ struct PreviewPackageCacheManagementView: View {
 
     private var actionsSection: some View {
         Section {
-            Button("Clear All Package Cache", role: .destructive) {
+            Button(L10n.tr("Clear All Package Cache"), role: .destructive) {
                 showingClearAllConfirmation = true
             }
             .disabled(isLoading || snapshot.entries.isEmpty)

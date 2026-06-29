@@ -42,7 +42,7 @@
 
 **预览与编译**
 - 通过 Rust FFI 桥接 Typst `0.14.2` 编译能力
-- 实时 PDF 预览，防抖编译（350ms）
+- SVG/WKWebView 实时预览，防抖编译（350ms）
 - 基于 Source Map 的编辑器 ↔ 预览双向同步
 - 支持 `@preview` 包下载缓存与本地包解析
 - 文档统计（页数、字数/词元数、字符数；感知 CJK）
@@ -113,10 +113,10 @@ xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Debug -dest
 xcodebuild -project InkPond.xcodeproj -scheme InkPond -configuration Release -destination 'generic/platform=iOS' archive
 
 # 单元测试
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondTests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 
 # UI 测试
-xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2'
+xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPondUITests -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'
 
 # 如果本机安装的模拟器不同，请先查看可用目标：
 # xcodebuild -showdestinations -project InkPond.xcodeproj -scheme InkPond
@@ -131,7 +131,6 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
 - 以下情况请重新执行 `rust-ffi/build-ios.sh`：
   - 升级 Typst / Rust 依赖
   - 修改 `rust-ffi/src/lib.rs`
-  - 发布前重建产物
 
 当前固定 Typst 版本：`0.14.2`（见 `rust-ffi/Cargo.toml`）。
 
@@ -158,7 +157,7 @@ asc --profile default builds upload --app 6760032537 --ipa /private/tmp/InkPond-
 InkPond/
 ├── InkPond/
 │   ├── InkPondApp.swift                 # @main 入口，SwiftData ModelContainer
-│   ├── ContentView.swift               # NavigationSplitView 外壳，环境注入
+│   ├── ContentView.swift               # NavigationStack 项目首页，环境注入
 │   ├── AppAppearanceManager.swift      # App 级明暗/跟随系统外观
 │   ├── Models/
 │   │   └── InkPondDocument.swift        # @Model：文档数据 + 项目配置
@@ -176,7 +175,7 @@ InkPond/
 │   │   └── KeyboardAccessoryView.swift # 附件栏（图片/片段按钮）
 │   ├── Compiler/
 │   │   ├── TypstBridge.swift           # Rust FFI 封装（编译 + Source Map）
-│   │   ├── TypstCompiler.swift         # 防抖编译管线 + 缓存
+│   │   ├── TypstCompiler.swift         # SVG/PDF 预览防抖编译管线 + 缓存
 │   │   ├── SourceMap.swift             # 行号 ↔ 页面双向映射
 │   │   ├── ProjectFileManager.swift    # 按项目文件 CRUD + 校验
 │   │   ├── FontManager.swift           # 项目/App 字体元数据与解析辅助
@@ -196,14 +195,15 @@ InkPond/
 │   │   ├── DocumentEditor/             # 编辑器/预览分栏、文件操作、图片
 │   │   │   └── OutlineView.swift       # 标题大纲导航
 │   │   ├── EditorView.swift            # UIViewRepresentable 包装 TypstTextView
-│   │   ├── PreviewPane.swift           # PDFKit 实时预览 + 统计 + 同步标记
-│   │   ├── SlideshowView.swift         # 全屏 PDF 演示
+│   │   ├── PreviewPane.swift           # SVG/WKWebView 实时预览 + 统计 + 同步标记
+│   │   ├── SlideshowView.swift         # 全屏 SVG 幻灯片
 │   │   ├── OnboardingView.swift        # 首次启动引导
 │   │   ├── SnippetBrowserSheet.swift   # 代码片段浏览器
 │   │   ├── ProjectFileBrowserSheet.swift
 │   │   ├── ProjectSettingsSheet.swift
-│   │   └── Settings/                   # iCloud、包、字体、缓存、快捷键
-│   ├── Localization/                   # L10n.swift + .strings（en, zh-Hans, zh-Hant）
+│   │   └── Settings/                   # iCloud、外观、编辑器字体、包、字体、缓存、快捷键
+│   ├── Localization/                   # L10n.swift 查询辅助
+│   ├── Resources/Localization/         # Localizable.xcstrings（en, zh-Hans, zh-Hant-HK, zh-Hant-TW）
 │   ├── Storage/
 │   │   ├── StorageManager.swift        # 本地/iCloud 模式与迁移
 │   │   ├── Cloud*.swift                # iCloud 协调、可用性、同步状态

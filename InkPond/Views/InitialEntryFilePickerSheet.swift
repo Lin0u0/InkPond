@@ -37,15 +37,15 @@ struct InitialEntryFilePickerSheet: View {
         NavigationStack {
             Form {
                 if requiresEntrySelection {
-                    Section("Entry File") {
+                    Section(L10n.tr("Entry File")) {
                         if entryFileOptions.isEmpty {
                             ContentUnavailableView(
-                                "No .typ Files Found",
+                                L10n.tr("No .typ Files Found"),
                                 systemImage: "doc.text.magnifyingglass",
-                                description: Text("InkPond could not find any .typ files in this project.")
+                                description: Text(L10n.tr("InkPond could not find any .typ files in this project."))
                             )
                         } else {
-                            Picker("Entry File", selection: Binding(
+                            Picker(L10n.tr("Entry File"), selection: Binding(
                                 get: { selectedEntryFile ?? document.entryFileName },
                                 set: { selectedEntryFile = $0 }
                             )) {
@@ -53,7 +53,7 @@ struct InitialEntryFilePickerSheet: View {
                                     Text(name).tag(name)
                                 }
                             }
-                            Text("This project does not include main.typ. Choose the file used for compilation.")
+                            Text(L10n.tr("This project does not include main.typ. Choose the file used for compilation."))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -61,9 +61,9 @@ struct InitialEntryFilePickerSheet: View {
                 }
 
                 if !imageDirectoryOptions.isEmpty {
-                    Section("Image Directory") {
-                        Picker("Image Directory", selection: $selectedImageDirectory) {
-                            Text("Skip").tag(String?.none)
+                    Section(L10n.tr("Image Directory")) {
+                        Picker(L10n.tr("Image Directory"), selection: $selectedImageDirectory) {
+                            Text(L10n.tr("Skip")).tag(String?.none)
                             ForEach(imageDirectoryOptions, id: \.self) { directory in
                                 Text(directoryLabel(for: directory)).tag(Optional(directory))
                             }
@@ -72,25 +72,25 @@ struct InitialEntryFilePickerSheet: View {
                 }
 
                 if !fontDirectoryOptions.isEmpty {
-                    Section("Fonts") {
-                        Picker("Font Directory", selection: $selectedFontDirectory) {
-                            Text("Skip").tag(String?.none)
+                    Section(L10n.tr("Fonts")) {
+                        Picker(L10n.tr("Font Directory"), selection: $selectedFontDirectory) {
+                            Text(L10n.tr("Skip")).tag(String?.none)
                             ForEach(fontDirectoryOptions, id: \.self) { directory in
                                 Text(directoryLabel(for: directory)).tag(Optional(directory))
                             }
                         }
 
-                        Text("Selecting a font directory imports its font files into the project font library. You can also skip this step.")
+                        Text(L10n.tr("Selecting a font directory imports its font files into the project font library. You can also skip this step."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            .navigationTitle("Import Project")
+            .navigationTitle(L10n.tr("Import Project"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Continue") {
+                    Button(L10n.tr("Continue")) {
                         completeImport(selectedEntryFile, selectedImageDirectory, selectedFontDirectory)
                     }
                     .disabled(!canContinue)

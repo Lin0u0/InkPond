@@ -116,18 +116,18 @@ extension DocumentListView {
                 renamingDocument = document
                 newTitle = document.title
             } label: {
-                Label("Rename", systemImage: "pencil")
+                Label(L10n.tr("Rename"), systemImage: "pencil")
             }
             Divider()
             Button {
                 exporter.exportPDF(for: document)
             } label: {
-                Label("Share PDF", systemImage: "square.and.arrow.up")
+                Label(L10n.tr("Share PDF"), systemImage: "square.and.arrow.up")
             }
             Button {
                 exporter.exportTypSource(for: document, fileName: document.entryFileName)
             } label: {
-                Label("Export .typ", systemImage: "doc.text")
+                Label(L10n.tr("Export .typ"), systemImage: "doc.text")
             }
             Divider()
             Button(role: .destructive) {
@@ -135,9 +135,9 @@ extension DocumentListView {
                 documentToDelete = document
             } label: {
                 if document.isExternalFolder {
-                    Label("Unlink", systemImage: "personalhotspot.slash")
+                    Label(L10n.tr("Unlink"), systemImage: "personalhotspot.slash")
                 } else {
-                    Label("Delete", systemImage: "trash")
+                    Label(L10n.tr("Delete"), systemImage: "trash")
                 }
             }
         }

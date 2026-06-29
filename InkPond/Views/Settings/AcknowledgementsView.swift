@@ -11,52 +11,52 @@ struct AcknowledgementsView: View {
             Section {
                 creditRow(
                     name: "Typst",
-                    detail: "The open-source typesetting system at the core of InkPond.",
+                    detail: L10n.tr("The open-source typesetting system at the core of InkPond."),
                     license: "Apache 2.0",
                     url: "https://typst.app"
                 )
                 creditRow(
                     name: "Catppuccin",
-                    detail: "Soothing pastel color palette powering the editor themes.",
+                    detail: L10n.tr("Soothing pastel color palette powering the editor themes."),
                     license: "MIT",
                     url: "https://github.com/catppuccin/catppuccin"
                 )
                 creditRow(
                     name: "swift-bridge",
-                    detail: "Reference implementation for Swift/Rust interop.",
+                    detail: L10n.tr("Reference implementation for Swift/Rust interop."),
                     license: "MIT or Apache-2.0",
                     url: "https://github.com/chinedufn/swift-bridge"
                 )
             }
-            Section("Special Thanks") {
+            Section(L10n.tr("Special Thanks")) {
                 creditRow(
                     name: "Donut",
-                    detail: "Thanks to everyone at Donut for support and inspiration.",
+                    detail: L10n.tr("Thanks to everyone at Donut for support and inspiration."),
                     license: nil,
                     url: "https://donutblogs.com/"
                 )
             }
-            Section("Contributors") {
+            Section(L10n.tr("Contributors")) {
                 creditRow(
                     name: "Ants-Aare",
-                    detail: "Contributor",
+                    detail: L10n.tr("Contributor"),
                     license: nil,
                     url: "https://github.com/Ants-Aare"
                 )
                 creditRow(
                     name: "mseidel42",
-                    detail: "Contributor",
+                    detail: L10n.tr("Contributor"),
                     license: nil,
                     url: "https://github.com/mseidel42"
                 )
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Acknowledgements")
+        .navigationTitle(L10n.tr("Acknowledgements"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func creditRow(name: String, detail: LocalizedStringKey, license: String?, url: String) -> some View {
+    private func creditRow(name: String, detail: String, license: String?, url: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(name).font(.headline)

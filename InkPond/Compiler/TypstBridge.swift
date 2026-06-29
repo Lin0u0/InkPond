@@ -75,6 +75,12 @@ struct TypstBridge {
 #endif
     }
 
+    nonisolated static func clearAllPreviewSessions() {
+#if TYPST_FFI_AVAILABLE
+        typst_clear_all_preview_sessions()
+#endif
+    }
+
     nonisolated static func prefetchPreviewPackage(spec: String) -> Result<Void, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
         guard let cacheDir = packageCacheDirectoryURL?.path else {
