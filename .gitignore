@@ -29,6 +29,7 @@ Package.resolved
 
 # Rust
 target/
+# build-ios.sh keeps this Cargo cache for faster Typst FFI rebuilds.
 rust-ffi/target/
 Cargo.lock
 !Cargo.lock  # Keep Cargo.lock for binary crates, remove this line if it's a library

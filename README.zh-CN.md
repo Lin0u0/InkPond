@@ -125,7 +125,8 @@ xcodebuild test -project InkPond.xcodeproj -scheme InkPond -only-testing:InkPond
 ## Rust FFI 说明
 
 - `Frameworks/typst_ios.xcframework` 由 `rust-ffi/build-ios.sh` 生成，并提交到仓库，便于 Xcode Cloud 无需 Rust bootstrap 直接构建。
-- `rust-ffi/build-ios.sh` 在打包 xcframework 后会删除 `rust-ffi/target/`，以尽量减少本地磁盘占用。
+- `rust-ffi/build-ios.sh` 默认并行构建三个 Rust slice，并保留 `rust-ffi/target/`，让 Cargo 在后续重建时复用已编译依赖。
+- 可设置 `RUST_FFI_PARALLEL_SLICES=0` 改为串行构建，设置 `CARGO_BUILD_JOBS=<n>` 控制每个 slice 的并行任务数，或设置 `CLEAN_RUST_TARGET=1` 在打包后删除 `rust-ffi/target/`。
 - Rust FFI 输出变化时，请重新构建并提交 `Frameworks/typst_ios.xcframework/`。
 - Swift 桥接层会把字体路径、项目根目录、`@preview` 包缓存目录以及本地包目录传给 Rust。
 - 以下情况请重新执行 `rust-ffi/build-ios.sh`：
