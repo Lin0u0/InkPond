@@ -107,7 +107,19 @@ struct LocalPackageStore: Sendable {
     }
 
     nonisolated func importItem(at sourceURL: URL, defaultNamespace: String = "local") throws -> LocalPackageImportResult {
+        let startedAt = Date()
+        Diagnostics.record(
+            .importExport,
+            "local_package.import_item.start",
+            metadata: ["sourceHash": Diagnostics.hashIdentifier(sourceURL.standardizedFileURL.path)]
+        )
         guard let rootURL else {
+            Diagnostics.record(
+                .importExport,
+                "local_package.import_item.failure",
+                level: .error,
+                metadata: ["reason": "storageUnavailable"]
+            )
             throw LocalPackageError.storageUnavailable
         }
 
@@ -115,6 +127,11 @@ struct LocalPackageStore: Sendable {
         defer { if securedAccess { sourceURL.stopAccessingSecurityScopedResource() } }
 
         let preparation = try CloudItemAvailability.prepareForAccess(at: sourceURL)
+        Diagnostics.record(
+            .importExport,
+            "local_package.import_item.cloud_prepared",
+            metadata: ["downloadedItemCount": String(preparation.downloadedItemCount)]
+        )
         let sourceValues = try sourceURL.resourceValues(forKeys: [.isDirectoryKey])
 
         if sourceValues.isDirectory == true {
@@ -122,6 +139,15 @@ struct LocalPackageStore: Sendable {
                 at: sourceURL,
                 rootURL: rootURL,
                 defaultNamespace: defaultNamespace
+            )
+            Diagnostics.record(
+                .importExport,
+                "local_package.import_item.success",
+                metadata: [
+                    "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                    "downloadedItemCount": String(preparation.downloadedItemCount),
+                    "importedFromArchive": "false"
+                ]
             )
             return LocalPackageImportResult(
                 spec: spec,
@@ -131,6 +157,12 @@ struct LocalPackageStore: Sendable {
         }
 
         guard PackageArchiveImporter.archiveKind(for: sourceURL) != nil else {
+            Diagnostics.record(
+                .importExport,
+                "local_package.import_item.failure",
+                level: .error,
+                metadata: ["reason": "unsupportedArchive"]
+            )
             throw LocalPackageError.unsupportedArchive
         }
 
@@ -147,6 +179,15 @@ struct LocalPackageStore: Sendable {
             defaultNamespace: defaultNamespace
         )
 
+        Diagnostics.record(
+            .importExport,
+            "local_package.import_item.success",
+            metadata: [
+                "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "downloadedItemCount": String(preparation.downloadedItemCount),
+                "importedFromArchive": "true"
+            ]
+        )
         return LocalPackageImportResult(
             spec: spec,
             downloadedItemCount: preparation.downloadedItemCount,
@@ -158,7 +199,19 @@ struct LocalPackageStore: Sendable {
         of sourceDirectoryURL: URL,
         defaultNamespace: String = "local"
     ) throws -> [LocalPackageImportResult] {
+        let startedAt = Date()
+        Diagnostics.record(
+            .importExport,
+            "local_package.import_contents.start",
+            metadata: ["sourceHash": Diagnostics.hashIdentifier(sourceDirectoryURL.standardizedFileURL.path)]
+        )
         guard let rootURL else {
+            Diagnostics.record(
+                .importExport,
+                "local_package.import_contents.failure",
+                level: .error,
+                metadata: ["reason": "storageUnavailable"]
+            )
             throw LocalPackageError.storageUnavailable
         }
 
@@ -173,12 +226,28 @@ struct LocalPackageStore: Sendable {
 
         let candidates = try discoverImportableItems(in: sourceDirectoryURL, maxDepth: 3)
         guard !candidates.isEmpty else {
+            Diagnostics.record(
+                .importExport,
+                "local_package.import_contents.failure",
+                level: .error,
+                metadata: ["reason": "noImportableItems"]
+            )
             throw LocalPackageError.noImportableItems
         }
 
-        return try candidates.map {
+        let results = try candidates.map {
             try LocalPackageStore(rootURL: rootURL).importItem(at: $0, defaultNamespace: defaultNamespace)
         }
+        Diagnostics.record(
+            .importExport,
+            "local_package.import_contents.success",
+            metadata: [
+                "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "candidateCount": String(candidates.count),
+                "resultCount": String(results.count)
+            ]
+        )
+        return results
     }
 
     nonisolated func remove(_ entry: LocalPackageEntry) throws {

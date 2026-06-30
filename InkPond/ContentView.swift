@@ -285,12 +285,37 @@ struct ContentView: View {
                 }
 
                 do {
+                    let session = Diagnostics.startSession(
+                        category: .documentOpen,
+                        metadata: [
+                            "source": "document_list_selection",
+                            "projectHash": Diagnostics.hashIdentifier(newValue.projectID),
+                            "entryHash": Diagnostics.hashIdentifier(newValue.entryFileName),
+                            "storageMode": storageManager.mode.rawValue
+                        ]
+                    )
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.validate.start",
+                        sessionID: session.id
+                    )
                     try ProjectFileManager.validateDocumentCanOpen(newValue)
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.validate.success",
+                        sessionID: session.id
+                    )
                     withAnimation(projectNavigationAnimation) {
                         selectedDocument = newValue
                         externalFileDocument = nil
                     }
                 } catch {
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.validate.failure",
+                        level: .error,
+                        metadata: Diagnostics.errorMetadata(error)
+                    )
                     if selectedDocument == newValue {
                         selectedDocument = nil
                     }
@@ -383,9 +408,9 @@ struct ContentView: View {
 
     @MainActor
     private func handleExternalOpenURL(_ url: URL) {
-        contentLog.info("External open URL received: \(url.absoluteString, privacy: .public)")
+        contentLog.info("External open URL received: hash=\(Diagnostics.hashIdentifier(url.standardizedFileURL.absoluteString), privacy: .public)")
         guard ExternalTypFileImporter.canImport(url) else {
-            contentLog.info("Ignoring unsupported external URL: \(url.absoluteString, privacy: .public)")
+            contentLog.info("Ignoring unsupported external URL: hash=\(Diagnostics.hashIdentifier(url.standardizedFileURL.absoluteString), privacy: .public)")
             return
         }
 

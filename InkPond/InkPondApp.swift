@@ -15,6 +15,17 @@ final class InkPondAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        MetricKitDiagnosticsSubscriber.shared.start()
+        MetricKitDiagnosticsSubscriber.shared.logStoredDiagnosticsAtLaunch()
+        Diagnostics.record(
+            .appLifecycle,
+            "app.launch",
+            metadata: [
+                "distribution": AppDistribution.currentLabel,
+                "hasURLLaunch": String(launchOptions?[.url] != nil)
+            ]
+        )
+        Diagnostics.recordStoragePressure(reason: "app_launch")
         if let url = launchOptions?[.url] as? URL {
             ExternalOpenURLRouter.open(url)
         }
@@ -26,6 +37,11 @@ final class InkPondAppDelegate: NSObject, UIApplicationDelegate {
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
+        Diagnostics.record(
+            .appLifecycle,
+            "app.open_url",
+            metadata: ["urlHash": Diagnostics.hashIdentifier(url.standardizedFileURL.absoluteString)]
+        )
         guard ExternalTypFileImporter.canImport(url) else { return false }
         ExternalOpenURLRouter.open(url)
         return true
@@ -69,7 +85,7 @@ struct InkPondApp: App {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
             Logger(subsystem: Bundle.main.bundleIdentifier ?? "InkPond", category: "DataStore")
-                .error("Failed to create ModelContainer: \(error.localizedDescription, privacy: .public)")
+                .error("Failed to create ModelContainer: \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }

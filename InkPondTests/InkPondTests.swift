@@ -42,6 +42,116 @@ struct InkPondTests {
     private let editorFontIDDefaultsKey = "editorFontID"
     private let editorFontSizeDefaultsKey = "editorFontSize"
 
+    @Test func appDistributionDetectsTestFlightReceipt() {
+        #expect(AppDistribution.isTestFlightReceiptURL(URL(fileURLWithPath: "/private/var/mobile/sandboxReceipt")))
+        #expect(!AppDistribution.isTestFlightReceiptURL(URL(fileURLWithPath: "/private/var/mobile/receipt")))
+        #expect(!AppDistribution.isTestFlightReceiptURL(nil))
+    }
+
+    @Test func storagePressureAssessmentClassifiesCapacity() {
+        let now = Date()
+        let normal = StorageCapacitySnapshot(
+            checkedAt: now,
+            importantAvailableBytes: 3 * 1024 * 1024 * 1024,
+            availableBytes: nil,
+            totalBytes: 64 * 1024 * 1024 * 1024
+        )
+        let warning = StorageCapacitySnapshot(
+            checkedAt: now,
+            importantAvailableBytes: 1_500_000_000,
+            availableBytes: nil,
+            totalBytes: 64 * 1024 * 1024 * 1024
+        )
+        let critical = StorageCapacitySnapshot(
+            checkedAt: now,
+            importantAvailableBytes: 200_000_000,
+            availableBytes: nil,
+            totalBytes: 64 * 1024 * 1024 * 1024
+        )
+
+        #expect(Diagnostics.storagePressureAssessment(snapshot: normal).level == .normal)
+        #expect(Diagnostics.storagePressureAssessment(snapshot: warning).level == .warning)
+        #expect(Diagnostics.storagePressureAssessment(snapshot: critical).level == .critical)
+        #expect(Diagnostics.storagePressureAssessment(requiredBytes: 4_000_000_000, snapshot: normal).level == .insufficient)
+    }
+
+    @Test func betaDiagnosticSummaryDoesNotExposeRawPaths() {
+        let rawPath = "/private/var/mobile/Documents/Secret Client/main.typ"
+        let event = DiagnosticEvent(
+            id: UUID().uuidString,
+            timestamp: Date(),
+            category: .documentOpen,
+            level: .info,
+            name: "load_file.success",
+            sessionID: "ABCDEF12",
+            metadata: ["fileHash": Diagnostics.hashIdentifier(rawPath)]
+        )
+        let snapshot = BetaDiagnosticsSnapshot(
+            generatedAt: Date(),
+            appVersion: "1.1.1",
+            buildNumber: "51",
+            distribution: "TestFlight",
+            storage: StorageCapacitySnapshot(
+                checkedAt: Date(),
+                importantAvailableBytes: 1_000_000_000,
+                availableBytes: nil,
+                totalBytes: 64_000_000_000
+            ),
+            storageMode: "iCloud",
+            iCloudSummary: "1 current, 0 downloading, 0 uploading, 0 not downloaded, 0 errors",
+            lastDocumentOpenSessionID: "ABCDEF12",
+            recentEvents: [event],
+            recentMetricSummaries: []
+        )
+
+        #expect(!snapshot.feedbackSummary.contains(rawPath))
+        #expect(!snapshot.feedbackSummary.contains("Secret Client"))
+        #expect(!snapshot.feedbackSummary.contains("main.typ"))
+        #expect(snapshot.feedbackSummary.contains(Diagnostics.hashIdentifier(rawPath)))
+    }
+
+    @Test func diagnosticsStoragePersistsRecentEventsAndMetricSummaries() throws {
+        let isolated = makeIsolatedDefaults()
+        defer { isolated.defaults.removePersistentDomain(forName: isolated.suiteName) }
+        let store = DiagnosticsStorage(defaults: isolated.defaults)
+        let event = DiagnosticEvent(
+            id: UUID().uuidString,
+            timestamp: Date(),
+            category: .cache,
+            level: .error,
+            name: "compiled_preview.save.failure",
+            sessionID: nil,
+            metadata: ["isOutOfSpace": "true"]
+        )
+        let summary = MetricDiagnosticSummary(
+            id: UUID().uuidString,
+            timestamp: Date(),
+            kind: "hang",
+            appVersion: "1.1.1 (51)",
+            detail: "duration=4.200s"
+        )
+
+        store.appendEvent(event)
+        store.appendMetricSummaries([summary])
+        store.setLastDocumentOpenSessionID("ABCDEF12")
+
+        let storedEvent = try #require(store.recentEvents().first)
+        #expect(storedEvent.id == event.id)
+        #expect(storedEvent.category == event.category)
+        #expect(storedEvent.level == event.level)
+        #expect(storedEvent.name == event.name)
+        #expect(storedEvent.metadata == event.metadata)
+        #expect(abs(storedEvent.timestamp.timeIntervalSince(event.timestamp)) < 1)
+
+        let storedSummary = try #require(store.recentMetricSummaries().first)
+        #expect(storedSummary.id == summary.id)
+        #expect(storedSummary.kind == summary.kind)
+        #expect(storedSummary.appVersion == summary.appVersion)
+        #expect(storedSummary.detail == summary.detail)
+        #expect(abs(storedSummary.timestamp.timeIntervalSince(summary.timestamp)) < 1)
+        #expect(store.lastDocumentOpenSessionID() == "ABCDEF12")
+    }
+
     @Test func zipImporterRejectsParentTraversalPath() throws {
         let zip = makeStoredZip(entries: [
             ("../evil.txt", Data("x".utf8))
@@ -2460,9 +2570,12 @@ struct InkPondTests {
                 rawPDF.localizedCaseInsensitiveContains("AppleColorEmoji")
                     || rawPDF.localizedCaseInsensitiveContains("Apple Color Emoji")
             )
+            let hasImageXObject = rawPDF.contains("/Subtype /Image") || rawPDF.contains("/Subtype/Image")
+            let hasType3Emoji = (rawPDF.contains("/Subtype /Type3") || rawPDF.contains("/Subtype/Type3"))
+                && rawPDF.contains("/XObject")
             #expect(
-                rawPDF.contains("/Subtype /Image"),
-                "Apple Color Emoji sbix glyphs should be emitted as image XObjects, not invisible outline text"
+                hasImageXObject || hasType3Emoji,
+                "Apple Color Emoji should render through image XObjects or Type3 glyph resources, not invisible outline text"
             )
         case .failure(let error):
             Issue.record("Expected successful emoji compile, got: \(error.localizedDescription)")

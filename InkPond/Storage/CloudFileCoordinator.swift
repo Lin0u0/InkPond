@@ -16,6 +16,8 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Read
 
     static func readData(from url: URL) throws -> Data {
+        let interval = Diagnostics.beginInterval("icloud.coordinated_read", category: .iCloud)
+        let startedAt = Date()
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var readData: Data?
@@ -29,11 +31,39 @@ nonisolated enum CloudFileCoordinator {
             }
         }
 
-        if let coordinationError { throw coordinationError }
-        if let readError { throw readError }
+        if let coordinationError {
+            var metadata = Diagnostics.errorMetadata(coordinationError)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            Diagnostics.record(.iCloud, "coordinated_read.coordination_failure", level: .error, metadata: metadata)
+            Diagnostics.endInterval("icloud.coordinated_read", category: .iCloud, interval)
+            throw coordinationError
+        }
+        if let readError {
+            var metadata = Diagnostics.errorMetadata(readError)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            Diagnostics.record(.iCloud, "coordinated_read.read_failure", level: .error, metadata: metadata)
+            Diagnostics.endInterval("icloud.coordinated_read", category: .iCloud, interval)
+            throw readError
+        }
         guard let data = readData else {
+            Diagnostics.record(
+                .iCloud,
+                "coordinated_read.empty_result",
+                level: .error,
+                metadata: ["elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000))]
+            )
+            Diagnostics.endInterval("icloud.coordinated_read", category: .iCloud, interval)
             throw CocoaError(.fileReadUnknown)
         }
+        Diagnostics.record(
+            .iCloud,
+            "coordinated_read.success",
+            metadata: [
+                "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "byteCount": String(data.count)
+            ]
+        )
+        Diagnostics.endInterval("icloud.coordinated_read", category: .iCloud, interval)
         return data
     }
 
@@ -48,6 +78,8 @@ nonisolated enum CloudFileCoordinator {
     // MARK: - Write
 
     static func writeData(_ data: Data, to url: URL, atomically: Bool = true) throws {
+        let interval = Diagnostics.beginInterval("icloud.coordinated_write", category: .iCloud)
+        let startedAt = Date()
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var writeError: Error?
@@ -60,8 +92,31 @@ nonisolated enum CloudFileCoordinator {
             }
         }
 
-        if let coordinationError { throw coordinationError }
-        if let writeError { throw writeError }
+        if let coordinationError {
+            var metadata = Diagnostics.errorMetadata(coordinationError)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            metadata["byteCount"] = String(data.count)
+            Diagnostics.record(.iCloud, "coordinated_write.coordination_failure", level: .error, metadata: metadata)
+            Diagnostics.endInterval("icloud.coordinated_write", category: .iCloud, interval)
+            throw coordinationError
+        }
+        if let writeError {
+            var metadata = Diagnostics.errorMetadata(writeError)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            metadata["byteCount"] = String(data.count)
+            Diagnostics.record(.iCloud, "coordinated_write.write_failure", level: .error, metadata: metadata)
+            Diagnostics.endInterval("icloud.coordinated_write", category: .iCloud, interval)
+            throw writeError
+        }
+        Diagnostics.record(
+            .iCloud,
+            "coordinated_write.success",
+            metadata: [
+                "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "byteCount": String(data.count)
+            ]
+        )
+        Diagnostics.endInterval("icloud.coordinated_write", category: .iCloud, interval)
     }
 
     static func writeString(_ string: String, to url: URL, encoding: String.Encoding = .utf8) throws {

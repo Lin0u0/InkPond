@@ -263,6 +263,17 @@ extension SettingsView {
 
     var feedbackSection: some View {
         Section(L10n.tr("settings.feedback.section")) {
+            if AppDistribution.isBetaDiagnosticsAvailable {
+                NavigationLink {
+                    BetaDiagnosticsView()
+                } label: {
+                    Label(L10n.tr("beta_diagnostics.title"), systemImage: "waveform.path.ecg")
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityIdentifier("settings.feedback.beta-diagnostics")
+                .accessibilityHint(L10n.tr("beta_diagnostics.hint"))
+            }
+
             Link(destination: Self.githubIssuesURL) {
                 Label(L10n.tr("settings.feedback.github_issues"), systemImage: "exclamationmark.bubble")
                     .foregroundStyle(.primary)

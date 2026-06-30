@@ -288,6 +288,14 @@ final class TypstCompiler {
         let timeout = Self.timeout(forSource: request.source, packageCacheDirectory: packageCacheDirectory)
         activeTask = Task { [weak self] in
             if !packageSpecs.isEmpty {
+                Diagnostics.record(
+                    .compiler,
+                    "preview_package.prefetch.start",
+                    metadata: [
+                        "packageCount": String(packageSpecs.count),
+                        "timeout": String(describing: timeout)
+                    ]
+                )
                 let preflightTask = Task.detached(priority: priority) {
                     previewPackagePrefetcher(packageSpecs)
                 }
@@ -296,6 +304,12 @@ final class TypstCompiler {
                     preflightResult = try await Self.awaitPreviewPackagePrefetch(preflightTask, timeout: timeout)
                 } catch is TypstCompileTimeoutError {
                     preflightTask.cancel()
+                    Diagnostics.record(
+                        .compiler,
+                        "preview_package.prefetch.timeout",
+                        level: .error,
+                        metadata: ["packageCount": String(packageSpecs.count)]
+                    )
                     self?.finishCompilation(
                         .failure(.compilationFailed(L10n.tr("error.typst.compilation_timeout"))),
                         generation: request.generation,
@@ -304,9 +318,21 @@ final class TypstCompiler {
                     return
                 } catch is CancellationError {
                     preflightTask.cancel()
+                    Diagnostics.record(
+                        .compiler,
+                        "preview_package.prefetch.cancelled",
+                        level: .warning,
+                        metadata: ["packageCount": String(packageSpecs.count)]
+                    )
                     return
                 } catch {
                     preflightTask.cancel()
+                    Diagnostics.record(
+                        .compiler,
+                        "preview_package.prefetch.failure",
+                        level: .error,
+                        metadata: Diagnostics.errorMetadata(error)
+                    )
                     self?.finishCompilation(
                         .failure(.compilationFailed(error.localizedDescription)),
                         generation: request.generation,
@@ -317,9 +343,20 @@ final class TypstCompiler {
                 guard !Task.isCancelled else { return }
 
                 if case .failure(let error) = preflightResult {
+                    Diagnostics.record(
+                        .compiler,
+                        "preview_package.prefetch.failure",
+                        level: .error,
+                        metadata: ["errorKind": String(describing: type(of: error))]
+                    )
                     self?.finishCompilation(.failure(error), generation: request.generation, request: request)
                     return
                 }
+                Diagnostics.record(
+                    .compiler,
+                    "preview_package.prefetch.success",
+                    metadata: ["packageCount": String(packageSpecs.count)]
+                )
             }
 
             let compilationTask = Task.detached(priority: priority) {
@@ -351,13 +388,19 @@ final class TypstCompiler {
             } catch is TypstCompileTimeoutError {
                 compilationTask.cancel()
                 Self.logger.error("Compilation timed out after \(timeout)")
+                Diagnostics.record(
+                    .compiler,
+                    "compile.timeout",
+                    level: .error,
+                    metadata: ["timeout": String(describing: timeout)]
+                )
                 workerResult = .failure(.compilationFailed(L10n.tr("error.typst.compilation_timeout")))
             } catch is CancellationError {
                 compilationTask.cancel()
                 return
             } catch {
                 compilationTask.cancel()
-                Self.logger.error("Compilation failed unexpectedly: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Compilation failed unexpectedly: \(error.localizedDescription, privacy: .private)")
                 workerResult = .failure(.compilationFailed(error.localizedDescription))
             }
             guard !Task.isCancelled else { return }
@@ -556,20 +599,81 @@ final class TypstCompiler {
         }
 
         let compileInterval = signposter.beginInterval("typst.compile")
+        Diagnostics.record(
+            .compiler,
+            "compile.start",
+            metadata: [
+                "mode": String(describing: request.mode),
+                "fontCount": String(materializedFontPaths.count),
+                "hasRootDir": String(request.rootDir != nil),
+                "hasCacheInput": String(cacheInput != nil)
+            ]
+        )
         let result = compileWorker(request.source, materializedFontPaths, request.rootDir, previewSessionKey)
         signposter.endInterval("typst.compile", compileInterval)
 
         switch result {
         case .success(let artifact):
+            Diagnostics.record(
+                .compiler,
+                "compile.success",
+                metadata: [
+                    "pageCount": String(artifact.svgPages.count),
+                    "hasPDF": String(artifact.pdfData != nil),
+                    "hasSourceMap": String(artifact.sourceMap != nil)
+                ]
+            )
             if let cacheInput, !artifact.svgPages.isEmpty {
+                let startedAt = Date()
+                let estimatedBytes = Int64(artifact.svgPages.reduce(0) { $0 + $1.svg.utf8.count }
+                    + (artifact.pdfData?.count ?? 0))
+                Diagnostics.recordStoragePressure(
+                    reason: "compiled_preview_save",
+                    requiredBytes: estimatedBytes,
+                    url: previewCacheStore.rootURL
+                )
+                Diagnostics.record(
+                    .cache,
+                    "compiled_preview.save.start",
+                    metadata: [
+                        "projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID),
+                        "pageCount": String(artifact.svgPages.count),
+                        "hasPDF": String(artifact.pdfData != nil),
+                        "estimatedBytes": String(estimatedBytes)
+                    ]
+                )
                 do {
                     try previewCacheStore.save(artifact: artifact, for: cacheInput)
+                    Diagnostics.record(
+                        .cache,
+                        "compiled_preview.save.success",
+                        metadata: [
+                            "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                            "projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)
+                        ]
+                    )
                 } catch {
-                    logger.error("Failed to store compiled preview cache: \(error.localizedDescription, privacy: .public)")
+                    var metadata = Diagnostics.errorMetadata(error)
+                    metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+                    metadata["projectHash"] = Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)
+                    Diagnostics.record(
+                        .cache,
+                        "compiled_preview.save.failure",
+                        level: .error,
+                        metadata: metadata
+                    )
+                    Diagnostics.recordStorageSnapshot(reason: "compiled_preview_save_failure")
+                    logger.error("Failed to store compiled preview cache: \(error.localizedDescription, privacy: .private)")
                 }
             }
             return .success(artifact, loadedFromCache: false)
         case .failure(let error):
+            Diagnostics.record(
+                .compiler,
+                "compile.failure",
+                level: .error,
+                metadata: ["errorKind": String(describing: type(of: error))]
+            )
             return .failure(error)
         }
     }
@@ -598,13 +702,47 @@ final class TypstCompiler {
         using previewCacheStore: CompiledPreviewCacheStore,
         cacheInput: CompiledPreviewCacheInput
     ) -> TypstWorkerResult? {
+        let startedAt = Date()
+        Diagnostics.record(
+            .cache,
+            "compiled_preview.load.start",
+            metadata: ["projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)]
+        )
         do {
             guard let cachedArtifact = try previewCacheStore.loadArtifactIfValid(for: cacheInput) else {
+                Diagnostics.record(
+                    .cache,
+                    "compiled_preview.load.miss",
+                    metadata: [
+                        "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                        "projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)
+                    ]
+                )
                 return nil
             }
+            Diagnostics.record(
+                .cache,
+                "compiled_preview.load.hit",
+                metadata: [
+                    "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                    "projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID),
+                    "pageCount": String(cachedArtifact.svgPages.count),
+                    "hasPDF": String(cachedArtifact.pdfData != nil),
+                    "hasSourceMap": String(cachedArtifact.sourceMap != nil)
+                ]
+            )
             return .success(cachedArtifact, loadedFromCache: true)
         } catch {
-            logger.error("Failed to load compiled preview cache: \(error.localizedDescription, privacy: .public)")
+            var metadata = Diagnostics.errorMetadata(error)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            metadata["projectHash"] = Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)
+            Diagnostics.record(
+                .cache,
+                "compiled_preview.load.failure",
+                level: .error,
+                metadata: metadata
+            )
+            logger.error("Failed to load compiled preview cache: \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }

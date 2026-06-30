@@ -17,6 +17,15 @@ struct CloudDownloadPreparationResult: Equatable, Sendable {
 nonisolated enum CloudItemAvailability {
     static func prepareForAccess(at url: URL, timeout: TimeInterval = 120) throws -> CloudDownloadPreparationResult {
         let pendingItems = try pendingUbiquitousItems(at: url)
+        Diagnostics.record(
+            .iCloud,
+            "prepare_for_access.pending",
+            metadata: [
+                "rootHash": Diagnostics.hashIdentifier(url.standardizedFileURL.path),
+                "pendingCount": String(pendingItems.count),
+                "timeoutSeconds": String(Int(timeout))
+            ]
+        )
         guard !pendingItems.isEmpty else {
             return CloudDownloadPreparationResult(downloadedItemCount: 0)
         }
@@ -26,6 +35,12 @@ nonisolated enum CloudItemAvailability {
             do {
                 try fileManager.startDownloadingUbiquitousItem(at: itemURL)
             } catch {
+                Diagnostics.record(
+                    .iCloud,
+                    "prepare_for_access.download_request_failed",
+                    level: .error,
+                    metadata: Diagnostics.errorMetadata(error)
+                )
                 os_log(
                     .error,
                     "CloudItemAvailability: failed to start download for %{public}@: %{public}@",
@@ -47,12 +62,26 @@ nonisolated enum CloudItemAvailability {
             }
 
             if remaining.isEmpty {
+                Diagnostics.record(
+                    .iCloud,
+                    "prepare_for_access.success",
+                    metadata: ["downloadedCount": String(pendingItems.count)]
+                )
                 return CloudDownloadPreparationResult(downloadedItemCount: pendingItems.count)
             }
 
             Thread.sleep(forTimeInterval: 0.35)
         }
 
+        Diagnostics.record(
+            .iCloud,
+            "prepare_for_access.timeout",
+            level: .error,
+            metadata: [
+                "pendingCount": String(pendingItems.count),
+                "remainingCount": String(remaining.count)
+            ]
+        )
         throw StorageManager.MigrationError.downloadTimeout
     }
 

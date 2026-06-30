@@ -118,6 +118,7 @@ struct DocumentEditorView: View {
     @State var openTabs: [ProjectFileTab] = []
     @State var activeTabPath: String?
     @State var didRestoreProjectEditorState = false
+    @State var documentOpenSessionID: String?
 
     var rootDir: String { ProjectFileManager.projectDirectory(for: document).path }
     

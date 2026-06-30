@@ -67,6 +67,180 @@
         }
       }
     },
+    "Refresh" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新整理"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新整理"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.available_storage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Available Storage" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "可用存储空间" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "可用儲存空間" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "可用儲存空間" } }
+      }
+    },
+    "beta_diagnostics.copied" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Summary copied" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "诊断摘要已复制" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "診斷摘要已複製" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "診斷摘要已複製" } }
+      }
+    },
+    "beta_diagnostics.copy_summary" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy Diagnostic Summary" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制诊断摘要" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "複製診斷摘要" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "複製診斷摘要" } }
+      }
+    },
+    "beta_diagnostics.distribution" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Distribution" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "分发渠道" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "分發渠道" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "分發渠道" } }
+      }
+    },
+    "beta_diagnostics.footer" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Paste this summary into TestFlight feedback when reporting a freeze, iCloud download failure, or crash. It contains metadata only, not document content." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "反馈卡死、iCloud 下载失败或崩溃时，请把这段摘要粘贴到 TestFlight 反馈里。摘要只包含元数据，不包含文档内容。" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "回報卡住、iCloud 下載失敗或崩潰時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含元資料，不包含文件內容。" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "回報卡住、iCloud 下載失敗或當機時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含中繼資料，不包含文件內容。" } }
+      }
+    },
+    "beta_diagnostics.hint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shows TestFlight diagnostics that help investigate freezes, iCloud downloads, crashes, and storage pressure." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看用于排查卡死、iCloud 下载、崩溃和存储压力的 TestFlight 诊断信息。" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "查看用於排查卡住、iCloud 下載、崩潰和儲存壓力的 TestFlight 診斷資訊。" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "查看用於排查卡住、iCloud 下載、當機和儲存壓力的 TestFlight 診斷資訊。" } }
+      }
+    },
+    "beta_diagnostics.icloud" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } }
+      }
+    },
+    "beta_diagnostics.icloud.local" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local storage mode" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地存储模式" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "本機儲存模式" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "本機儲存模式" } }
+      }
+    },
+    "beta_diagnostics.icloud.no_items" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No monitored iCloud items yet" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未监测到 iCloud 项目" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未監測到 iCloud 項目" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未監測到 iCloud 項目" } }
+      }
+    },
+    "beta_diagnostics.icloud.summary_format" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%d current, %d downloading, %d uploading, %d not downloaded, %d errors" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%d 个已同步，%d 个下载中，%d 个上传中，%d 个未下载，%d 个错误" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "%d 個已同步，%d 個下載中，%d 個上載中，%d 個未下載，%d 個錯誤" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "%d 個已同步，%d 個下載中，%d 個上傳中，%d 個未下載，%d 個錯誤" } }
+      }
+    },
+    "beta_diagnostics.last_open_session" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last Open Session" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近打开会话" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "最近開啟工作階段" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "最近開啟工作階段" } }
+      }
+    },
+    "beta_diagnostics.metrickit" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit Diagnostics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 诊断" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 診斷" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 診斷" } }
+      }
+    },
+    "beta_diagnostics.metrickit.empty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No MetricKit diagnostics received yet." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 诊断。" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 診斷。" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 診斷。" } }
+      }
+    },
+    "beta_diagnostics.none" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "None" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "無" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "無" } }
+      }
+    },
+    "beta_diagnostics.overview" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Overview" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "概览" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "概覽" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "概覽" } }
+      }
+    },
+    "beta_diagnostics.recent_events" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent Events" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } }
+      }
+    },
+    "beta_diagnostics.recent_events.empty" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No diagnostic events recorded yet." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未记录诊断事件。" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未記錄診斷事件。" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未記錄診斷事件。" } }
+      }
+    },
+    "beta_diagnostics.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Beta Diagnostics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Beta 诊断" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "Beta 診斷" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "Beta 診斷" } }
+      }
+    },
+    "beta_diagnostics.version" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Version" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "版本" } },
+        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "版本" } },
+        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "版本" } }
+      }
+    },
     "Package" : {
       "localizations" : {
         "zh-Hans" : {

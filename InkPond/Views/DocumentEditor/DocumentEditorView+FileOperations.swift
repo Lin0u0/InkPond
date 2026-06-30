@@ -9,9 +9,34 @@ import SwiftData
 
 extension DocumentEditorView {
     func prepareDocumentForEditing() {
+        let sessionID = ensureDocumentOpenSession(source: "editor_prepare")
+        let interval = Diagnostics.beginInterval("document.open.prepare", category: .documentOpen)
+        defer { Diagnostics.endInterval("document.open.prepare", category: .documentOpen, interval) }
+
+        Diagnostics.record(
+            .documentOpen,
+            "prepare.start",
+            sessionID: sessionID,
+            metadata: [
+                "projectHash": Diagnostics.hashIdentifier(document.projectID),
+                "entryHash": Diagnostics.hashIdentifier(document.entryFileName),
+                "requiresImportConfiguration": String(document.requiresImportConfiguration),
+                "requiresInitialEntrySelection": String(document.requiresInitialEntrySelection)
+            ]
+        )
+
         do {
+            Diagnostics.record(.documentOpen, "prepare.validate.start", sessionID: sessionID)
             try ProjectFileManager.validateDocumentCanOpen(document)
+            Diagnostics.record(.documentOpen, "prepare.validate.success", sessionID: sessionID)
         } catch {
+            Diagnostics.record(
+                .documentOpen,
+                "prepare.validate.failure",
+                level: .error,
+                sessionID: sessionID,
+                metadata: Diagnostics.errorMetadata(error)
+            )
             reportInitialOpenFailure(error.localizedDescription)
             return
         }
@@ -32,6 +57,16 @@ extension DocumentEditorView {
             if !resolution.requiresInitialSelection {
                 document.importEntryFileOptions = []
             }
+            Diagnostics.record(
+                .documentOpen,
+                "prepare.import_configuration",
+                sessionID: sessionID,
+                metadata: [
+                    "typFileCount": String(typFiles.count),
+                    "requiresInitialSelection": String(resolution.requiresInitialSelection),
+                    "suggestedEntryHash": resolution.entryFileName.map(Diagnostics.hashIdentifier) ?? "none"
+                ]
+            )
             document.requiresInitialEntrySelection = resolution.requiresInitialSelection
             applyAutomaticImportDirectories()
             document.requiresImportConfiguration = document.requiresInitialEntrySelection
@@ -46,32 +81,82 @@ extension DocumentEditorView {
             }
         }
 
+        Diagnostics.record(.documentOpen, "prepare.migration.start", sessionID: sessionID)
         ProjectFileManager.migrateContentIfNeeded(for: document)
         if !loadFile(named: document.entryFileName) {
             reportInitialOpenFailure(fileSaveError ?? L10n.format("error.file.not_found", document.entryFileName))
+        } else {
+            Diagnostics.record(.documentOpen, "prepare.success", sessionID: sessionID)
         }
     }
 
     func reportInitialOpenFailure(_ message: String) {
+        Diagnostics.record(
+            .documentOpen,
+            "initial_open.failure",
+            level: .error,
+            sessionID: documentOpenSessionID
+        )
         fileSaveError = message
         onInitialOpenFailure?(message)
     }
 
     @discardableResult
     func loadFile(named name: String) -> Bool {
+        let sessionID = documentOpenSessionID ?? ensureDocumentOpenSession(source: "load_file")
+        let startedAt = Date()
+        let interval = Diagnostics.beginInterval("document.open.load_file", category: .documentOpen)
+        Diagnostics.record(
+            .documentOpen,
+            "load_file.start",
+            sessionID: sessionID,
+            metadata: [
+                "fileHash": Diagnostics.hashIdentifier(name),
+                "isEntry": String(name == document.entryFileName),
+                "usesCoordination": String(ProjectFileManager.useCoordination)
+            ]
+        )
+
         saveTask?.cancel()
         saveTask = nil
 
         // If the file is in iCloud and not yet downloaded, trigger download
         let fileURL = ProjectFileManager.typFileURL(named: name, for: document)
         if ProjectFileManager.useCoordination {
-            try? FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
+            do {
+                try FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
+                Diagnostics.record(
+                    .iCloud,
+                    "download.requested",
+                    sessionID: sessionID,
+                    metadata: ["fileHash": Diagnostics.hashIdentifier(fileURL.standardizedFileURL.path)]
+                )
+            } catch {
+                Diagnostics.record(
+                    .iCloud,
+                    "download.request_failed",
+                    level: .error,
+                    sessionID: sessionID,
+                    metadata: Diagnostics.errorMetadata(error)
+                )
+            }
         }
 
         let text: String
         do {
             text = try ProjectFileManager.readTypFile(named: name, for: document)
         } catch {
+            var metadata = Diagnostics.errorMetadata(error)
+            metadata["elapsedMs"] = String(Int(Date().timeIntervalSince(startedAt) * 1000))
+            metadata["fileHash"] = Diagnostics.hashIdentifier(name)
+            Diagnostics.record(
+                .documentOpen,
+                "load_file.failure",
+                level: .error,
+                sessionID: sessionID,
+                metadata: metadata
+            )
+            Diagnostics.endInterval("document.open.load_file", category: .documentOpen, interval)
             fileSaveError = error.localizedDescription
             return false
         }
@@ -96,7 +181,34 @@ extension DocumentEditorView {
         startConflictMonitoring(for: fileURL)
 
         pumpPendingInsertionsIfNeeded()
+        Diagnostics.record(
+            .documentOpen,
+            "load_file.success",
+            sessionID: sessionID,
+            metadata: [
+                "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "byteCount": String(text.utf8.count),
+                "fileHash": Diagnostics.hashIdentifier(name)
+            ]
+        )
+        Diagnostics.endInterval("document.open.load_file", category: .documentOpen, interval)
         return true
+    }
+
+    func ensureDocumentOpenSession(source: String) -> String {
+        if let documentOpenSessionID {
+            return documentOpenSessionID
+        }
+        let session = Diagnostics.startSession(
+            category: .documentOpen,
+            metadata: [
+                "source": source,
+                "projectHash": Diagnostics.hashIdentifier(document.projectID),
+                "entryHash": Diagnostics.hashIdentifier(document.entryFileName)
+            ]
+        )
+        documentOpenSessionID = session.id
+        return session.id
     }
 
     func activateTab(relativePath: String, kind: FileKind) {
