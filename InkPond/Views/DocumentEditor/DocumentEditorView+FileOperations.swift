@@ -8,7 +8,7 @@ import SwiftUI
 import SwiftData
 
 extension DocumentEditorView {
-    func prepareDocumentForEditing() {
+    func prepareDocumentForEditing(allowMigration: Bool = true) async {
         let sessionID = ensureDocumentOpenSession(source: "editor_prepare")
         let interval = Diagnostics.beginInterval("document.open.prepare", category: .documentOpen)
         defer { Diagnostics.endInterval("document.open.prepare", category: .documentOpen, interval) }
@@ -38,6 +38,19 @@ extension DocumentEditorView {
                 metadata: Diagnostics.errorMetadata(error)
             )
             reportInitialOpenFailure(error.localizedDescription)
+            return
+        }
+
+        if !allowMigration {
+            let typFiles = ProjectFileManager.listAllTypFiles(for: document)
+            let readOnlyEntry = typFiles.contains(document.entryFileName)
+                ? document.entryFileName
+                : ProjectFileManager.resolveImportedEntryFile(from: typFiles).entryFileName
+            guard let readOnlyEntry, loadFile(named: readOnlyEntry) else {
+                reportInitialOpenFailure(L10n.format("error.file.not_found", document.entryFileName))
+                return
+            }
+            Diagnostics.record(.documentOpen, "prepare.success.read_only", sessionID: sessionID)
             return
         }
 
@@ -82,11 +95,33 @@ extension DocumentEditorView {
         }
 
         Diagnostics.record(.documentOpen, "prepare.migration.start", sessionID: sessionID)
-        ProjectFileManager.migrateContentIfNeeded(for: document)
+        if allowMigration {
+            await migrateLegacyContentReliablyIfNeeded()
+        }
         if !loadFile(named: document.entryFileName) {
             reportInitialOpenFailure(fileSaveError ?? L10n.format("error.file.not_found", document.entryFileName))
         } else {
             Diagnostics.record(.documentOpen, "prepare.success", sessionID: sessionID)
+        }
+    }
+
+    private func migrateLegacyContentReliablyIfNeeded() async {
+        guard !document.requiresInitialEntrySelection else { return }
+        let fileURL = ProjectFileManager.entryFileURL(for: document)
+        guard FileManager.default.fileExists(atPath: fileURL.path) == false else { return }
+        let source = document.content
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        do {
+            try ProjectFileManager.createProjectRoot(for: document)
+            try ProjectFileManager.createTypFile(named: document.entryFileName, for: document)
+            let request = try reliabilityWriteRequest(
+                content: source,
+                fileName: document.entryFileName,
+                fileURL: fileURL
+            )
+            try await backgroundFileWriter.write(request)
+        } catch {
+            fileSaveError = error.localizedDescription
         }
     }
 
@@ -290,39 +325,39 @@ extension DocumentEditorView {
         return !relativePath.split(separator: "/").contains("..")
     }
 
-    func openProjectFile(_ node: ProjectTreeNode) {
+    func openProjectFile(_ node: ProjectTreeNode) async {
         guard node.kind.canBecomeTab else { return }
         if node.kind.isTextEditable {
             selectedTab = editorTab
-            _ = openFileIfPossible(named: node.relativePath)
+            _ = await openFileIfPossible(named: node.relativePath)
             return
         }
 
-        guard flushPendingSave() else { return }
+        guard await flushPendingSave() else { return }
         focusCoordinator.dismissKeyboard()
         selectedTab = editorTab
         activateTab(relativePath: node.relativePath, kind: node.kind)
         InteractionFeedback.selection()
     }
 
-    func selectProjectTab(_ tab: ProjectFileTab) {
+    func selectProjectTab(_ tab: ProjectFileTab) async {
         guard tab.relativePath != activeTabPath else { return }
         if tab.kind.isTextEditable {
             selectedTab = editorTab
-            _ = openFileIfPossible(named: tab.relativePath)
+            _ = await openFileIfPossible(named: tab.relativePath)
             return
         }
 
-        guard flushPendingSave() else { return }
+        guard await flushPendingSave() else { return }
         focusCoordinator.dismissKeyboard()
         selectedTab = editorTab
         activeTabPath = tab.relativePath
         InteractionFeedback.selection()
     }
 
-    func closeProjectTab(_ tab: ProjectFileTab) {
+    func closeProjectTab(_ tab: ProjectFileTab) async {
         if tab.relativePath == currentFileName {
-            guard flushPendingSave() else { return }
+            guard await flushPendingSave() else { return }
         }
 
         openTabs.removeAll { $0.relativePath == tab.relativePath }
@@ -331,7 +366,7 @@ extension DocumentEditorView {
         if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
             activeTabPath = currentTextTab.relativePath
         } else if let nextTab = openTabs.first {
-            selectProjectTab(nextTab)
+            await selectProjectTab(nextTab)
         } else if !currentFileName.isEmpty {
             activateTab(
                 relativePath: currentFileName,
@@ -343,9 +378,10 @@ extension DocumentEditorView {
     }
 
     @discardableResult
-    func setEntryProjectFile(_ relativePath: String) -> Bool {
+    func setEntryProjectFile(_ relativePath: String) async -> Bool {
+        guard projectWritableLease != nil else { return false }
         guard relativePath != document.entryFileName else { return true }
-        guard flushPendingSave() else { return false }
+        guard await flushPendingSave() else { return false }
 
         document.entryFileName = relativePath
         document.modifiedAt = Date()
@@ -394,6 +430,7 @@ extension DocumentEditorView {
     }
 
     func createNewProjectFileFromMenu() {
+        guard projectWritableLease != nil else { return }
         var name = newProjectFileName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !name.isEmpty && !name.hasSuffix(".typ") {
             name += ".typ"
@@ -404,12 +441,13 @@ extension DocumentEditorView {
             try ProjectFileManager.createTypFile(named: name, for: document)
             document.modifiedAt = Date()
             projectFileTreeRefreshToken = UUID()
-            openProjectFile(ProjectTreeNode(
+            let node = ProjectTreeNode(
                 relativePath: name,
                 displayName: (name as NSString).lastPathComponent,
                 kind: .typ,
                 children: []
-            ))
+            )
+            Task { await openProjectFile(node) }
             InteractionFeedback.notify(.success)
         } catch {
             fileSaveError = error.localizedDescription
@@ -418,6 +456,7 @@ extension DocumentEditorView {
     }
 
     func handleProjectFileImportFromMenu(_ result: Result<[URL], Error>) {
+        guard projectWritableLease != nil else { return }
         guard case .success(let urls) = result else {
             if case .failure(let error) = result {
                 fileSaveError = error.localizedDescription
@@ -470,7 +509,7 @@ extension DocumentEditorView {
                 handleCompileInputsChanged()
             }
             if urls.count == 1, let node = importedNodes.first {
-                openProjectFile(node)
+                Task { await openProjectFile(node) }
             }
             InteractionFeedback.notify(.success)
         }
@@ -551,11 +590,28 @@ extension DocumentEditorView {
         guard content != lastPersistedText else {
             saveTask?.cancel()
             saveTask = nil
+            activeSaveGeneration = nil
             return
         }
 
-        let fileURL = ProjectFileManager.typFileURL(named: fileName, for: document)
+        let fileURL: URL
+        do {
+            fileURL = try ProjectFileManager.projectFileURL(relativePath: fileName, for: document)
+        } catch {
+            fileSaveError = error.localizedDescription
+            return
+        }
         let shouldRefreshPreviewAfterSave = fileName != document.entryFileName
+        saveGeneration &+= 1
+        let revision = saveGeneration
+        activeSaveGeneration = revision
+        let request: ProjectReliabilityWriteRequest
+        do {
+            request = try reliabilityWriteRequest(content: content, fileName: fileName, fileURL: fileURL)
+        } catch {
+            fileSaveError = error.localizedDescription
+            return
+        }
 
         saveTask?.cancel()
         saveTask = Task { @MainActor in
@@ -579,7 +635,7 @@ extension DocumentEditorView {
             guard !Task.isCancelled else { return }
 
             do {
-                try await backgroundFileWriter.write(content, to: fileURL)
+                try await backgroundFileWriter.write(request)
                 guard !Task.isCancelled else { return }
                 if self.currentFileName == fileName, self.editorText == content {
                     self.lastPersistedText = content
@@ -589,24 +645,35 @@ extension DocumentEditorView {
                         self.compileToken = UUID()
                     }
                 }
-                self.saveTask = nil
+                if self.activeSaveGeneration == revision {
+                    self.saveTask = nil
+                    self.activeSaveGeneration = nil
+                }
             } catch {
-                self.fileSaveError = error.localizedDescription
-                self.saveTask = nil
+                if self.activeSaveGeneration == revision {
+                    self.fileSaveError = error.localizedDescription
+                    self.saveTask = nil
+                    self.activeSaveGeneration = nil
+                }
             }
         }
     }
 
     /// Resolve a conflict by keeping the local version (overwrite disk).
-    func resolveConflictKeepLocal() {
+    func resolveConflictKeepLocal() async {
         showingConflictWarning = false
         let content = editorText
 
-        // Resolve all conflict versions in favor of current, then overwrite.
-        conflictMonitor.resolveKeepingCurrent()
-
         do {
-            try ProjectFileManager.writeTypFile(named: currentFileName, content: content, for: document)
+            let fileURL = try ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
+            let request = try reliabilityWriteRequest(content: content, fileName: currentFileName, fileURL: fileURL)
+            try await VerifiedConflictResolution.commitThenDiscard {
+                try await backgroundFileWriter.write(request)
+            } verify: {
+                try ProjectFileManager.readTypFile(named: currentFileName, for: document) == content
+            } discardRemoteVersions: {
+                try conflictMonitor.resolveKeepingCurrent()
+            }
             lastPersistedText = content
             document.modifiedAt = Date()
         } catch {
@@ -615,7 +682,7 @@ extension DocumentEditorView {
     }
 
     /// Resolve a conflict by reloading the remote version from disk.
-    func resolveConflictKeepRemote() {
+    func resolveConflictKeepRemote() async {
         showingConflictWarning = false
 
         // Pick the most recent conflict version and replace the current file.
@@ -623,30 +690,59 @@ extension DocumentEditorView {
         if let latest = conflictMonitor.conflictVersions
             .sorted(by: { ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast) })
             .first {
-            conflictMonitor.resolveKeepingVersion(latest)
+            do {
+                let remoteData = try conflictMonitor.data(for: latest)
+                guard let remoteContent = String(data: remoteData, encoding: .utf8) else {
+                    throw CocoaError(.fileReadInapplicableStringEncoding)
+                }
+                let fileURL = try ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
+                let request = try reliabilityWriteRequest(
+                    content: remoteContent,
+                    fileName: currentFileName,
+                    fileURL: fileURL
+                )
+                try await VerifiedConflictResolution.commitThenDiscard {
+                    try await backgroundFileWriter.write(request)
+                } verify: {
+                    try ProjectFileManager.readTypFile(named: currentFileName, for: document) == remoteContent
+                } discardRemoteVersions: {
+                    try conflictMonitor.resolveKeepingCurrent()
+                }
+            } catch {
+                fileSaveError = error.localizedDescription
+                return
+            }
         } else {
-            conflictMonitor.resolveKeepingCurrent()
+            do {
+                try conflictMonitor.resolveKeepingCurrent()
+            } catch {
+                fileSaveError = error.localizedDescription
+                return
+            }
         }
 
         _ = loadFile(named: currentFileName)
     }
 
     @discardableResult
-    func flushPendingSave() -> Bool {
+    func flushPendingSave() async -> Bool {
         saveTask?.cancel()
         saveTask = nil
-        return persistCurrentFileImmediately(content: editorText)
+        activeSaveGeneration = nil
+        return await persistCurrentFileImmediately(content: editorText)
     }
 
     @discardableResult
-    func persistCurrentFileImmediately(content: String) -> Bool {
+    func persistCurrentFileImmediately(content: String) async -> Bool {
         guard !currentFileName.isEmpty else { return true }
         guard content != lastPersistedText else { return true }
 
         let shouldRefreshPreviewAfterSave = currentFileName != document.entryFileName
 
         do {
-            try ProjectFileManager.writeTypFile(named: currentFileName, content: content, for: document)
+            let fileURL = try ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
+            let request = try reliabilityWriteRequest(content: content, fileName: currentFileName, fileURL: fileURL)
+            try await backgroundFileWriter.write(request)
             lastPersistedText = content
             document.modifiedAt = Date()
             if shouldRefreshPreviewAfterSave {
@@ -658,6 +754,90 @@ extension DocumentEditorView {
             fileSaveError = error.localizedDescription
             return false
         }
+    }
+
+    func reliabilityWriteRequest(
+        content: String,
+        fileName: String,
+        fileURL: URL
+    ) throws -> ProjectReliabilityWriteRequest {
+        try reliabilityWriteRequest(data: Data(content.utf8), fileName: fileName, fileURL: fileURL)
+    }
+
+    func reliabilityWriteRequest(
+        data: Data,
+        fileName: String,
+        fileURL: URL
+    ) throws -> ProjectReliabilityWriteRequest {
+        if projectWritableLease == nil {
+            throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
+        }
+        let externalURL = ProjectFileManager.externalSingleFileURL(for: document)
+        let rootURL = externalURL?.deletingLastPathComponent() ?? ProjectFileManager.projectDirectory(for: document)
+        let relativePath = externalURL?.lastPathComponent ?? fileName
+        let entryRelativePath = externalURL?.lastPathComponent ?? document.entryFileName
+        let backendKind: ProjectStorageBackendKind = if externalURL != nil {
+            .linkedExternal
+        } else if ProjectFileManager.useCoordination {
+            .iCloud
+        } else {
+            .local
+        }
+        guard fileURL.standardizedFileURL == rootURL.appendingPathComponent(relativePath).standardizedFileURL else {
+            throw InkPondFileError.unsafePath(fileName)
+        }
+        return ProjectReliabilityWriteRequest(
+            rootURL: rootURL,
+            backendKind: backendKind,
+            projectID: document.stableProjectID,
+            displayName: document.title,
+            entryRelativePath: entryRelativePath,
+            relativePath: relativePath,
+            data: data,
+            externalTargetURL: externalURL,
+            securityScopeLease: externalURL == nil
+                ? BookmarkManager.acquireLease(projectID: document.projectID)
+                : nil
+        )
+    }
+
+    func createProjectFileReliably(named name: String) async throws {
+        let fileURL = try ProjectFileManager.projectFileURL(relativePath: name, for: document)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw InkPondFileError.fileAlreadyExists(name)
+        }
+        let request = try reliabilityWriteRequest(data: Data(), fileName: name, fileURL: fileURL)
+        try await ProjectReliabilityWriterRegistry.shared.write(request)
+    }
+
+    func importProjectFileReliably(from sourceURL: URL, to subdir: String) async throws -> String {
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
+        let fileName = sourceURL.lastPathComponent
+        try ProjectFileManager.validateFileName(fileName)
+        let relativePath = subdir.isEmpty ? fileName : "\(subdir)/\(fileName)"
+        let fileURL = try ProjectFileManager.projectFileURL(relativePath: relativePath, for: document)
+        let request = try reliabilityWriteRequest(
+            data: try Data(contentsOf: sourceURL),
+            fileName: relativePath,
+            fileURL: fileURL
+        )
+        try await ProjectReliabilityWriterRegistry.shared.write(request)
+        return relativePath
+    }
+
+    func deleteProjectNodeReliably(_ node: ProjectTreeNode) async throws {
+        guard node.relativePath != document.entryFileName else {
+            throw InkPondFileError.cannotDeleteEntryFile
+        }
+        if node.relativePath == currentFileName {
+            saveTask?.cancel()
+            saveTask = nil
+            activeSaveGeneration = nil
+        }
+        let fileURL = try ProjectFileManager.projectFileURL(relativePath: node.relativePath, for: document)
+        let request = try reliabilityWriteRequest(data: Data(), fileName: node.relativePath, fileURL: fileURL)
+        try await ProjectReliabilityWriterRegistry.shared.remove(request)
     }
 
     func applyAutomaticImportDirectories() {
@@ -713,10 +893,10 @@ extension DocumentEditorView {
         document.lastCursorLocation > 0
     }
 
-    func restoreSavedPosition() {
+    func restoreSavedPosition() async {
         let savedFileName = document.lastEditedFileName
         if !savedFileName.isEmpty, savedFileName != currentFileName {
-            guard openFileIfPossible(named: savedFileName) else { return }
+            guard await openFileIfPossible(named: savedFileName) else { return }
         }
         pendingCursorJump = document.lastCursorLocation
 
@@ -734,7 +914,7 @@ extension DocumentEditorView {
     }
 
     @discardableResult
-    func handleExternalOpenRequestIfNeeded(_ request: ExternalTypFileOpenRequest?) -> Bool {
+    func handleExternalOpenRequestIfNeeded(_ request: ExternalTypFileOpenRequest?) async -> Bool {
         guard let request, request.projectID == document.projectID else { return false }
         let typFiles = document.isExternalFolder
             ? [document.entryFileName]
@@ -742,7 +922,7 @@ extension DocumentEditorView {
         guard typFiles.contains(request.fileName) else { return false }
 
         if currentFileName != request.fileName {
-            guard openFileIfPossible(named: request.fileName) else { return false }
+            guard await openFileIfPossible(named: request.fileName) else { return false }
         }
 
         selectedTab = editorTab
@@ -804,19 +984,19 @@ extension DocumentEditorView {
     }
 
     @discardableResult
-    func openFileIfPossible(named name: String) -> Bool {
-        guard flushPendingSave() else { return false }
+    func openFileIfPossible(named name: String) async -> Bool {
+        guard await flushPendingSave() else { return false }
         guard loadFile(named: name) else { return false }
         InteractionFeedback.selection()
         return true
     }
 
     func openFile(named name: String) {
-        _ = openFileIfPossible(named: name)
+        Task { _ = await openFileIfPossible(named: name) }
     }
 
-    func compilePreviewNow() {
-        guard flushPendingSave() else { return }
+    func compilePreviewNow() async {
+        guard await flushPendingSave() else { return }
         guard !previewRequiresExternalFolderLink else {
             compiler.clearPreview()
             return
@@ -836,8 +1016,8 @@ extension DocumentEditorView {
         )
     }
 
-    func clearCachesAndRecompile() {
-        guard flushPendingSave() else { return }
+    func clearCachesAndRecompile() async {
+        guard await flushPendingSave() else { return }
         guard !previewRequiresExternalFolderLink else {
             compiler.clearPreview()
             return
@@ -988,9 +1168,9 @@ extension DocumentEditorView {
         }
     }
 
-    func triggerZipExport() {
+    func triggerZipExport() async {
         if !resolvedCompileFonts.includesExternalFonts {
-            guard flushPendingSave() else { return }
+            guard await flushPendingSave() else { return }
             exporter.exportZip(for: document)
         } else {
             showingZipExportWarning = true
@@ -1035,7 +1215,7 @@ extension DocumentEditorView {
     }
 
     /// Navigate the editor to a compilation error location.
-    func navigateToError(file: String, line: Int, column: Int) {
+    func navigateToError(file: String, line: Int, column: Int) async {
         let resolvedFile = resolveErrorFileName(file)
 
         // Switch to editor tab on iPhone
@@ -1045,7 +1225,7 @@ extension DocumentEditorView {
 
         // Open the file if it's not already open
         if resolvedFile != currentFileName {
-            guard openFileIfPossible(named: resolvedFile) else { return }
+            guard await openFileIfPossible(named: resolvedFile) else { return }
         }
 
         // Compute UTF-16 offset from line:column

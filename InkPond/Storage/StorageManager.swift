@@ -143,7 +143,7 @@ final class StorageManager {
         guard !isMigrating else { return }
 
         // Verify network connectivity before attempting migration
-        guard NetworkReachability.currentlyReachable() else {
+        guard await NetworkReachability.currentlyReachable() else {
             migrationError = L10n.tr("icloud.error.no_network")
             return
         }
@@ -266,7 +266,7 @@ final class StorageManager {
         guard !failedProjectIDs.isEmpty else { return }
         guard !isMigrating else { return }
 
-        guard NetworkReachability.currentlyReachable() else {
+        guard await NetworkReachability.currentlyReachable() else {
             migrationError = L10n.tr("icloud.error.no_network")
             return
         }
@@ -342,7 +342,7 @@ final class StorageManager {
             return
         }
 
-        guard NetworkReachability.currentlyReachable() else {
+        guard await NetworkReachability.currentlyReachable() else {
             migrationError = L10n.tr("icloud.error.no_network")
             return
         }

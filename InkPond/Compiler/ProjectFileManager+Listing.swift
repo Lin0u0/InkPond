@@ -62,13 +62,17 @@ extension ProjectFileManager {
         let rootComponents = rootURL.pathComponents
         guard let enumerator = fm.enumerator(
             at: rootURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
         var files: [String] = []
 
         for case let fileURL as URL in enumerator {
+            if (try? fileURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                enumerator.skipDescendants()
+                continue
+            }
             guard (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
                 continue
             }
@@ -106,6 +110,7 @@ extension ProjectFileManager {
             includingPropertiesForKeys: [
                 .isRegularFileKey,
                 .isDirectoryKey,
+                .isSymbolicLinkKey,
                 .ubiquitousItemDownloadingStatusKey
             ],
             options: [.skipsHiddenFiles]
@@ -131,8 +136,14 @@ extension ProjectFileManager {
             let values = try? fileURL.resourceValues(forKeys: [
                 .isRegularFileKey,
                 .isDirectoryKey,
+                .isSymbolicLinkKey,
                 .ubiquitousItemDownloadingStatusKey
             ])
+
+            if values?.isSymbolicLink == true {
+                enumerator.skipDescendants()
+                continue
+            }
 
             if values?.isDirectory == true {
                 continue
@@ -308,11 +319,12 @@ extension ProjectFileManager {
         }
 
         ensureFontsDirectory(for: document)
-        let fontsDir = fontsDirectory(for: document)
 
         let imported = urls.compactMap { sourceURL -> String? in
             let fileName = sourceURL.lastPathComponent
-            let destination = fontsDir.appendingPathComponent(fileName)
+            guard let destination = try? validatedProjectPath(relativePath: "fonts/\(fileName)", for: document) else {
+                return nil
+            }
             if sourceURL.standardizedFileURL != destination.standardizedFileURL {
                 do {
                     try copyItemReplacingSafely(from: sourceURL, to: destination)
@@ -343,14 +355,16 @@ extension ProjectFileManager {
     static func saveImage(data: Data, fileName: String, for document: InkPondDocument) throws -> String {
         ensureImageDirectory(for: document)
         let imageDir = safeImageDirectoryName(from: document.imageDirectoryName)
-        let dest = imagesDirectory(for: document).appendingPathComponent(fileName)
+        try validateFileName(fileName)
+        let relativePath = imageDir.isEmpty ? fileName : "\(imageDir)/\(fileName)"
+        let dest = try validatedProjectPath(relativePath: relativePath, for: document)
         if useCoordination {
             try CloudFileCoordinator.writeData(data, to: dest)
         } else {
             try data.write(to: dest)
         }
         os_log(.info, "ProjectFileManager: saved image %{public}@", fileName)
-        return imageDir.isEmpty ? fileName : "\(imageDir)/\(fileName)"
+        return relativePath
     }
 
     private nonisolated static func isUbiquitousItemDownloaded(_ url: URL) -> Bool {

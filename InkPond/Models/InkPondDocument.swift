@@ -17,6 +17,9 @@ final class TypistDocument {
     // Property-level defaults serve as SwiftData schema-migration fallbacks.
     var fontFileNames: [String] = []
     var projectID: String = UUID().uuidString
+    /// Stable logical identity. `projectID` remains the legacy storage locator
+    /// and may change when a project directory is renamed.
+    var stableProjectIDRawValue: String = UUID().uuidString
     var imageInsertMode: String = "image"
     var imageDirectoryName: String = "images"
     var entryFileName: String = "main.typ"
@@ -45,6 +48,13 @@ final class TypistDocument {
         default:
             return "#image(\"%@\")"
         }
+    }
+
+    var stableProjectID: ProjectID {
+        if let uuid = UUID(uuidString: stableProjectIDRawValue) {
+            return ProjectID(rawValue: uuid)
+        }
+        return ProjectID.deterministic(legacyLocator: projectID)
     }
 }
 

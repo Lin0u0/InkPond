@@ -299,6 +299,7 @@ extension DocumentEditorView {
             externalChromeBackgroundColor: editorExternalChromeBackgroundUIColor,
             editorFont: editorFontSettings.uiFont,
             errorLines: compilationErrorLines,
+            isEditable: projectWritableLease != nil,
             onPhotoTapped: { showingPhotoPicker = true },
             onSnippetTapped: { showingSnippetBrowser = true },
             onImagePasted: { pastedImageData, selectedRange in
@@ -365,7 +366,7 @@ extension DocumentEditorView {
             overlayTopInset: overlayTopInset,
             overlayBottomInset: overlayBottomInset,
             onGoToError: { file, line, column in
-                navigateToError(file: file, line: line, column: column)
+                Task { await navigateToError(file: file, line: line, column: column) }
             },
             onCompactPreviewSwipe: sizeClass == .regular ? nil : {
                 if selectedTab != editorTab {
@@ -385,8 +386,8 @@ extension DocumentEditorView {
         .liquidGlassColorScheme(sizeClass == .regular ? regularWorkspaceColorScheme : colorScheme)
     }
 
-    func linkExternalFolderForPreview(from folderURL: URL) {
-        guard flushPendingSave() else { return }
+    func linkExternalFolderForPreview(from folderURL: URL) async {
+        guard await flushPendingSave() else { return }
         externalFolderLinkTask?.cancel()
         externalFolderLinkProgressTitle = folderURL.lastPathComponent
         externalFolderLinkProgress = LinkedFolderLoadProgress(
@@ -569,8 +570,12 @@ extension DocumentEditorView {
         ProjectFileTreeView(
             document: document,
             activePath: activeProjectPath,
+            canMutate: projectWritableLease != nil,
             openNode: openProjectFile,
             setEntryFile: setEntryProjectFile,
+            createFile: createProjectFileReliably,
+            importFile: importProjectFileReliably,
+            deleteNode: deleteProjectNodeReliably,
             onNodeDeleted: handleProjectFileDeleted,
             usesNavigationToolbar: false,
             topContentInset: topContentInset,
@@ -648,8 +653,10 @@ extension DocumentEditorView {
 
             if let onCloseProject {
                 Button {
-                    guard flushPendingSave() else { return }
-                    onCloseProject()
+                    Task {
+                        guard await flushPendingSave() else { return }
+                        onCloseProject()
+                    }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.title3.weight(.semibold))
@@ -823,7 +830,7 @@ extension DocumentEditorView {
                     Button {
                         Task { @MainActor in
                             await Task.yield()
-                            compilePreviewNow()
+                            await compilePreviewNow()
                         }
                     } label: {
                         Label(L10n.tr("Compile Now"), systemImage: "play.circle")
@@ -833,7 +840,7 @@ extension DocumentEditorView {
                     Button {
                         Task { @MainActor in
                             await Task.yield()
-                            clearCachesAndRecompile()
+                            await clearCachesAndRecompile()
                         }
                     } label: {
                         Label(L10n.tr("Recompile"), systemImage: "arrow.clockwise.circle")
@@ -1114,7 +1121,7 @@ extension DocumentEditorView {
         let closeHitSize: CGFloat = isCompact ? 44 : regularProjectTabSurfaceHeight
         return HStack(spacing: 2) {
             Button {
-                selectProjectTab(tab)
+                Task { await selectProjectTab(tab) }
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: tab.kind.iconName)
@@ -1140,12 +1147,12 @@ extension DocumentEditorView {
                               abs(translation.height) <= compactTapSlop else {
                             return
                         }
-                        selectProjectTab(tab)
+                        Task { await selectProjectTab(tab) }
                     }
             )
 
             Button {
-                closeProjectTab(tab)
+                Task { await closeProjectTab(tab) }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: isCompact ? 9 : 9.5, weight: .semibold))
@@ -1163,7 +1170,7 @@ extension DocumentEditorView {
                               abs(translation.height) <= compactTapSlop else {
                             return
                         }
-                        closeProjectTab(tab)
+                        Task { await closeProjectTab(tab) }
                     }
             )
             .accessibilityLabel(L10n.tr("Close"))
@@ -1473,23 +1480,29 @@ extension DocumentEditorView {
     var shareButtonAction: () -> Void {
         if previewRequiresExternalFolderLink {
             return {
-                guard flushPendingSave() else { return }
-                exporter.exportTypSource(for: document, fileName: currentFileName)
+                Task {
+                    guard await flushPendingSave() else { return }
+                    exporter.exportTypSource(for: document, fileName: currentFileName)
+                }
             }
         }
         if sizeClass == .regular || selectedTab == previewTab {
             return {
-                guard flushPendingSave() else { return }
-                if let fontResolutionError {
-                    exporter.exportError = fontResolutionError
-                    return
+                Task {
+                    guard await flushPendingSave() else { return }
+                    if let fontResolutionError {
+                        exporter.exportError = fontResolutionError
+                        return
+                    }
+                    exporter.exportPDF(for: document)
                 }
-                exporter.exportPDF(for: document)
             }
         }
         return {
-            guard flushPendingSave() else { return }
-            exporter.exportTypSource(for: document, fileName: currentFileName)
+            Task {
+                guard await flushPendingSave() else { return }
+                exporter.exportTypSource(for: document, fileName: currentFileName)
+            }
         }
     }
 
@@ -1598,7 +1611,7 @@ extension DocumentEditorView {
             withAnimation(.easeInOut(duration: 0.25)) {
                 showingPositionRestore = false
             }
-            restoreSavedPosition()
+            Task { await restoreSavedPosition() }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.uturn.backward.circle.fill")
@@ -1621,11 +1634,13 @@ extension DocumentEditorView {
     private var projectTitleMenuContent: some View {
         Section {
             Button {
+                guard projectWritableLease != nil else { return }
                 InteractionFeedback.impact(.light)
                 showingProjectSettings = true
             } label: {
                 Label(L10n.tr("Project Settings"), systemImage: "gearshape")
             }
+            .disabled(projectWritableLease == nil)
             Button {
                 newProjectFileName = ""
                 showingNewProjectFileAlert = true
@@ -1648,14 +1663,16 @@ extension DocumentEditorView {
             }
 
             Button {
-                guard flushPendingSave() else { return }
-                exporter.exportTypSource(for: document, fileName: currentFileName)
+                Task {
+                    guard await flushPendingSave() else { return }
+                    exporter.exportTypSource(for: document, fileName: currentFileName)
+                }
             } label: {
                 Label(L10n.tr("Export .typ"), systemImage: "square.and.arrow.up.on.square")
             }
             .disabled(exporter.exportButtonPhase != .idle)
 
-            Button { triggerZipExport() } label: {
+            Button { Task { await triggerZipExport() } } label: {
                 Label(L10n.tr("Export Project as Zip"), systemImage: "archivebox")
             }
             .disabled(exporter.exportButtonPhase != .idle)
@@ -1697,7 +1714,7 @@ extension DocumentEditorView {
             Button {
                 Task { @MainActor in
                     await Task.yield()
-                    compilePreviewNow()
+                    await compilePreviewNow()
                 }
             } label: {
                 Label(L10n.tr("Compile Now"), systemImage: "play.circle")
@@ -1707,7 +1724,7 @@ extension DocumentEditorView {
             Button {
                 Task { @MainActor in
                     await Task.yield()
-                    clearCachesAndRecompile()
+                    await clearCachesAndRecompile()
                 }
             } label: {
                 Label(L10n.tr("Recompile"), systemImage: "arrow.clockwise.circle")
@@ -1743,8 +1760,10 @@ extension DocumentEditorView {
 
     private func compactCloseProjectButton(_ onCloseProject: @escaping () -> Void) -> some View {
         Button {
-            guard flushPendingSave() else { return }
-            onCloseProject()
+            Task {
+                guard await flushPendingSave() else { return }
+                onCloseProject()
+            }
         } label: {
             compactToolbarGlassLabel(systemName: "chevron.left")
         }
@@ -1935,8 +1954,12 @@ extension DocumentEditorView {
                 ProjectFileBrowserSheet(
                     document: document,
                     activePath: activeProjectPath,
+                    canMutate: projectWritableLease != nil,
                     openNode: openProjectFile,
                     setEntryFile: setEntryProjectFile,
+                    createFile: createProjectFileReliably,
+                    importFile: importProjectFileReliably,
+                    deleteNode: deleteProjectNodeReliably,
                     onNodeDeleted: handleProjectFileDeleted
                 )
             }
@@ -1973,29 +1996,64 @@ extension DocumentEditorView {
     var editorLifecycleHandlers: some View {
         editorPresentation
             .onAppear {
+                let pendingClose = projectCloseTask
+                let generation = UUID()
+                projectLifecycleGeneration = generation
                 if ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" {
                     selectedTab = previewTab
                 }
-                prepareDocumentForEditing()
-                restoreProjectEditorStateIfNeeded()
-                let handledExternalOpen = handleExternalOpenRequestIfNeeded(externalOpenRequest)
-                refreshResolvedFonts(includeAvailableFamilies: false)
-                scheduleAvailableFontFamilyRefresh()
-                refreshReferenceCompletions()
-                if !handledExternalOpen && hasSavedPosition() {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        showingPositionRestore = true
+                if pendingClose == nil, projectWritableLease != nil {
+                    projectAccessResolved = true
+                    return
+                }
+                if pendingClose != nil {
+                    projectWritableLease = nil
+                    projectAccessResolved = false
+                }
+                projectLeaseTask?.cancel()
+                projectLeaseTask = Task { @MainActor in
+                    if let pendingClose { await pendingClose.value }
+                    guard !Task.isCancelled, projectLifecycleGeneration == generation else { return }
+                    let access = await ProjectWritableLeaseCoordinator.shared.open(projectID: document.stableProjectID)
+                    if Task.isCancelled || projectLifecycleGeneration != generation {
+                        if case .writable(let lease) = access { await lease.release() }
+                        return
                     }
-                    positionRestoreDismissTask = Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(4))
-                        guard !Task.isCancelled else { return }
+                    let isWritable: Bool
+                    switch access {
+                    case .writable(let lease):
+                        projectWritableLease = lease
+                        isWritable = true
+                    case .readOnly:
+                        projectWritableLease = nil
+                        isWritable = false
+                    }
+                    projectAccessResolved = true
+                    await prepareDocumentForEditing(allowMigration: isWritable)
+                    restoreProjectEditorStateIfNeeded()
+                    let handledExternalOpen = await handleExternalOpenRequestIfNeeded(externalOpenRequest)
+                    refreshResolvedFonts(includeAvailableFamilies: false)
+                    scheduleAvailableFontFamilyRefresh()
+                    refreshReferenceCompletions()
+                    if !handledExternalOpen && hasSavedPosition() {
                         withAnimation(.easeInOut(duration: 0.25)) {
-                            showingPositionRestore = false
+                            showingPositionRestore = true
+                        }
+                        positionRestoreDismissTask = Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(4))
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingPositionRestore = false
+                            }
                         }
                     }
                 }
             }
             .onDisappear {
+                projectLeaseTask?.cancel()
+                projectLeaseTask = nil
+                let generation = projectLifecycleGeneration
+                let leaseToRelease = projectWritableLease
                 positionRestoreDismissTask?.cancel()
                 positionRestoreDismissTask = nil
                 positionSyncTask?.cancel()
@@ -2008,14 +2066,60 @@ extension DocumentEditorView {
                 externalFolderLinkTask = nil
                 externalFolderLinkProgress = nil
                 externalFolderLinkProgressTitle = nil
-                _ = flushPendingSave()
                 persistEditorPositionIfNeeded()
                 persistProjectEditorTabState()
                 stopConflictMonitoring()
                 focusCoordinator.clearFocusPreservation()
                 compiler.cancel()
-                if ExternalTypFileSessionStore.contains(projectID: document.projectID) {
-                    ExternalTypFileSessionStore.unregister(projectID: document.projectID)
+                let reliabilityRoot = ProjectFileManager.projectDirectory(for: document)
+                let reliabilityProjectID = document.stableProjectID
+                let legacyProjectID = document.projectID
+                let reliabilityExternalTarget = ProjectFileManager.externalSingleFileURL(for: document)
+                let reconciliationRequest = currentFileName.isEmpty
+                    ? nil
+                    : try? reliabilityWriteRequest(
+                        content: editorText,
+                        fileName: currentFileName,
+                        fileURL: ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
+                    )
+                if let leaseToRelease {
+                    projectCloseTask = Task { @MainActor in
+                        _ = await flushPendingSave()
+                        if let reconciliationRequest {
+                            var reconciled = false
+                            while !reconciled {
+                                do {
+                                    try await ProjectReliabilityWriterRegistry.shared.reconcile(reconciliationRequest)
+                                    reconciled = true
+                                } catch {
+                                    fileSaveError = error.localizedDescription
+                                    try? await Task.sleep(for: .seconds(1))
+                                }
+                            }
+                        }
+                        await ProjectReliabilityWriterRegistry.shared.close(
+                            projectID: reliabilityProjectID,
+                            rootURL: reliabilityRoot,
+                            externalTargetURL: reliabilityExternalTarget
+                        )
+                        if projectWritableLease === leaseToRelease {
+                            projectWritableLease = nil
+                        }
+                        await leaseToRelease.release()
+                        if BookmarkManager.hasBookmark(projectID: legacyProjectID) {
+                            BookmarkManager.stopAccessing(legacyProjectID)
+                        }
+                        if ExternalTypFileSessionStore.contains(projectID: legacyProjectID) {
+                            ExternalTypFileSessionStore.unregister(projectID: legacyProjectID)
+                        }
+                        if projectLifecycleGeneration == generation {
+                            projectWritableLease = nil
+                            projectAccessResolved = false
+                        }
+                        projectCloseTask = nil
+                    }
+                } else {
+                    projectAccessResolved = false
                 }
             }
             .onChange(of: editorText) { _, newText in
@@ -2032,19 +2136,21 @@ extension DocumentEditorView {
                 refreshReferenceCompletions()
             }
             .onChange(of: externalOpenRequest?.id) { _, _ in
-                _ = handleExternalOpenRequestIfNeeded(externalOpenRequest)
+                Task { _ = await handleExternalOpenRequestIfNeeded(externalOpenRequest) }
             }
             .onChange(of: syncCoordinator.editorScrollTarget) { _, target in
                 guard let target else { return }
                 if sizeClass != .regular {
                     selectedTab = editorTab
                 }
-                if currentFileName != document.entryFileName {
-                    guard openFileIfPossible(named: document.entryFileName) else { return }
+                Task {
+                    if currentFileName != document.entryFileName {
+                        guard await openFileIfPossible(named: document.entryFileName) else { return }
+                    }
+                    pendingCursorJump = utf16Offset(forLine: target.line, column: target.column, in: editorText)
+                    syncCoordinator.editorScrollTarget = nil
+                    InteractionFeedback.impact(.light)
                 }
-                pendingCursorJump = utf16Offset(forLine: target.line, column: target.column, in: editorText)
-                syncCoordinator.editorScrollTarget = nil
-                InteractionFeedback.impact(.light)
             }
             .onChange(of: appFontLibrary.items) { _, _ in
                 handleCompileInputsChanged()
@@ -2201,7 +2307,7 @@ extension DocumentEditorView {
             .fileImporter(isPresented: $showingExternalFolderLinkImporter, allowedContentTypes: [.folder]) { result in
                 switch result {
                 case .success(let url):
-                    linkExternalFolderForPreview(from: url)
+                    Task { await linkExternalFolderForPreview(from: url) }
                 case .failure(let error):
                     previewActionError = error.localizedDescription
                     InteractionFeedback.notify(.error)
@@ -2239,8 +2345,10 @@ extension DocumentEditorView {
             .alert(L10n.appFontsExportWarningTitle, isPresented: $showingZipExportWarning) {
                 Button(L10n.tr("Cancel"), role: .cancel) {}
                 Button(L10n.tr("Continue")) {
-                    guard flushPendingSave() else { return }
-                    exporter.exportZip(for: document)
+                    Task {
+                        guard await flushPendingSave() else { return }
+                        exporter.exportZip(for: document)
+                    }
                 }
             } message: {
                 Text(L10n.appFontsExportWarningMessage)
@@ -2278,10 +2386,10 @@ extension DocumentEditorView {
             }
             .alert(L10n.tr("icloud.conflict.title"), isPresented: $showingConflictWarning) {
                 Button(L10n.tr("icloud.conflict.keep_local")) {
-                    resolveConflictKeepLocal()
+                    Task { await resolveConflictKeepLocal() }
                 }
                 Button(L10n.tr("icloud.conflict.keep_remote")) {
-                    resolveConflictKeepRemote()
+                    Task { await resolveConflictKeepRemote() }
                 }
                 Button(L10n.tr("Cancel"), role: .cancel) {
                     showingConflictWarning = false

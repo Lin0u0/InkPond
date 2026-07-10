@@ -156,8 +156,15 @@ extension DocumentEditorView {
     }
 
     func importImageAsset(from source: ImageImportSource) async throws -> (relativePath: String, reference: String) {
+        guard projectWritableLease != nil else {
+            throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
+        }
         let rawData = try await loadImageData(from: source)
         let normalized = try normalizeImageData(rawData)
+        try Task.checkCancellation()
+        guard projectWritableLease != nil else {
+            throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
+        }
         let fileName = makeUniqueImageFileName(ext: normalized.fileExtension, source: source)
         let relativePath = try ProjectFileManager.saveImage(data: normalized.data, fileName: fileName, for: document)
         let reference = normalizeTypstQuotes(String(format: document.imageInsertionTemplate, relativePath))

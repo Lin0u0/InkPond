@@ -51,20 +51,35 @@ final class NetworkReachability {
         monitor = nil
     }
 
-    /// Synchronous snapshot of whether the network is reachable.
-    /// Safe to call from any actor context.
-    nonisolated static func currentlyReachable() -> Bool {
-        let semaphore = DispatchSemaphore(value: 0)
-        let box = OSAllocatedUnfairLock(initialState: false)
-        let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { path in
-            box.withLock { $0 = path.status == .satisfied }
-            semaphore.signal()
+    /// An asynchronous stream of network reachability changes. The monitor is
+    /// cancelled as soon as the consumer releases the stream.
+    nonisolated static func updates() -> AsyncStream<Bool> {
+        AsyncStream { continuation in
+            let monitor = NWPathMonitor()
+            let queue = DispatchQueue(label: "com.inkpond.reachability-stream")
+            monitor.pathUpdateHandler = { path in
+                continuation.yield(path.status == .satisfied)
+            }
+            continuation.onTermination = { _ in monitor.cancel() }
+            monitor.start(queue: queue)
         }
-        let queue = DispatchQueue(label: "com.inkpond.reachability-check")
-        monitor.start(queue: queue)
-        _ = semaphore.wait(timeout: .now() + 3)
-        monitor.cancel()
-        return box.withLock { $0 }
+    }
+
+    /// Async one-shot snapshot. This intentionally avoids blocking MainActor
+    /// or a cooperative executor with a semaphore.
+    nonisolated static func currentlyReachable() async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                var iterator = updates().makeAsyncIterator()
+                return await iterator.next() ?? false
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(3))
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
     }
 }

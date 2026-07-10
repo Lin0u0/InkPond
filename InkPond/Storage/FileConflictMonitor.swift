@@ -175,41 +175,19 @@ final class FileConflictMonitor: NSObject, NSFilePresenter {
 
     // MARK: - Resolution
 
+    func data(for info: ConflictVersionInfo) throws -> Data {
+        try Data(contentsOf: info.fileVersion.url)
+    }
+
     /// Keep the current version on disk. All conflict versions are discarded.
-    func resolveKeepingCurrent() {
+    func resolveKeepingCurrent() throws {
         guard let url = monitoredURL else { return }
 
         let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
         for version in versions {
             version.isResolved = true
         }
-        do {
-            try NSFileVersion.removeOtherVersionsOfItem(at: url)
-        } catch {
-            os_log(.error, "FileConflictMonitor: failed to remove other versions: %{public}@",
-                   error.localizedDescription)
-        }
-
-        refreshConflictState()
-    }
-
-    /// Keep a specific conflict version, replacing the current file on disk.
-    /// After replacement, all other conflict versions are discarded.
-    func resolveKeepingVersion(_ info: ConflictVersionInfo) {
-        guard let url = monitoredURL else { return }
-
-        do {
-            try info.fileVersion.replaceItem(at: url, options: [])
-
-            let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
-            for version in versions {
-                version.isResolved = true
-            }
-            try NSFileVersion.removeOtherVersionsOfItem(at: url)
-        } catch {
-            os_log(.error, "FileConflictMonitor: failed to resolve with version: %{public}@",
-                   error.localizedDescription)
-        }
+        try NSFileVersion.removeOtherVersionsOfItem(at: url)
 
         refreshConflictState()
     }

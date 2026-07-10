@@ -7,6 +7,10 @@ import Foundation
 import os.log
 
 extension ProjectFileManager {
+    struct RootMigrationAcknowledgement {
+        let projectID: ProjectID
+        let destinationURL: URL
+    }
     private static let reservedDocumentDirectoryNames: Set<String> = [
         "AppFonts",
         "LocalPackages"
@@ -43,20 +47,34 @@ extension ProjectFileManager {
         })
     }
 
-    static func migrateLegacyStructure(documents: [InkPondDocument]) {
+    static func migrateLegacyStructure(documents: [InkPondDocument]) -> [RootMigrationAcknowledgement] {
         let fm = FileManager.default
-        guard let rootURL = syncDocumentsURL else { return }
+        guard let rootURL = syncDocumentsURL else { return [] }
         let legacyRoot = rootURL.appendingPathComponent("Projects", isDirectory: true)
-        guard fm.fileExists(atPath: legacyRoot.path) else { return }
+        var acknowledgements: [RootMigrationAcknowledgement] = []
 
         for doc in documents {
+            if let pendingDestination = ProjectRootMigrationJournal.pendingDestinationURL(projectID: doc.stableProjectID),
+               doc.projectID == pendingDestination.lastPathComponent {
+                acknowledgements.append(RootMigrationAcknowledgement(
+                    projectID: doc.stableProjectID,
+                    destinationURL: pendingDestination
+                ))
+                continue
+            }
             guard UUID(uuidString: doc.projectID) != nil else { continue }
             let oldDir = legacyRoot.appendingPathComponent(doc.projectID, isDirectory: true)
-            let newFolderName = uniqueFolderName(for: doc.title)
-            let newDir = rootURL.appendingPathComponent(newFolderName, isDirectory: true)
-            if fm.fileExists(atPath: oldDir.path) {
+            let pendingDestination = ProjectRootMigrationJournal.pendingDestinationURL(projectID: doc.stableProjectID)
+            guard fm.fileExists(atPath: legacyRoot.path) || pendingDestination != nil else { continue }
+            let newFolderName = pendingDestination?.lastPathComponent ?? uniqueFolderName(for: doc.title)
+            let newDir = pendingDestination ?? rootURL.appendingPathComponent(newFolderName, isDirectory: true)
+            if fm.fileExists(atPath: oldDir.path) || pendingDestination != nil {
                 do {
-                    try fm.moveItem(at: oldDir, to: newDir)
+                    try ProjectRootMigrationJournal.migrate(
+                        sourceURL: oldDir,
+                        destinationURL: newDir,
+                        projectID: doc.stableProjectID
+                    )
                 } catch {
                     os_log(.error, "ProjectFileManager: failed to migrate directory %{public}@ → %{public}@: %{public}@",
                            doc.projectID, newFolderName, error.localizedDescription)
@@ -74,12 +92,17 @@ extension ProjectFileManager {
                        doc.title, error.localizedDescription)
             }
             doc.projectID = newFolderName
+            acknowledgements.append(RootMigrationAcknowledgement(
+                projectID: doc.stableProjectID,
+                destinationURL: newDir
+            ))
             os_log(.info, "ProjectFileManager: migrated %{public}@ → %{public}@", doc.title, newFolderName)
         }
 
         if let items = try? fm.contentsOfDirectory(atPath: legacyRoot.path), items.isEmpty {
             try? fm.removeItem(at: legacyRoot)
         }
+        return acknowledgements
     }
 
     static func migrateContentIfNeeded(for document: InkPondDocument) {

@@ -35,6 +35,7 @@ struct EditorView: UIViewRepresentable {
     var externalChromeBackgroundColor: UIColor = .secondarySystemGroupedBackground
     var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
+    var isEditable: Bool = true
     var onPhotoTapped: () -> Void = {}
     var onSnippetTapped: () -> Void = {}
     var onImagePasted: (Data, NSRange) -> Void = { _, _ in }
@@ -61,6 +62,7 @@ struct EditorView: UIViewRepresentable {
         textView.accessibilityLabel = L10n.a11yEditorLabel
         textView.accessibilityHint = L10n.a11yEditorHint
         textView.accessibilityIdentifier = "editor.text-view"
+        textView.isEditable = isEditable
         context.coordinator.previousTextLength = text.utf16.count
         context.coordinator.restoreViewStateIfNeeded(in: textView)
         return textView
@@ -76,6 +78,7 @@ struct EditorView: UIViewRepresentable {
         textView.setErrorLines(errorLines)
         textView.accessibilityLabel = L10n.a11yEditorLabel
         textView.accessibilityHint = L10n.a11yEditorHint
+        textView.isEditable = isEditable
         textView.onPhotoButtonTapped = onPhotoTapped
         textView.onSnippetButtonTapped = onSnippetTapped
         textView.onImagePasted = onImagePasted

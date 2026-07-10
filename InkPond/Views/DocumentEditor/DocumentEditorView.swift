@@ -8,12 +8,8 @@ import SwiftData
 import PhotosUI
 
 actor BackgroundDocumentFileWriter {
-    func write(_ content: String, to url: URL) throws {
-        if ProjectFileManager.useCoordination {
-            try CloudFileCoordinator.writeString(content, to: url)
-        } else {
-            try content.write(to: url, atomically: true, encoding: .utf8)
-        }
+    func write(_ request: ProjectReliabilityWriteRequest) async throws {
+        try await ProjectReliabilityWriterRegistry.shared.write(request)
     }
 }
 
@@ -47,7 +43,14 @@ struct DocumentEditorView: View {
     @State var isLoadingFileContent = false
     @State var lastPersistedText: String = ""
     @State var saveTask: Task<Void, Never>?
+    @State var saveGeneration: UInt64 = 0
+    @State var activeSaveGeneration: UInt64?
     @State var backgroundFileWriter = BackgroundDocumentFileWriter()
+    @State var projectWritableLease: ProjectWritableLease?
+    @State var projectAccessResolved = false
+    @State var projectLeaseTask: Task<Void, Never>?
+    @State var projectCloseTask: Task<Void, Never>?
+    @State var projectLifecycleGeneration = UUID()
     @State var resolvedCompileFonts: ResolvedCompileFonts = .empty
     @State var availableFontFamilies: [String] = []
     @State var fontFamilyRefreshTask: Task<Void, Never>?
