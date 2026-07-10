@@ -1598,7 +1598,7 @@ struct InkPondTests {
     }
 
     @MainActor
-    @Test func typstCompilerCancelPreventsInFlightResultFromApplying() async {
+    @Test func typstCompilerCancelStopsPublicationButDoesNotInterruptSynchronousWorker() async {
         let probe = CompileProbe()
         probe.block("first")
 
@@ -1615,11 +1615,14 @@ struct InkPondTests {
 
         compiler.cancel()
         probe.release("first")
-        try? await Task.sleep(for: .milliseconds(100))
+        await waitUntil {
+            probe.completedSources == ["first"]
+        }
 
         #expect(!compiler.isCompiling)
         #expect(compiler.pdfData == nil)
         #expect(!compiler.compiledOnce)
+        #expect(probe.completedSources == ["first"])
     }
 
     @MainActor
@@ -3642,12 +3645,17 @@ private final class LockedCounter: @unchecked Sendable {
 private final class CompileProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var started: [String] = []
+    private var completed: [String] = []
     private var blockers: [String: DispatchSemaphore] = [:]
     private var activeCount = 0
     private var maxActiveCount = 0
 
     var startedSources: [String] {
         lock.withLock { started }
+    }
+
+    var completedSources: [String] {
+        lock.withLock { completed }
     }
 
     var maxConcurrent: Int {
@@ -3677,6 +3685,7 @@ private final class CompileProbe: @unchecked Sendable {
 
         lock.withLock {
             activeCount -= 1
+            completed.append(source)
         }
         return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
     }
