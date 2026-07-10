@@ -68,7 +68,7 @@ Status values are `planned`, `in progress`, `verified`, or `blocked`. M0 establi
 | M4-01 | Compilation lacks one immutable identity containing compiler, generation, revision, sources, files, fonts, and packages. | `CompilationSnapshot` codec/API | Mutation-after-submit tests | Compiler state ADR | planned |
 | M4-02 | Compiler/window instances can share mutable Rust `SimpleWorld` state. | Compiler instance API | Same-project concurrent isolation test | Rust session model | planned |
 | M4-03 | Source replace, compile, SourceMap, and artifact extraction are not one isolated transaction. | Rust compilation session | Cross-generation consistency tests | Compiler state ADR | planned |
-| M4-04 | Swift task cancellation does not cooperatively stop Typst core or artifact work. | Cancellation token across Swift/C/Rust | Bounded cancellation measurements | Cancellation contract | blocked by M0 hard gate |
+| M4-04 | Typst core cannot be hard-cancelled; the approved contract is a truthful soft UI deadline plus latest-wins generation invalidation. | Generation invalidation and publication gate | Expired generations publish nothing; worst-case duration/CPU/memory/queue measurements | Cancellation contract | planned; soft timeout approved 2026-07-10 |
 | M4-05 | Real-time Preview must be latest-wins and expired generations must publish nothing. | Preview publisher API | UI/cache/stats/session stale-generation matrix | Compiler state ADR | planned |
 | M4-06 | Manual export needs an independent user-cancellable task unaffected by typing. | Export task API | Preview edits do not cancel export | Export behavior | planned |
 | M4-07 | SVG, PDF, SourceMap, and compiled-output statistics need atomic bundle publication. | Preview artifact API | No mixed-generation bundle test | Artifact schema | planned |
@@ -138,6 +138,6 @@ Status values are `planned`, `in progress`, `verified`, or `blocked`. M0 establi
 ## M0 and M7 gates
 
 - M0 evidence is recorded in `m0-feasibility.md` and `m0-baseline.md`.
-- M0 hard-cancellation conclusion blocks M4-04 until the user approves an upstream patch/fork or revised timeout contract.
+- The user approved the revised soft-timeout/latest-wins contract on 2026-07-10; M4-04 is unblocked for implementation under that contract.
 - M7 must resolve every `planned`, `in progress`, or `blocked` row before release-candidate completion.
 - Evidence is invalid if it uses real user projects for destructive sync/migration tests or leaves temporary simulators, clones, DerivedData, result bundles, or fixtures behind.

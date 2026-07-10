@@ -12,16 +12,19 @@ Recorded 2026-07-10 for issue #25. These conclusions gate later milestones; none
 - Source inspection of the real Typst 0.15 and InkPond FFI surfaces establishes that no cancellation signal crosses the ABI. Separately, the characterization test `typstCompilerCancelStopsPublicationButDoesNotInterruptSynchronousWorker` proves the Swift wrapper behavior: the cancelled generation publishes no Preview data, while an injected blocking synchronous worker still completes after release. The injected worker is not presented as a real-Typst timing experiment.
 - Debounce sleeps, queued requests, generation publication, and work before entering FFI can be cancelled or discarded. Package HTTP has its own bounded timeout. None of those facts makes an in-progress Typst compile cancellable.
 
-### Decision and gate
+### Approved decision
 
 InkPond must not describe the current 30-second behavior as a hard compilation timeout. Discarding an expired generation is latest-wins publication safety, not cancellation.
 
-M4-04 remains blocked pending explicit approval of one of these contracts:
+On 2026-07-10, the user approved the revised soft-timeout contract:
 
-1. maintain a Typst fork/upstream patch that threads cooperative cancellation through evaluation, layout, package/file work, SVG/PDF generation, and FFI; or
-2. revise the product contract to a soft UI deadline with honest “still stopping” state, latest-wins publication, and bounded subprocess/session isolation where available.
+- 30 seconds is a UI deadline that reports a long-running compilation; it is not a claim that Rust execution stopped.
+- Editing, closing, or cancelling invalidates the generation immediately. An expired generation cannot publish UI, Preview artifacts, cache entries, statistics, or SourceMap state.
+- Pending real-time work is latest-wins. Manual export remains an independent task.
+- The underlying synchronous FFI call may continue until Typst returns, and the UI must describe that state honestly where relevant.
+- M4 must measure worst-case duration, CPU, memory, and queue behavior. If the soft contract is operationally unacceptable, return for approval before introducing a maintained Typst fork.
 
-Unsafe thread termination is rejected. M0 does not alter production timeout behavior because that belongs to the approved M4 contract.
+Unsafe thread termination remains rejected. The maintained-fork/upstream-patch option is deferred rather than silently adopted. M4-04 is no longer blocked on a product decision, but it remains `planned` until the approved publication-safety and measurement evidence passes.
 
 ## Dependency-free three-way diff3 — behavior feasible, spike not production-ready
 
