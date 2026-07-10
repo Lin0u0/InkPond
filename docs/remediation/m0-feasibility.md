@@ -9,7 +9,7 @@ Recorded 2026-07-10 for issue #25. These conclusions gate later milestones; none
 - Typst 0.15 exposes synchronous `compile(world)` and has no cancellation token, callback, deadline, or interrupt parameter in its public compilation surface.
 - InkPond's C ABI calls Typst synchronously. Once a detached Swift task enters the FFI call, `Task.cancel()` only marks the Swift task cancelled; Rust has no observation point.
 - The current 30-second race cancels the detached task handle and suppresses publication, but the synchronous Rust compile can continue consuming CPU and memory until it returns.
-- The characterization test `typstCompilerCancelStopsPublicationButDoesNotInterruptSynchronousWorker` proves both halves: the cancelled generation publishes no Preview data, while the blocked synchronous worker still completes after release.
+- Source inspection of the real Typst 0.15 and InkPond FFI surfaces establishes that no cancellation signal crosses the ABI. Separately, the characterization test `typstCompilerCancelStopsPublicationButDoesNotInterruptSynchronousWorker` proves the Swift wrapper behavior: the cancelled generation publishes no Preview data, while an injected blocking synchronous worker still completes after release. The injected worker is not presented as a real-Typst timing experiment.
 - Debounce sleeps, queued requests, generation publication, and work before entering FFI can be cancelled or discarded. Package HTTP has its own bounded timeout. None of those facts makes an in-progress Typst compile cancellable.
 
 ### Decision and gate
@@ -27,7 +27,7 @@ Unsafe thread termination is rejected. M0 does not alter production timeout beha
 
 ### Evidence
 
-`Tools/M0/Diff3Spike.swift` implements deterministic line-oriented Base/Local/iCloud merge behavior with no third-party dependency. Seven public-seam cases pass:
+`Tools/M0/Diff3Spike.swift` implements deterministic line-oriented Base/Local/iCloud merge behavior with no third-party dependency. Eight public-seam cases pass:
 
 - independent local and remote edits merge automatically;
 - overlapping replacements conflict;
@@ -36,6 +36,7 @@ Unsafe thread termination is rejected. M0 does not alter production timeout beha
 - delete/replace overlap conflicts;
 - repeated lines produce stable output;
 - one-sided deletion is preserved.
+- a replacement and an independent EOF append merge without a false conflict.
 
 Conflicts retain Base, Local, and iCloud text and emit stable diff3 markers. The spike is not linked into InkPond.
 
@@ -51,15 +52,15 @@ M3 may keep the public merge result and fixed cases, but must replace the intern
 
 On a newly created iPhone 17 / iOS 26.5 simulator with no Apple account, `simctl icloud_sync` failed with `BRCloudDocsErrorDomain` code 153. The app's simulated entitlements are present, but an entitlement and a sync trigger do not create an authenticated ubiquity container or prove propagation.
 
-### Safe simulator coverage
+### Deterministic coverage boundary
 
-Isolated simulators can deterministically verify:
+M0 directly verifies coordinated write/read/move/delete against an ordinary simulator sandbox through `cloudFileCoordinatorSupportsDeterministicSandboxCRUD`. Later isolated-simulator suites can deterministically verify the following only after the M1 fault-injectable backend and journals exist:
 
 - local/shadow filesystem transactions and restart recovery;
-- `NSFileCoordinator` behavior against ordinary sandbox files;
+- `NSFileCoordinator` behavior against ordinary sandbox files (covered at M0 for basic CRUD);
 - unavailable-container and offline UI/state handling;
 - session, journal, manifest, tombstone, merge, and migration logic through a fault-injectable fake backend;
-- app lifecycle, navigation, progress, accessibility, and non-destructive integration behavior;
+- app lifecycle, navigation, progress, accessibility, and non-destructive integration behavior once those milestone surfaces exist;
 - cleanup of all simulator data after each destructive matrix.
 
 ### Unsupported claims in a fresh isolated simulator
@@ -74,6 +75,6 @@ A fresh unauthenticated simulator cannot prove:
 
 ### Decision and fallback
 
-All destructive sync/migration/conflict coverage belongs to the fault-injectable fake backend in isolated simulators. Real iCloud propagation may be claimed only after a separate run using a dedicated, signed-in simulator account and isolated container; the result must be labelled manual/environmental rather than deterministic CI evidence. Third-party File Provider semantics require provider-specific manual acceptance and must not gate the deterministic suite.
+All destructive sync/migration/conflict coverage belongs to the future fault-injectable fake backend in isolated simulators; M0 does not claim that matrix already exists. Real iCloud propagation may be claimed only after a separate run using a dedicated, signed-in simulator account and isolated container; the result must be labelled manual/environmental rather than deterministic CI evidence. Third-party File Provider semantics require provider-specific manual acceptance and must not gate the deterministic suite.
 
 No real user project or device data is authorized for these tests.

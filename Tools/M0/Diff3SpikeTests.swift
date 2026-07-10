@@ -10,7 +10,8 @@ enum Diff3SpikeTests {
         testDeleteAndReplaceOverlap()
         testRepeatedLinesHaveStableOutput()
         testOneSidedDeletionAtEnd()
-        print("Diff3SpikeTests: 7 passed")
+        testReplacementAndEOFAppendDoNotConflict()
+        print("Diff3SpikeTests: 8 passed")
     }
 
     private static func testNonOverlappingChangesMergeAutomatically() {
@@ -105,6 +106,20 @@ enum Diff3SpikeTests {
         )
 
         expectEqual(result, MergeResult(text: "one\n", conflicts: []), test: #function)
+    }
+
+    private static func testReplacementAndEOFAppendDoNotConflict() {
+        let result = Diff3.merge(
+            base: "one\ntwo\n",
+            local: "one\nlocal two\n",
+            remote: "one\ntwo\nremote tail\n"
+        )
+
+        expectEqual(
+            result,
+            MergeResult(text: "one\nlocal two\nremote tail\n", conflicts: []),
+            test: #function
+        )
     }
 
     private static func expectEqual<T: Equatable>(

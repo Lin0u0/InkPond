@@ -208,11 +208,14 @@ enum Diff3 {
     }
 
     private static func overlaps(_ lhs: Change, _ rhs: Change) -> Bool {
+        if lhs.start == lhs.end, rhs.start == rhs.end {
+            return lhs.start == rhs.start
+        }
         if lhs.start == lhs.end {
-            return rhs.start <= lhs.start && lhs.start <= rhs.end
+            return rhs.start <= lhs.start && lhs.start < rhs.end
         }
         if rhs.start == rhs.end {
-            return lhs.start <= rhs.start && rhs.start <= lhs.end
+            return lhs.start <= rhs.start && rhs.start < lhs.end
         }
         return max(lhs.start, rhs.start) < min(lhs.end, rhs.end)
     }

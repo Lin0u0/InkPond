@@ -8,6 +8,7 @@ device_type="${INKPOND_M0_DEVICE_TYPE:-com.apple.CoreSimulator.SimDeviceType.iPh
 artifact_root="$(mktemp -d "${TMPDIR:-/tmp}/inkpond-m0.XXXXXX")"
 derived_data="$artifact_root/DerivedData"
 result_bundle="$artifact_root/InkPondTests.xcresult"
+product_benchmark_result_bundle="$artifact_root/M0ProductBenchmark.xcresult"
 fixture_copy="$artifact_root/Fixtures"
 simulator_name="InkPond-M0-$(date +%Y%m%d-%H%M%S)-$$"
 simulator_id=""
@@ -30,11 +31,16 @@ export DEVELOPER_DIR="$developer_dir"
 
 cd "$repo_root"
 mkdir -p "$derived_data"
-ditto Tools/M0/Fixtures "$fixture_copy"
+ditto InkPondTests/M0Fixtures "$fixture_copy"
 
 print "M0_ARTIFACT_ROOT=$artifact_root"
 xcodebuild -version
-swift Tools/M0/FixtureGenerator.swift --check
+INKPOND_M0_FIXTURE_DIR="$fixture_copy" swift Tools/M0/FixtureGenerator.swift --check
+swiftc -parse-as-library \
+    Tools/M0/Diff3Spike.swift \
+    Tools/M0/Diff3SpikeTests.swift \
+    -o "$artifact_root/diff3-tests"
+"$artifact_root/diff3-tests"
 
 simulator_id="$(xcrun simctl create "$simulator_name" "$device_type" "$runtime_id")"
 print "M0_SIMULATOR_ID=$simulator_id"
@@ -64,6 +70,7 @@ xcodebuild test \
     -project InkPond.xcodeproj \
     -scheme InkPond \
     -only-testing:InkPondTests \
+    -skip-testing:InkPondTests/M0ProductBenchmarkTests \
     -destination "id=$simulator_id" \
     -parallel-testing-enabled NO \
     -derivedDataPath "$derived_data/tests" \
@@ -73,7 +80,21 @@ print "M0_XCRESULT_SUMMARY_BEGIN"
 xcrun xcresulttool get test-results summary --path "$result_bundle"
 print "M0_XCRESULT_SUMMARY_END"
 
-cargo test --manifest-path rust-ffi/Cargo.toml
+xcodebuild test \
+    -quiet \
+    -project InkPond.xcodeproj \
+    -scheme InkPond \
+    -only-testing:InkPondTests/M0ProductBenchmarkTests \
+    -destination "id=$simulator_id" \
+    -parallel-testing-enabled NO \
+    -derivedDataPath "$derived_data/tests" \
+    -resultBundlePath "$product_benchmark_result_bundle"
+
+print "M0_PRODUCT_BENCHMARK_SUMMARY_BEGIN"
+xcrun xcresulttool get test-results summary --path "$product_benchmark_result_bundle"
+print "M0_PRODUCT_BENCHMARK_SUMMARY_END"
+
+cargo test --manifest-path rust-ffi/Cargo.toml -- --test-threads=1
 cargo fmt --manifest-path rust-ffi/Cargo.toml --check
 git diff --check
 plutil -lint InkPond/Info.plist InkPond/InkPond.entitlements
@@ -86,5 +107,6 @@ xcrun xcstringstool compile \
     --dry-run \
     --output-directory "$artifact_root/xcstrings" \
     InkPond/Resources/Localization/InfoPlist.xcstrings
+Tools/M0/run-benchmarks.sh
 
 print "M0_CLEANUP=temporary simulator, DerivedData, result bundle, and fixture copy will be deleted"

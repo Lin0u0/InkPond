@@ -2,8 +2,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-fixture_root="$repo_root/Tools/M0/Fixtures"
+fixture_root="$repo_root/InkPondTests/M0Fixtures"
 work_root="$(mktemp -d "${TMPDIR:-/tmp}/inkpond-m0-bench.XXXXXX")"
+typst_bin="${INKPOND_M0_TYPST_BIN:-/opt/homebrew/bin/typst}"
 
 cleanup() {
     rm -rf "$work_root"
@@ -13,7 +14,17 @@ trap cleanup EXIT INT TERM
 cd "$repo_root"
 swift Tools/M0/FixtureGenerator.swift --check >/dev/null
 
-print "tool,$(typst --version)"
+if [[ ! -x "$typst_bin" ]]; then
+    print -u2 "Pinned Typst executable not found: $typst_bin"
+    exit 1
+fi
+typst_version="$($typst_bin --version)"
+if [[ "$typst_version" != "typst 0.15.0"* ]]; then
+    print -u2 "Expected Typst 0.15.0, found: $typst_version"
+    exit 1
+fi
+
+print "tool,$typst_version"
 print "hardware,$(sysctl -n machdep.cpu.brand_string)"
 print "fixture,median_seconds,output_bytes,runs"
 
@@ -29,7 +40,7 @@ for name in \
     for run in 1 2 3; do
         time_file="$work_root/$name-$run.time"
         /usr/bin/time -p -o "$time_file" \
-            typst compile \
+            "$typst_bin" compile \
             --root "$fixture_root" \
             "$fixture_root/$name.typ" \
             "$output"

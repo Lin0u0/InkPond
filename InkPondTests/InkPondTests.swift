@@ -48,6 +48,23 @@ struct InkPondTests {
         #expect(!AppDistribution.isTestFlightReceiptURL(nil))
     }
 
+    @Test func cloudFileCoordinatorSupportsDeterministicSandboxCRUD() throws {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.typ")
+        let moved = root.appendingPathComponent("moved.typ")
+
+        try CloudFileCoordinator.writeString("= Coordinated", to: source)
+        #expect(try CloudFileCoordinator.readString(from: source) == "= Coordinated")
+
+        try CloudFileCoordinator.moveItem(from: source, to: moved)
+        #expect(!FileManager.default.fileExists(atPath: source.path))
+        #expect(try CloudFileCoordinator.readString(from: moved) == "= Coordinated")
+
+        try CloudFileCoordinator.removeItem(at: moved)
+        #expect(!FileManager.default.fileExists(atPath: moved.path))
+    }
+
     @Test func storagePressureAssessmentClassifiesCapacity() {
         let now = Date()
         let normal = StorageCapacitySnapshot(

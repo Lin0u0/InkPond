@@ -1,8 +1,13 @@
 import CryptoKit
 import Foundation
 
-private let fixtureDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    .appendingPathComponent("Tools/M0/Fixtures", isDirectory: true)
+private let fixtureDirectory: URL = {
+    if let override = ProcessInfo.processInfo.environment["INKPOND_M0_FIXTURE_DIR"] {
+        return URL(fileURLWithPath: override, isDirectory: true)
+    }
+    return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent("InkPondTests/M0Fixtures", isDirectory: true)
+}()
 
 private func fixedUTF16Text(count: Int) -> String {
     let header = "= InkPond M0 fixed UTF-16 corpus\n"
