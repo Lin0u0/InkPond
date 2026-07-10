@@ -42,6 +42,7 @@ final class AppFontLibrary {
     @ObservationIgnored private var monitoredDirectoryURL: URL?
 
     private(set) var items: [AppFontItem] = []
+    private(set) var groupedItems: [AppFontGroup] = []
 
     init(rootURL: URL? = nil) {
         self.rootURL = rootURL
@@ -64,7 +65,7 @@ final class AppFontLibrary {
         fileNames.isEmpty
     }
 
-    var groupedItems: [AppFontGroup] {
+    private static func groupedItems(from items: [AppFontItem]) -> [AppFontGroup] {
         var dict: [String: (isBuiltIn: Bool, fileNames: [String], faces: [AppFontFace])] = [:]
         for item in items {
             let key = item.displayName
@@ -98,12 +99,14 @@ final class AppFontLibrary {
         }.sorted { $0.familyName.localizedCaseInsensitiveCompare($1.familyName) == .orderedAscending }
     }
 
-    private func fallbackFaceName(for item: AppFontItem) -> String {
+    private static func fallbackFaceName(for item: AppFontItem) -> String {
         item.fileName.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? item.displayName
     }
 
     func reload() {
-        items = FontManager.appFontItems(rootURL: rootURL)
+        let latestItems = FontManager.appFontItems(rootURL: rootURL)
+        items = latestItems
+        groupedItems = Self.groupedItems(from: latestItems)
     }
 
     @MainActor

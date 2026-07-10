@@ -38,6 +38,26 @@ static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> 
 static PACKAGE_FETCH_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static PREVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<SimpleWorld>>>> = OnceLock::new();
 
+#[derive(Clone, PartialEq, Eq)]
+struct FileFingerprint {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+#[derive(Clone)]
+struct CachedSource {
+    path: PathBuf,
+    fingerprint: FileFingerprint,
+    source: Source,
+}
+
+#[derive(Clone)]
+struct CachedFile {
+    path: PathBuf,
+    fingerprint: FileFingerprint,
+    bytes: Bytes,
+}
+
 #[cfg(debug_assertions)]
 macro_rules! debug_log {
     ($($arg:tt)*) => {
@@ -89,10 +109,10 @@ struct SimpleWorld {
     local_packages_root: Option<PathBuf>,
     /// Maps "ns/name/ver" → Ok(extracted dir) | Err(message).
     pkg_dirs: Mutex<HashMap<String, Result<PathBuf, PackageError>>>,
-    /// Per-request source cache (avoids re-reading the same file).
-    source_cache: Mutex<HashMap<FileId, Source>>,
-    /// Per-request binary file cache.
-    file_cache: Mutex<HashMap<FileId, Bytes>>,
+    /// Source cache for imported files, validated with path metadata before reuse.
+    source_cache: Mutex<HashMap<FileId, CachedSource>>,
+    /// Binary file cache for images/assets, validated with path metadata before reuse.
+    file_cache: Mutex<HashMap<FileId, CachedFile>>,
 }
 
 impl SimpleWorld {
@@ -218,9 +238,6 @@ impl SimpleWorld {
 
     fn replace_main_source(&self, source_text: &str) {
         self.source.lock().unwrap().replace(source_text);
-        self.pkg_dirs.lock().unwrap().clear();
-        self.source_cache.lock().unwrap().clear();
-        self.file_cache.lock().unwrap().clear();
     }
 
     /// Return (and download if needed) the local directory for a package.
@@ -323,6 +340,14 @@ fn project_file_id(path: &str) -> FileId {
 
 fn vpath_not_found(id: FileId) -> FileError {
     FileError::NotFound(PathBuf::from(id.vpath().get_without_slash()))
+}
+
+fn file_fingerprint(path: &Path) -> std::io::Result<FileFingerprint> {
+    let metadata = std::fs::metadata(path)?;
+    Ok(FileFingerprint {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+    })
 }
 
 fn source_range_from_span(source: &Source, span: Span) -> Option<Range<usize>> {
@@ -603,11 +628,6 @@ impl World for SimpleWorld {
             return Ok(self.main_source());
         }
 
-        // Check cache first
-        if let Some(src) = self.source_cache.lock().unwrap().get(&id).cloned() {
-            return Ok(src);
-        }
-
         // Resolve the file path
         let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
@@ -618,18 +638,27 @@ impl World for SimpleWorld {
             self.resolve_vpath(root, id)?
         };
 
+        let fingerprint = file_fingerprint(&path).map_err(|_| FileError::NotFound(path.clone()))?;
+        if let Some(cached) = self.source_cache.lock().unwrap().get(&id).cloned() {
+            if cached.path == path && cached.fingerprint == fingerprint {
+                return Ok(cached.source);
+            }
+        }
+
         let text = std::fs::read_to_string(&path).map_err(|_| FileError::NotFound(path.clone()))?;
         let src = Source::new(id, text);
-        self.source_cache.lock().unwrap().insert(id, src.clone());
+        self.source_cache.lock().unwrap().insert(
+            id,
+            CachedSource {
+                path,
+                fingerprint,
+                source: src.clone(),
+            },
+        );
         Ok(src)
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
-        // Check cache first
-        if let Some(b) = self.file_cache.lock().unwrap().get(&id).cloned() {
-            return Ok(b);
-        }
-
         // Resolve the file path
         let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
@@ -640,9 +669,23 @@ impl World for SimpleWorld {
             self.resolve_vpath(root, id)?
         };
 
+        let fingerprint = file_fingerprint(&path).map_err(|_| FileError::NotFound(path.clone()))?;
+        if let Some(cached) = self.file_cache.lock().unwrap().get(&id).cloned() {
+            if cached.path == path && cached.fingerprint == fingerprint {
+                return Ok(cached.bytes);
+            }
+        }
+
         let data = std::fs::read(&path).map_err(|_| FileError::NotFound(path.clone()))?;
         let bytes = Bytes::new(data);
-        self.file_cache.lock().unwrap().insert(id, bytes.clone());
+        self.file_cache.lock().unwrap().insert(
+            id,
+            CachedFile {
+                path,
+                fingerprint,
+                bytes: bytes.clone(),
+            },
+        );
         Ok(bytes)
     }
 
@@ -3328,6 +3371,32 @@ mod tests {
         world.replace_main_source("= Second");
 
         assert_eq!(world.main_source().text(), "= Second");
+    }
+
+    #[test]
+    fn simple_world_revalidates_cached_project_sources() {
+        let root = make_temp_dir();
+        let source_path = root.join("chapter.typ");
+        std::fs::write(&source_path, "= First").unwrap();
+        let root_string = CString::new(root.to_string_lossy().as_ref()).unwrap();
+        let options = TypstOptions {
+            font_paths: std::ptr::null(),
+            font_path_count: 0,
+            cache_dir: std::ptr::null(),
+            root_dir: root_string.as_ptr(),
+            local_packages_dir: std::ptr::null(),
+        };
+        let world = unsafe { SimpleWorld::new("#include \"chapter.typ\"", &options) };
+        let id = project_file_id("chapter.typ");
+
+        let first = world.source(id).expect("first source read should succeed");
+        assert_eq!(first.text(), "= First");
+
+        std::fs::write(&source_path, "= Second with different length").unwrap();
+        let second = world.source(id).expect("second source read should succeed");
+
+        assert_eq!(second.text(), "= Second with different length");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

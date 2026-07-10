@@ -22,6 +22,7 @@ struct CompiledPreviewCacheInput: Equatable, Sendable {
 }
 
 struct CompiledPreviewCacheSVGPageManifest: Equatable, Sendable {
+    nonisolated let id: String?
     nonisolated let fileName: String
     nonisolated let widthPoints: Double
     nonisolated let heightPoints: Double
@@ -142,7 +143,10 @@ struct CompiledPreviewCacheStore: Sendable {
         return CompiledPreviewCacheSnapshot(entries: entries)
     }
 
-    nonisolated func loadIfValid(for input: CompiledPreviewCacheInput) throws -> Data? {
+    nonisolated func loadIfValid(
+        for input: CompiledPreviewCacheInput,
+        inputFingerprint fingerprint: String? = nil
+    ) throws -> Data? {
         guard let rootURL else { return nil }
 
         let cacheDirectory = cacheDirectory(for: input.descriptor.projectID, rootURL: rootURL)
@@ -156,7 +160,7 @@ struct CompiledPreviewCacheStore: Sendable {
         }
 
         let manifest = try decodeManifest(at: manifestURL)
-        let fingerprint = try inputFingerprint(for: input)
+        let fingerprint = try resolvedInputFingerprint(fingerprint, for: input)
         guard manifest.projectID == input.descriptor.projectID,
               manifest.entryFileName == input.descriptor.entryFileName,
               (manifest.cacheSchemaVersion == 1 || manifest.cacheSchemaVersion == Self.cacheSchemaVersion),
@@ -174,7 +178,10 @@ struct CompiledPreviewCacheStore: Sendable {
         return pdfData
     }
 
-    nonisolated func loadArtifactIfValid(for input: CompiledPreviewCacheInput) throws -> TypstPreviewArtifact? {
+    nonisolated func loadArtifactIfValid(
+        for input: CompiledPreviewCacheInput,
+        inputFingerprint fingerprint: String? = nil
+    ) throws -> TypstPreviewArtifact? {
         guard let rootURL else { return nil }
 
         let cacheDirectory = cacheDirectory(for: input.descriptor.projectID, rootURL: rootURL)
@@ -186,7 +193,7 @@ struct CompiledPreviewCacheStore: Sendable {
         }
 
         let manifest = try decodeManifest(at: manifestURL)
-        let fingerprint = try inputFingerprint(for: input)
+        let fingerprint = try resolvedInputFingerprint(fingerprint, for: input)
         guard manifest.projectID == input.descriptor.projectID,
               manifest.entryFileName == input.descriptor.entryFileName,
               manifest.cacheSchemaVersion == Self.cacheSchemaVersion,
@@ -216,11 +223,11 @@ struct CompiledPreviewCacheStore: Sendable {
             guard fileManager.fileExists(atPath: fileURL.path) else {
                 return nil
             }
-            let svg = try String(contentsOf: fileURL, encoding: .utf8)
             pages.append(TypstPreviewPage(
-                svg: svg,
+                svgFileURL: fileURL,
                 widthPoints: page.widthPoints,
-                heightPoints: page.heightPoints
+                heightPoints: page.heightPoints,
+                id: page.id ?? "\(manifest.inputFingerprint)#\(page.fileName)"
             ))
         }
 
@@ -231,7 +238,11 @@ struct CompiledPreviewCacheStore: Sendable {
         )
     }
 
-    nonisolated func save(pdfData: Data, for input: CompiledPreviewCacheInput) throws {
+    nonisolated func save(
+        pdfData: Data,
+        for input: CompiledPreviewCacheInput,
+        inputFingerprint fingerprint: String? = nil
+    ) throws {
         let fileManager = FileManager.default
         guard let rootURL else { return }
 
@@ -254,7 +265,7 @@ struct CompiledPreviewCacheStore: Sendable {
             entryFileName: input.descriptor.entryFileName,
             typstVersion: input.typstVersion,
             cacheSchemaVersion: 1,
-            inputFingerprint: try inputFingerprint(for: input),
+            inputFingerprint: try resolvedInputFingerprint(fingerprint, for: input),
             pdfByteSize: Int64(pdfData.count),
             svgPages: [],
             updatedAt: Date()
@@ -264,7 +275,11 @@ struct CompiledPreviewCacheStore: Sendable {
         try encodeManifest(manifest, to: cacheDirectory.appendingPathComponent(Self.manifestFileName))
     }
 
-    nonisolated func save(artifact: TypstPreviewArtifact, for input: CompiledPreviewCacheInput) throws {
+    nonisolated func save(
+        artifact: TypstPreviewArtifact,
+        for input: CompiledPreviewCacheInput,
+        inputFingerprint fingerprint: String? = nil
+    ) throws {
         let fileManager = FileManager.default
         guard let rootURL else { return }
 
@@ -283,8 +298,9 @@ struct CompiledPreviewCacheStore: Sendable {
         for (index, page) in artifact.svgPages.enumerated() {
             let fileName = String(format: "page-%04d.svg", index + 1)
             let fileURL = svgDirectory.appendingPathComponent(fileName)
-            try page.svg.write(to: fileURL, atomically: true, encoding: .utf8)
+            try page.loadSVG().write(to: fileURL, atomically: true, encoding: .utf8)
             svgPageManifests.append(CompiledPreviewCacheSVGPageManifest(
+                id: page.id,
                 fileName: fileName,
                 widthPoints: page.widthPoints,
                 heightPoints: page.heightPoints
@@ -297,7 +313,7 @@ struct CompiledPreviewCacheStore: Sendable {
             entryFileName: input.descriptor.entryFileName,
             typstVersion: input.typstVersion,
             cacheSchemaVersion: Self.cacheSchemaVersion,
-            inputFingerprint: try inputFingerprint(for: input),
+            inputFingerprint: try resolvedInputFingerprint(fingerprint, for: input),
             pdfByteSize: artifact.pdfData.map { Int64($0.count) },
             svgPages: svgPageManifests,
             updatedAt: Date()
@@ -391,6 +407,16 @@ struct CompiledPreviewCacheStore: Sendable {
         let data = try JSONSerialization.data(withJSONObject: payload.jsonObject, options: [.sortedKeys])
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private nonisolated func resolvedInputFingerprint(
+        _ fingerprint: String?,
+        for input: CompiledPreviewCacheInput
+    ) throws -> String {
+        if let fingerprint {
+            return fingerprint
+        }
+        return try inputFingerprint(for: input)
     }
 
     private nonisolated func cacheDirectory(for projectID: String, rootURL: URL) -> URL {
@@ -656,11 +682,15 @@ struct CompiledPreviewCacheStore: Sendable {
             "inputFingerprint": manifest.inputFingerprint,
             "pdfByteSize": manifest.pdfByteSize,
             "svgPages": manifest.svgPages.map { page in
-                [
+                var pageObject: [String: Any] = [
                     "fileName": page.fileName,
                     "widthPoints": page.widthPoints,
                     "heightPoints": page.heightPoints
                 ]
+                if let id = page.id {
+                    pageObject["id"] = id
+                }
+                return pageObject
             },
             "updatedAt": Self.makeISO8601Formatter().string(from: manifest.updatedAt)
         ]
@@ -683,6 +713,7 @@ struct CompiledPreviewCacheStore: Sendable {
                 return nil
             }
             return CompiledPreviewCacheSVGPageManifest(
+                id: object["id"] as? String,
                 fileName: fileName,
                 widthPoints: widthNumber.doubleValue,
                 heightPoints: heightNumber.doubleValue

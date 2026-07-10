@@ -47,9 +47,9 @@ final class TypstTextView: UITextView {
     }
 
     private let highlighter = SyntaxHighlighter(font: EditorFontSettings.defaultUIFont)
-    private lazy var highlightScheduler = HighlightScheduler { [weak self] in
-        self?.applyHighlightingNow()
-    }
+    private var highlightScheduler: HighlightScheduler?
+    private var highlightTask: Task<Void, Never>?
+    private var highlightGeneration: UInt64 = 0
     private(set) var gutterView: LineNumberGutterView!
     private var storedTheme: EditorTheme = .system
     private var editorFont: UIFont = EditorFontSettings.defaultUIFont
@@ -58,6 +58,7 @@ final class TypstTextView: UITextView {
     private var jumpHighlightAnimationStartTime: CFTimeInterval?
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "InkPond", category: "EditorHighlight")
     private static let signposter = OSSignposter(logger: logger)
+    private static let asyncHighlightUTF16Threshold = 20_000
 
     // MARK: - Completion
     private let completionEngine = CompletionEngine.shared
@@ -113,6 +114,7 @@ final class TypstTextView: UITextView {
 
         super.init(frame: .zero, textContainer: textContainer)
 
+        setupHighlightScheduler()
         configureAppearance()
         setupGutter()
         setupAccessoryView()
@@ -125,6 +127,7 @@ final class TypstTextView: UITextView {
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        setupHighlightScheduler()
         configureAppearance()
         setupGutter()
         setupAccessoryView()
@@ -136,7 +139,10 @@ final class TypstTextView: UITextView {
     }
 
     deinit {
+        highlightTask?.cancel()
+        pendingTextSelectionControlDragReset?.cancel()
         MainActor.assumeIsolated {
+            highlightScheduler?.cancel()
             jumpHighlightDisplayLink?.invalidate()
             completionPopup?.removeFromSuperview()
             NotificationCenter.default.removeObserver(self)
@@ -160,6 +166,12 @@ final class TypstTextView: UITextView {
         accessibilityTraits.insert(.allowsDirectInteraction)
         accessibilityLabel = L10n.a11yEditorLabel
         accessibilityHint = L10n.a11yEditorHint
+    }
+
+    private func setupHighlightScheduler() {
+        highlightScheduler = HighlightScheduler { [weak self] in
+            self?.applyHighlightingNow()
+        }
     }
 
     private func setupGutter() {
@@ -589,12 +601,46 @@ final class TypstTextView: UITextView {
             gutterView.textDidChange()
             setNeedsLayout()
         }
-        highlightScheduler.schedule(mode)
+        highlightScheduler?.schedule(mode)
     }
 
     private func applyHighlightingNow() {
+        highlightGeneration &+= 1
+        let generation = highlightGeneration
+        highlightTask?.cancel()
+
+        let source = textStorage.string
+        guard source.utf16.count > Self.asyncHighlightUTF16Threshold else {
+            applyHighlightingNow(tokens: nil)
+            return
+        }
+
+        highlightTask = Task { [weak self, source, generation] in
+            let tokenTask = Task.detached(priority: .utility) {
+                TypstBridge.syntaxHighlightTokens(source: source)
+            }
+            let tokens = await withTaskCancellationHandler {
+                await tokenTask.value
+            } onCancel: {
+                tokenTask.cancel()
+            }
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.highlightGeneration == generation,
+                      self.textStorage.string == source else {
+                    return
+                }
+                self.highlightTask = nil
+                self.applyHighlightingNow(tokens: tokens)
+            }
+        }
+    }
+
+    private func applyHighlightingNow(tokens: [TypstSyntaxToken]?) {
         let interval = Self.signposter.beginInterval("editor.highlight")
-        highlighter.highlight(textStorage)
+        highlighter.highlight(textStorage, tokens: tokens)
         gutterView.setNeedsDisplay()
         Self.signposter.endInterval("editor.highlight", interval)
     }

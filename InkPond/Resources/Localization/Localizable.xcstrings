@@ -1,290 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Font family" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "字体族"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "字體族"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "字型家族"
-          }
-        }
-      }
-    },
-    "Hint" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提示"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提示"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提示"
-          }
-        }
-      }
-    },
-    "Image" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图片"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "圖片"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "圖片"
-          }
-        }
-      }
-    },
-    "Refresh" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新整理"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新整理"
-          }
-        }
-      }
-    },
-    "beta_diagnostics.available_storage" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Available Storage" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "可用存储空间" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "可用儲存空間" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "可用儲存空間" } }
-      }
-    },
-    "beta_diagnostics.copied" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Summary copied" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "诊断摘要已复制" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "診斷摘要已複製" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "診斷摘要已複製" } }
-      }
-    },
-    "beta_diagnostics.copy_summary" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy Diagnostic Summary" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制诊断摘要" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "複製診斷摘要" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "複製診斷摘要" } }
-      }
-    },
-    "beta_diagnostics.distribution" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Distribution" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "分发渠道" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "分發渠道" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "分發渠道" } }
-      }
-    },
-    "beta_diagnostics.footer" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Paste this summary into TestFlight feedback when reporting a freeze, iCloud download failure, or crash. It contains metadata only, not document content." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "反馈卡死、iCloud 下载失败或崩溃时，请把这段摘要粘贴到 TestFlight 反馈里。摘要只包含元数据，不包含文档内容。" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "回報卡住、iCloud 下載失敗或崩潰時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含元資料，不包含文件內容。" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "回報卡住、iCloud 下載失敗或當機時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含中繼資料，不包含文件內容。" } }
-      }
-    },
-    "beta_diagnostics.hint" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shows TestFlight diagnostics that help investigate freezes, iCloud downloads, crashes, and storage pressure." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看用于排查卡死、iCloud 下载、崩溃和存储压力的 TestFlight 诊断信息。" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "查看用於排查卡住、iCloud 下載、崩潰和儲存壓力的 TestFlight 診斷資訊。" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "查看用於排查卡住、iCloud 下載、當機和儲存壓力的 TestFlight 診斷資訊。" } }
-      }
-    },
-    "beta_diagnostics.icloud" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "iCloud" } }
-      }
-    },
-    "beta_diagnostics.icloud.local" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local storage mode" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地存储模式" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "本機儲存模式" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "本機儲存模式" } }
-      }
-    },
-    "beta_diagnostics.icloud.no_items" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "No monitored iCloud items yet" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未监测到 iCloud 项目" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未監測到 iCloud 項目" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未監測到 iCloud 項目" } }
-      }
-    },
-    "beta_diagnostics.icloud.summary_format" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "%d current, %d downloading, %d uploading, %d not downloaded, %d errors" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%d 个已同步，%d 个下载中，%d 个上传中，%d 个未下载，%d 个错误" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "%d 個已同步，%d 個下載中，%d 個上載中，%d 個未下載，%d 個錯誤" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "%d 個已同步，%d 個下載中，%d 個上傳中，%d 個未下載，%d 個錯誤" } }
-      }
-    },
-    "beta_diagnostics.last_open_session" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last Open Session" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近打开会话" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "最近開啟工作階段" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "最近開啟工作階段" } }
-      }
-    },
-    "beta_diagnostics.metrickit" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit Diagnostics" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 诊断" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 診斷" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "MetricKit 診斷" } }
-      }
-    },
-    "beta_diagnostics.metrickit.empty" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "No MetricKit diagnostics received yet." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 诊断。" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 診斷。" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未收到 MetricKit 診斷。" } }
-      }
-    },
-    "beta_diagnostics.none" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "None" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "無" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "無" } }
-      }
-    },
-    "beta_diagnostics.overview" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Overview" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "概览" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "概覽" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "概覽" } }
-      }
-    },
-    "beta_diagnostics.recent_events" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent Events" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "最近事件" } }
-      }
-    },
-    "beta_diagnostics.recent_events.empty" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "No diagnostic events recorded yet." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未记录诊断事件。" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "尚未記錄診斷事件。" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "尚未記錄診斷事件。" } }
-      }
-    },
-    "beta_diagnostics.title" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Beta Diagnostics" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Beta 诊断" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "Beta 診斷" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "Beta 診斷" } }
-      }
-    },
-    "beta_diagnostics.version" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Version" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "版本" } },
-        "zh-Hant-HK" : { "stringUnit" : { "state" : "translated", "value" : "版本" } },
-        "zh-Hant-TW" : { "stringUnit" : { "state" : "translated", "value" : "版本" } }
-      }
-    },
-    "Package" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "包"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套件"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套件"
-          }
-        }
-      }
-    },
-    "System Monospaced" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系统等宽"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系統等寬"
-          }
-        },
-        "zh-Hant-TW" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系統等寬"
-          }
-        }
-      }
-    },
     "a11y.cache_refresh.started" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2780,6 +2496,7 @@
       }
     },
     "Acknowledgements" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2976,6 +2693,7 @@
       }
     },
     "Add Font…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3385,6 +3103,557 @@
         }
       }
     },
+    "beta_diagnostics.available_storage" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available Storage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用存储空间"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用儲存空間"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用儲存空間"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.copied" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summary copied"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "诊断摘要已复制"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診斷摘要已複製"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診斷摘要已複製"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.copy_summary" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Diagnostic Summary"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制诊断摘要"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製診斷摘要"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製診斷摘要"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.distribution" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Distribution"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分发渠道"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分發渠道"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分發渠道"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.footer" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste this summary into TestFlight feedback when reporting a freeze, iCloud download failure, or crash. It contains metadata only, not document content."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反馈卡死、iCloud 下载失败或崩溃时，请把这段摘要粘贴到 TestFlight 反馈里。摘要只包含元数据，不包含文档内容。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回報卡住、iCloud 下載失敗或崩潰時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含元資料，不包含文件內容。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回報卡住、iCloud 下載失敗或當機時，請把這段摘要貼到 TestFlight 意見回饋中。摘要只包含中繼資料，不包含文件內容。"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.hint" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows TestFlight diagnostics that help investigate freezes, iCloud downloads, crashes, and storage pressure."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看用于排查卡死、iCloud 下载、崩溃和存储压力的 TestFlight 诊断信息。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看用於排查卡住、iCloud 下載、崩潰和儲存壓力的 TestFlight 診斷資訊。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看用於排查卡住、iCloud 下載、當機和儲存壓力的 TestFlight 診斷資訊。"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.icloud" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.icloud.local" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local storage mode"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地存储模式"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本機儲存模式"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本機儲存模式"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.icloud.no_items" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No monitored iCloud items yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未监测到 iCloud 项目"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未監測到 iCloud 項目"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未監測到 iCloud 項目"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.icloud.summary_format" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d current, %d downloading, %d uploading, %d not downloaded, %d errors"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 个已同步，%d 个下载中，%d 个上传中，%d 个未下载，%d 个错误"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 個已同步，%d 個下載中，%d 個上載中，%d 個未下載，%d 個錯誤"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d 個已同步，%d 個下載中，%d 個上傳中，%d 個未下載，%d 個錯誤"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.last_open_session" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Open Session"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近打开会话"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近開啟工作階段"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近開啟工作階段"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.metrickit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MetricKit Diagnostics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MetricKit 诊断"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MetricKit 診斷"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MetricKit 診斷"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.metrickit.empty" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No MetricKit diagnostics received yet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未收到 MetricKit 诊断。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未收到 MetricKit 診斷。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未收到 MetricKit 診斷。"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.none" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.overview" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概览"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概覽"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概覽"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.recent_events" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent Events"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近事件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近事件"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近事件"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.recent_events.empty" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No diagnostic events recorded yet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未记录诊断事件。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未記錄診斷事件。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未記錄診斷事件。"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta Diagnostics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta 诊断"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta 診斷"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta 診斷"
+          }
+        }
+      }
+    },
+    "beta_diagnostics.version" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        }
+      }
+    },
     "built-in" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3478,6 +3747,7 @@
       }
     },
     "Cache Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3500,6 +3770,7 @@
       }
     },
     "Cached Documents" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3522,6 +3793,7 @@
       }
     },
     "Cached Fonts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3544,6 +3816,7 @@
       }
     },
     "Cached Packages" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3566,6 +3839,7 @@
       }
     },
     "Cancel" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3634,6 +3908,7 @@
       }
     },
     "Clear All" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3656,6 +3931,7 @@
       }
     },
     "Clear All Compile Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3678,6 +3954,7 @@
       }
     },
     "Clear All Compile Cache?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3700,6 +3977,7 @@
       }
     },
     "Clear All Package Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3722,6 +4000,7 @@
       }
     },
     "Clear All Package Cache?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3744,6 +4023,7 @@
       }
     },
     "Clear System Font Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3766,6 +4046,7 @@
       }
     },
     "Clear System Font Cache?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3788,6 +4069,7 @@
       }
     },
     "Close" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3833,6 +4115,7 @@
       }
     },
     "Compile Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3855,6 +4138,7 @@
       }
     },
     "Compile Now" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3877,6 +4161,7 @@
       }
     },
     "Compiling…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3899,6 +4184,7 @@
       }
     },
     "Continue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3921,6 +4207,7 @@
       }
     },
     "Contributor" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3943,6 +4230,7 @@
       }
     },
     "Contributors" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3965,6 +4253,7 @@
       }
     },
     "Create" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4010,6 +4299,7 @@
       }
     },
     "Delete" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4032,6 +4322,7 @@
       }
     },
     "Delete Document" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4373,6 +4664,7 @@
       }
     },
     "Documents" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4395,6 +4687,7 @@
       }
     },
     "Done" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4596,6 +4889,7 @@
       }
     },
     "Enter a name for the new .typ file." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4641,6 +4935,7 @@
       }
     },
     "Entry File" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4663,6 +4958,7 @@
       }
     },
     "Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5497,6 +5793,7 @@
       }
     },
     "Export .typ" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5519,6 +5816,7 @@
       }
     },
     "Export Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5541,6 +5839,7 @@
       }
     },
     "Export Project as Zip" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5563,6 +5862,7 @@
       }
     },
     "File Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5585,6 +5885,7 @@
       }
     },
     "filename.typ" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5653,6 +5954,7 @@
       }
     },
     "Font Directory" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5670,6 +5972,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字型目錄"
+          }
+        }
+      }
+    },
+    "Font family" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字体族"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字體族"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字型家族"
           }
         }
       }
@@ -5866,6 +6191,7 @@
       }
     },
     "Fonts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5888,6 +6214,7 @@
       }
     },
     "Format" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5910,6 +6237,7 @@
       }
     },
     "Generated system font files stay local to this device and are excluded from iCloud Backup." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -5950,6 +6278,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "收起詳情"
+          }
+        }
+      }
+    },
+    "Hint" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示"
           }
         }
       }
@@ -7114,7 +7465,31 @@
         }
       }
     },
+    "Image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片"
+          }
+        }
+      }
+    },
     "Image Directory" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7137,6 +7512,7 @@
       }
     },
     "Image Import Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7159,6 +7535,7 @@
       }
     },
     "Image Insertion" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7204,6 +7581,7 @@
       }
     },
     "Import Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7226,6 +7604,7 @@
       }
     },
     "Import File" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7248,6 +7627,7 @@
       }
     },
     "Import Project" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -7293,6 +7673,7 @@
       }
     },
     "InkPond could not find any .typ files in this project." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8433,6 +8814,7 @@
       }
     },
     "New .typ File" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8455,6 +8837,7 @@
       }
     },
     "New Source File" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8500,6 +8883,7 @@
       }
     },
     "No .typ Files Found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8522,6 +8906,7 @@
       }
     },
     "No cached @preview packages" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8544,6 +8929,7 @@
       }
     },
     "No cached document previews" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8566,6 +8952,7 @@
       }
     },
     "No cached system fonts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -8680,6 +9067,7 @@
       }
     },
     "OK" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9021,6 +9409,7 @@
       }
     },
     "Open" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9130,6 +9519,7 @@
       }
     },
     "Overview" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9151,7 +9541,31 @@
         }
       }
     },
+    "Package" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套件"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套件"
+          }
+        }
+      }
+    },
     "Package Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9174,6 +9588,7 @@
       }
     },
     "Packages" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9196,6 +9611,7 @@
       }
     },
     "Preview" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9682,6 +10098,7 @@
       }
     },
     "Project Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9704,6 +10121,7 @@
       }
     },
     "Project Files" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9749,6 +10167,7 @@
       }
     },
     "Project Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9881,6 +10300,7 @@
       }
     },
     "Recompile" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9903,6 +10323,7 @@
       }
     },
     "Reference implementation for Swift/Rust interop." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9920,6 +10341,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Swift/Rust 互操作方案的參考實作。"
+          }
+        }
+      }
+    },
+    "Refresh" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新整理"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新整理"
           }
         }
       }
@@ -9948,6 +10392,7 @@
       }
     },
     "Rename" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9970,6 +10415,7 @@
       }
     },
     "Rename Document" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -10316,6 +10762,7 @@
       }
     },
     "Selecting a font directory imports its font files into the project font library. You can also skip this step." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -10338,6 +10785,7 @@
       }
     },
     "Set Entry" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -10580,6 +11028,7 @@
       }
     },
     "Share PDF" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -11054,6 +11503,7 @@
       }
     },
     "Skip" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12259,6 +12709,7 @@
       }
     },
     "Soothing pastel color palette powering the editor themes." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12710,6 +13161,7 @@
       }
     },
     "Special Thanks" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12778,6 +13230,7 @@
       }
     },
     "Subdirectory name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12800,6 +13253,7 @@
       }
     },
     "System Font Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12821,7 +13275,31 @@
         }
       }
     },
+    "System Monospaced" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统等宽"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系統等寬"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系統等寬"
+          }
+        }
+      }
+    },
     "Thanks to everyone at Donut for support and inspiration." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12844,6 +13322,7 @@
       }
     },
     "The open-source typesetting system at the core of InkPond." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12866,6 +13345,7 @@
       }
     },
     "This project does not include main.typ. Choose the file used for compilation." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12911,6 +13391,7 @@
       }
     },
     "This removes all cached compiled previews. Documents will recompile the next time they open." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12933,6 +13414,7 @@
       }
     },
     "This removes all downloaded @preview packages. They will be downloaded again on the next compile." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12955,6 +13437,7 @@
       }
     },
     "This removes generated system font files. InkPond will rebuild them the next time a document needs them." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -12977,6 +13460,7 @@
       }
     },
     "Title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -13057,6 +13541,7 @@
       }
     },
     "Total Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -13111,6 +13596,7 @@
       }
     },
     "Unlink" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -13133,6 +13619,7 @@
       }
     },
     "Unlink Folder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -13156,6 +13643,7 @@
     },
     "Updated %@" : {
       "comment" : "Compiled preview cache updated time\nSystem font cache updated time",
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

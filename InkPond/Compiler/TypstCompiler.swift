@@ -583,14 +583,19 @@ final class TypstCompiler {
             materializedFontPaths: materializedFontPaths,
             typstVersion: typstVersion
         )
+        var cacheInputFingerprint: String?
         _ = documentBuilder
 
         switch request.previewCachePolicy {
         case .useCacheIfValid:
+            if let cacheInput {
+                cacheInputFingerprint = try? previewCacheStore.inputFingerprint(for: cacheInput)
+            }
             if let cacheInput,
                let cachedResult = loadCachedPreview(
                 using: previewCacheStore,
-                cacheInput: cacheInput
+                cacheInput: cacheInput,
+                inputFingerprint: cacheInputFingerprint
                ) {
                 return cachedResult
             }
@@ -625,7 +630,7 @@ final class TypstCompiler {
             )
             if let cacheInput, !artifact.svgPages.isEmpty {
                 let startedAt = Date()
-                let estimatedBytes = Int64(artifact.svgPages.reduce(0) { $0 + $1.svg.utf8.count }
+                let estimatedBytes = Int64(artifact.svgPages.reduce(0) { $0 + $1.estimatedByteCount }
                     + (artifact.pdfData?.count ?? 0))
                 Diagnostics.recordStoragePressure(
                     reason: "compiled_preview_save",
@@ -643,7 +648,11 @@ final class TypstCompiler {
                     ]
                 )
                 do {
-                    try previewCacheStore.save(artifact: artifact, for: cacheInput)
+                    try previewCacheStore.save(
+                        artifact: artifact,
+                        for: cacheInput,
+                        inputFingerprint: cacheInputFingerprint
+                    )
                     Diagnostics.record(
                         .cache,
                         "compiled_preview.save.success",
@@ -700,7 +709,8 @@ final class TypstCompiler {
 
     nonisolated private static func loadCachedPreview(
         using previewCacheStore: CompiledPreviewCacheStore,
-        cacheInput: CompiledPreviewCacheInput
+        cacheInput: CompiledPreviewCacheInput,
+        inputFingerprint: String?
     ) -> TypstWorkerResult? {
         let startedAt = Date()
         Diagnostics.record(
@@ -709,7 +719,10 @@ final class TypstCompiler {
             metadata: ["projectHash": Diagnostics.hashIdentifier(cacheInput.descriptor.projectID)]
         )
         do {
-            guard let cachedArtifact = try previewCacheStore.loadArtifactIfValid(for: cacheInput) else {
+            guard let cachedArtifact = try previewCacheStore.loadArtifactIfValid(
+                for: cacheInput,
+                inputFingerprint: inputFingerprint
+            ) else {
                 Diagnostics.record(
                     .cache,
                     "compiled_preview.load.miss",

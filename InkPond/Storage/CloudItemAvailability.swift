@@ -15,6 +15,50 @@ struct CloudDownloadPreparationResult: Equatable, Sendable {
 }
 
 nonisolated enum CloudItemAvailability {
+    @discardableResult
+    static func requestDownloads(at url: URL) throws -> Int {
+        let pendingItems = try pendingUbiquitousItems(at: url)
+        Diagnostics.record(
+            .iCloud,
+            "download_request.pending",
+            metadata: [
+                "rootHash": Diagnostics.hashIdentifier(url.standardizedFileURL.path),
+                "pendingCount": String(pendingItems.count)
+            ]
+        )
+
+        guard !pendingItems.isEmpty else { return 0 }
+
+        let fileManager = FileManager.default
+        var requestedCount = 0
+        for itemURL in pendingItems {
+            do {
+                try fileManager.startDownloadingUbiquitousItem(at: itemURL)
+                requestedCount += 1
+            } catch {
+                Diagnostics.record(
+                    .iCloud,
+                    "download_request.failed",
+                    level: .error,
+                    metadata: Diagnostics.errorMetadata(error)
+                )
+                os_log(
+                    .error,
+                    "CloudItemAvailability: failed to request download for %{public}@: %{public}@",
+                    itemURL.lastPathComponent,
+                    error.localizedDescription
+                )
+            }
+        }
+
+        Diagnostics.record(
+            .iCloud,
+            "download_request.finished",
+            metadata: ["requestedCount": String(requestedCount)]
+        )
+        return requestedCount
+    }
+
     static func prepareForAccess(at url: URL, timeout: TimeInterval = 120) throws -> CloudDownloadPreparationResult {
         let pendingItems = try pendingUbiquitousItems(at: url)
         Diagnostics.record(

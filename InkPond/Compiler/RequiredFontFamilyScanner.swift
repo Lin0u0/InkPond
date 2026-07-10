@@ -35,12 +35,22 @@ struct RequiredFontFamilyScanner {
 
         for fileName in fileContents.keys.sorted() {
             guard let content = fileContents[fileName] else { continue }
+            let ignoredRanges = ignoredSourceRanges(in: content)
 
-            for unresolvedExpression in scanUnresolvedExpressions(in: content, fileName: fileName, seenFamilies: &seenFamilies, families: &families) {
+            for unresolvedExpression in scanUnresolvedExpressions(
+                in: content,
+                fileName: fileName,
+                ignoredRanges: ignoredRanges,
+                seenFamilies: &seenFamilies,
+                families: &families
+            ) {
                 unresolvedExpressions.append(unresolvedExpression)
             }
 
-            hasIncompleteExpressions = hasIncompleteExpressions || contentHasIncompleteExpression(content)
+            hasIncompleteExpressions = hasIncompleteExpressions || contentHasIncompleteExpression(
+                content,
+                ignoredRanges: ignoredRanges
+            )
         }
 
         return ScanResult(
@@ -53,6 +63,7 @@ struct RequiredFontFamilyScanner {
     private func scanUnresolvedExpressions(
         in content: String,
         fileName: String,
+        ignoredRanges: [Range<String.Index>],
         seenFamilies: inout Set<String>,
         families: inout [String]
     ) -> [UnresolvedExpression] {
@@ -62,6 +73,7 @@ struct RequiredFontFamilyScanner {
 
         for match in matches {
             guard let matchRange = Range(match.range, in: content) else { continue }
+            guard !isIgnored(matchRange.lowerBound, in: ignoredRanges) else { continue }
             let valueStart = skipWhitespace(in: content, from: matchRange.upperBound)
 
             switch parseExpression(in: content, from: valueStart) {
@@ -79,12 +91,16 @@ struct RequiredFontFamilyScanner {
         return unresolved
     }
 
-    private func contentHasIncompleteExpression(_ content: String) -> Bool {
+    private func contentHasIncompleteExpression(
+        _ content: String,
+        ignoredRanges: [Range<String.Index>]
+    ) -> Bool {
         let nsRange = NSRange(content.startIndex..<content.endIndex, in: content)
         let matches = Self.assignmentRegex.matches(in: content, range: nsRange)
 
         for match in matches {
             guard let matchRange = Range(match.range, in: content) else { continue }
+            guard !isIgnored(matchRange.lowerBound, in: ignoredRanges) else { continue }
             let valueStart = skipWhitespace(in: content, from: matchRange.upperBound)
             if case .incomplete = parseExpression(in: content, from: valueStart) {
                 return true
@@ -92,6 +108,64 @@ struct RequiredFontFamilyScanner {
         }
 
         return false
+    }
+
+    private func ignoredSourceRanges(in content: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var cursor = content.startIndex
+
+        while cursor < content.endIndex {
+            if content[cursor] == "\"" {
+                let end = parseQuotedString(in: content, from: cursor)?.1 ?? content.endIndex
+                ranges.append(cursor..<end)
+                cursor = end
+                continue
+            }
+
+            if startsLineComment(in: content, at: cursor) {
+                let start = cursor
+                cursor = advanceTwoCharacters(in: content, from: cursor)
+                while cursor < content.endIndex, content[cursor] != "\n", content[cursor] != "\r" {
+                    cursor = content.index(after: cursor)
+                }
+                ranges.append(start..<cursor)
+                continue
+            }
+
+            if startsBlockComment(in: content, at: cursor) {
+                let start = cursor
+                cursor = advanceTwoCharacters(in: content, from: cursor)
+                var depth = 1
+
+                while cursor < content.endIndex {
+                    if startsBlockComment(in: content, at: cursor) {
+                        depth += 1
+                        cursor = advanceTwoCharacters(in: content, from: cursor)
+                        continue
+                    }
+
+                    if endsBlockComment(in: content, at: cursor) {
+                        depth -= 1
+                        cursor = advanceTwoCharacters(in: content, from: cursor)
+                        if depth == 0 { break }
+                        continue
+                    }
+
+                    cursor = content.index(after: cursor)
+                }
+
+                ranges.append(start..<cursor)
+                continue
+            }
+
+            cursor = content.index(after: cursor)
+        }
+
+        return ranges
+    }
+
+    private func isIgnored(_ index: String.Index, in ranges: [Range<String.Index>]) -> Bool {
+        ranges.contains { $0.contains(index) }
     }
 
     private func parseExpression(in content: String, from start: String.Index) -> ParseResult {
@@ -269,6 +343,27 @@ struct RequiredFontFamilyScanner {
             cursor = content.index(after: cursor)
         }
         return cursor
+    }
+
+    private func startsLineComment(in content: String, at index: String.Index) -> Bool {
+        content[index] == "/" && character(after: index, in: content) == "/"
+    }
+
+    private func startsBlockComment(in content: String, at index: String.Index) -> Bool {
+        content[index] == "/" && character(after: index, in: content) == "*"
+    }
+
+    private func endsBlockComment(in content: String, at index: String.Index) -> Bool {
+        content[index] == "*" && character(after: index, in: content) == "/"
+    }
+
+    private func character(after index: String.Index, in content: String) -> Character? {
+        let next = content.index(after: index)
+        return next < content.endIndex ? content[next] : nil
+    }
+
+    private func advanceTwoCharacters(in content: String, from index: String.Index) -> String.Index {
+        content.index(after: content.index(after: index))
     }
 
     private func trimExpression<S: StringProtocol>(in expression: S) -> String {

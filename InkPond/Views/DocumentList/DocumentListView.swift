@@ -75,6 +75,10 @@ struct DocumentListView: View {
     @State var folderLinkImportTitle: String?
     @State var folderLinkImportProjectID: String?
     @State var folderLinkImportTask: Task<Void, Never>?
+    @State var documentOpenProgress: LinkedFolderLoadProgress?
+    @State var documentOpenProgressTitle: String?
+    @State var documentOpenProjectID: String?
+    @State var documentOpenTask: Task<Void, Never>?
     @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = Self.loadPreviewCacheEntriesByProjectID()
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)
@@ -171,9 +175,10 @@ struct DocumentListView: View {
             .modifier(ProjectHomeToolbarBackgroundModifier(background: Color(uiColor: projectHomeChromeUIColor)))
             .overlay { documentListProgressOverlay }
             .safeAreaInset(edge: .bottom) {
-                linkedFolderProgressInset
+                projectProgressInset
             }
             .animation(.snappy(duration: 0.25), value: folderLinkImportProgress)
+            .animation(.snappy(duration: 0.25), value: documentOpenProgress)
     }
 
     @ViewBuilder
@@ -191,18 +196,31 @@ struct DocumentListView: View {
     }
 
     @ViewBuilder
-    private var linkedFolderProgressInset: some View {
-        if let folderLinkImportProgress {
-            LinkedFolderLoadProgressView(
-                title: folderLinkImportTitle ?? L10n.tr("doc.list.action.link_external"),
-                progress: folderLinkImportProgress
-            ) {
-                folderLinkImportTask?.cancel()
+    private var projectProgressInset: some View {
+        VStack(spacing: 8) {
+            if let documentOpenProgress {
+                LinkedFolderLoadProgressView(
+                    title: documentOpenProgressTitle ?? L10n.appName,
+                    progress: documentOpenProgress
+                ) {
+                    documentOpenTask?.cancel()
+                    clearDocumentOpenProgress()
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+
+            if let folderLinkImportProgress {
+                LinkedFolderLoadProgressView(
+                    title: folderLinkImportTitle ?? L10n.tr("doc.list.action.link_external"),
+                    progress: folderLinkImportProgress
+                ) {
+                    folderLinkImportTask?.cancel()
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 }
 

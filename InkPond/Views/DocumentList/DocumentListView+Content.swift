@@ -60,6 +60,8 @@ extension DocumentListView {
             syncTask = nil
             monitorRestartTask?.cancel()
             monitorRestartTask = nil
+            documentOpenTask?.cancel()
+            clearDocumentOpenProgress()
         }
     }
 

@@ -9,6 +9,8 @@ final class SyntaxHighlighter {
     private var baseFont: UIFont
     private let tokenProvider: (String) -> [TypstSyntaxToken]?
     private var theme: EditorTheme
+    private var cachedTokenSource: String?
+    private var cachedTokens: [TypstSyntaxToken]?
 
     private var boldFont: UIFont {
         let descriptor = baseFont.fontDescriptor.withSymbolicTraits(.traitBold)
@@ -45,8 +47,9 @@ final class SyntaxHighlighter {
 
     // MARK: - Highlight
 
-    func highlight(_ textStorage: NSTextStorage) {
+    func highlight(_ textStorage: NSTextStorage, tokens precomputedTokens: [TypstSyntaxToken]? = nil) {
         let fullRange = NSRange(location: 0, length: textStorage.length)
+        let source = textStorage.string
 
         textStorage.beginEditing()
 
@@ -58,7 +61,7 @@ final class SyntaxHighlighter {
         ], range: fullRange)
 
         let excludedOffsets: IndexSet
-        if let tokens = tokenProvider(textStorage.string) {
+        if let tokens = tokens(for: source, precomputedTokens: precomputedTokens) {
             excludedOffsets = applyTypstTokens(tokens, to: textStorage)
         } else {
             excludedOffsets = IndexSet()
@@ -75,6 +78,21 @@ final class SyntaxHighlighter {
         applyJumpLineHighlight(textStorage)
 
         textStorage.endEditing()
+    }
+
+    private func tokens(for source: String, precomputedTokens: [TypstSyntaxToken]?) -> [TypstSyntaxToken]? {
+        if let precomputedTokens {
+            cachedTokenSource = source
+            cachedTokens = precomputedTokens
+            return precomputedTokens
+        }
+        if cachedTokenSource == source {
+            return cachedTokens
+        }
+        let tokens = tokenProvider(source)
+        cachedTokenSource = source
+        cachedTokens = tokens
+        return tokens
     }
 
     private func applyTypstTokens(_ tokens: [TypstSyntaxToken], to textStorage: NSTextStorage) -> IndexSet {

@@ -1126,6 +1126,12 @@ struct InkPondTests {
         #expect(TypstCompiler.taskPriority(for: .immediate) == .medium)
     }
 
+    @Test func typstTextViewDeinitBeforeHighlightSchedulingDoesNotCrash() {
+        var textView: TypstTextView? = TypstTextView()
+        #expect(textView != nil)
+        textView = nil
+    }
+
     @MainActor
     @Test func highlightSchedulerCoalescesBurstUpdates() async {
         let counter = LockedCounter()
@@ -2292,6 +2298,33 @@ struct InkPondTests {
         ])
     }
 
+    @Test func requiredFontFamilyScannerIgnoresCommentedFontAssignments() {
+        let scanner = RequiredFontFamilyScanner()
+
+        let result = scanner.scan(fileContents: [
+            "main.typ": """
+            #let template(doc) = {
+              set text(font: "STSong", size: 64pt)
+              doc
+            }
+
+            #show: template
+
+            // #set text(font:"flux", size:64pt)
+            /* #set text(font: "Hidden Serif")
+               /* #set text(font: "Nested Hidden") */
+            */
+            #let note = "font: Not A Font"
+
+            hola
+            """
+        ])
+
+        #expect(result.families == ["STSong"])
+        #expect(result.unresolvedExpressions.isEmpty)
+        #expect(!result.hasIncompleteExpressions)
+    }
+
     @Test func compileFontResolverFailsWhenExplicitFamilyCannotBeResolved() {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         let resolver = CompileFontResolver(
@@ -2309,6 +2342,63 @@ struct InkPondTests {
         } catch {
             #expect(error.localizedDescription.contains("Missing CJK"))
         }
+    }
+
+    @Test func compileFontResolverPassesProjectAndAppFontsForDynamicFontExpressions() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: { [] }),
+            projectFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "Flux",
+                        faceName: "Regular",
+                        postScriptName: "Flux-Regular",
+                        path: "/project/Flux-Regular.ttf",
+                        source: .project
+                    )
+                ]
+            },
+            appFontProvider: { _ in
+                [
+                    AvailableCompileFont(
+                        familyName: "Flux",
+                        faceName: "Bold",
+                        postScriptName: "Flux-Bold",
+                        path: "/app/Flux-Bold.ttf",
+                        source: .app
+                    ),
+                    AvailableCompileFont(
+                        familyName: "Libertinus Serif",
+                        faceName: "Regular",
+                        postScriptName: "LibertinusSerif-Regular",
+                        path: "/app/LibertinusSerif-Regular.ttf",
+                        source: .app
+                    ),
+                ]
+            },
+            sourceReader: { _, _ in
+                [
+                    "main.typ": """
+                    #let body-font = "Flux"
+                    #set text(font: body-font)
+                    Hello
+                    """
+                ]
+            }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.families.isEmpty)
+        #expect(resolved.fontPaths == [
+            "/project/Flux-Regular.ttf",
+            "/app/Flux-Bold.ttf",
+            "/app/LibertinusSerif-Regular.ttf",
+        ])
+        #expect(resolved.sourcesByFamily["Flux"] == .project)
+        #expect(resolved.sourcesByFamily["Libertinus Serif"] == .app)
+        #expect(resolved.implicitFallbackFamily == nil)
     }
 
     @Test func compileFontResolverUsesImplicitSystemCJKFallbackWhenNoFontIsSpecified() throws {

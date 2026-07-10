@@ -73,14 +73,7 @@ struct CompileFontResolver {
             return previousFonts
         }
 
-        if let unresolved = scanResult.unresolvedExpressions.first {
-            throw FontResolutionFailure(
-                message: L10n.fontResolutionUnresolvedExpression(
-                    fileName: unresolved.fileName,
-                    expression: unresolved.expression
-                )
-            )
-        }
+        let hasDynamicFontExpressions = !scanResult.unresolvedExpressions.isEmpty
 
         let implicitCJKFamily: String? = textProfile.containsCJK
             ? implicitCJKFallbackFamily(from: systemFonts)
@@ -100,10 +93,34 @@ struct CompileFontResolver {
             )
             : nil
 
+        let dynamicFontDatabase = hasDynamicFontExpressions ? projectFonts + appFonts : []
+
         guard !scanResult.families.isEmpty else {
             var automaticFallbacks: [String] = []
             if let emojiFallbackFamily {
                 automaticFallbacks.append(emojiFallbackFamily)
+            }
+            if hasDynamicFontExpressions, let latinFallbackFamily {
+                automaticFallbacks.append(latinFallbackFamily)
+            }
+            if hasDynamicFontExpressions, let implicitCJKFamily {
+                automaticFallbacks.append(implicitCJKFamily)
+            }
+            if hasDynamicFontExpressions {
+                // Do not interpret Typst variables in Swift. Register the
+                // user-managed font database and let Typst evaluate the
+                // original source expression.
+                return try resolveRequestedFamilies(
+                    [],
+                    projectFonts: projectFonts,
+                    appFonts: appFonts,
+                    systemFonts: systemFonts,
+                    implicitFallbackFamily: nil,
+                    automaticFallbackFamilies: automaticFallbacks,
+                    warningFamilies: automaticFallbacks,
+                    additionalFonts: dynamicFontDatabase,
+                    requiredCodepoints: requiredCodepoints
+                )
             }
             if let implicitCJKFamily {
                 automaticFallbacks.append(implicitCJKFamily)
@@ -161,6 +178,7 @@ struct CompileFontResolver {
             implicitFallbackFamily: nil,
             automaticFallbackFamilies: automaticFallbacks,
             warningFamilies: automaticFallbacks,
+            additionalFonts: dynamicFontDatabase,
             requiredCodepoints: requiredCodepoints
         )
     }
@@ -187,6 +205,7 @@ struct CompileFontResolver {
         implicitFallbackFamily: String?,
         automaticFallbackFamilies: [String],
         warningFamilies: [String],
+        additionalFonts: [AvailableCompileFont] = [],
         requiredCodepoints: [UInt32]
     ) throws -> ResolvedCompileFonts {
         var fontPaths: [String] = []
@@ -212,6 +231,19 @@ struct CompileFontResolver {
                 guard seenPaths.insert(effectivePath).inserted else { continue }
                 fontPaths.append(effectivePath)
             }
+        }
+
+        for font in additionalFonts {
+            let normalizedFamily = FontManager.normalizeFamilyName(font.familyName)
+            if !selectedFamilies.contains(where: { FontManager.normalizeFamilyName($0) == normalizedFamily }),
+               !fallbackFamilies.contains(where: { FontManager.normalizeFamilyName($0) == normalizedFamily }),
+               sourcesByFamily[font.familyName] == nil {
+                sourcesByFamily[font.familyName] = font.source
+            }
+
+            let effectivePath = Self.effectiveFontPath(for: font, requiredCodepoints: requiredCodepoints)
+            guard seenPaths.insert(effectivePath).inserted else { continue }
+            fontPaths.append(effectivePath)
         }
 
         if !unresolvedFamilies.isEmpty {

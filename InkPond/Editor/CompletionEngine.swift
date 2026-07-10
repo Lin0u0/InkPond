@@ -68,7 +68,15 @@ final class CompletionEngine {
     func completions(for text: String, cursorOffset: Int) -> CompletionContext? {
         let utf16 = text.utf16
         guard cursorOffset > 0, cursorOffset <= utf16.count else { return nil }
-        let semanticSymbols = symbols(for: text)
+        var semanticSymbols: [TypstCompletionSymbolInfo]?
+        let symbolsProvider = {
+            if let semanticSymbols {
+                return semanticSymbols
+            }
+            let loaded = self.symbols(for: text)
+            semanticSymbols = loaded
+            return loaded
+        }
 
         // Try import/package completion (inside `#import "@..."`)
         if let importResult = importCompletions(for: text, cursorOffset: cursorOffset) {
@@ -81,12 +89,12 @@ final class CompletionEngine {
         }
 
         // Try value completion first (highest priority when after `param:`)
-        if let valueResult = valueCompletions(for: text, cursorOffset: cursorOffset, symbols: semanticSymbols) {
+        if let valueResult = valueCompletions(for: text, cursorOffset: cursorOffset, symbols: symbolsProvider) {
             return valueResult
         }
 
         // Try parameter completion (when inside parens)
-        if let paramResult = parameterCompletions(for: text, cursorOffset: cursorOffset, symbols: semanticSymbols) {
+        if let paramResult = parameterCompletions(for: text, cursorOffset: cursorOffset, symbols: symbolsProvider) {
             return paramResult
         }
 
@@ -110,7 +118,7 @@ final class CompletionEngine {
             if ch == "#" {
                 let prefix = String(text[prev..<cursorIndex])
                 let query = String(prefix.dropFirst())
-                let hashItems = completionItems(from: semanticSymbols, cursorOffset: cursorOffset)
+                let hashItems = completionItems(from: symbolsProvider(), cursorOffset: cursorOffset)
                 let filtered = query.isEmpty ? hashItems : hashItems.filter { $0.label.hasPrefix(query) }
                 guard !filtered.isEmpty else { return nil }
                 if filtered.count == 1, filtered[0].label == query { return nil }
@@ -427,7 +435,7 @@ final class CompletionEngine {
     private func parameterCompletions(
         for text: String,
         cursorOffset: Int,
-        symbols: [TypstCompletionSymbolInfo]
+        symbols: () -> [TypstCompletionSymbolInfo]
     ) -> CompletionContext? {
         // Walk backwards from cursor to determine if we're at a parameter-name position
         // i.e., right after `(` or `,` with optional whitespace, possibly with a partial name typed.
@@ -477,7 +485,7 @@ final class CompletionEngine {
         // Find the function name: walk backwards from the unmatched `(` to get the identifier
         let funcName = enclosingFunctionName(in: text, beforeOffset: cursorOffset)
         guard let funcName,
-              let function = functionSymbol(named: funcName, in: symbols) else { return nil }
+              let function = functionSymbol(named: funcName, in: symbols()) else { return nil }
 
         // Collect already-used parameter names in this call
         let usedParams = findUsedParameters(in: text, cursorOffset: cursorOffset)
@@ -559,7 +567,7 @@ final class CompletionEngine {
     private func valueCompletions(
         for text: String,
         cursorOffset: Int,
-        symbols: [TypstCompletionSymbolInfo]
+        symbols: () -> [TypstCompletionSymbolInfo]
     ) -> CompletionContext? {
         let utf16 = text.utf16
         guard cursorOffset > 0, cursorOffset <= utf16.count else { return nil }
@@ -718,7 +726,7 @@ final class CompletionEngine {
     private func valueSuggestionsForParam(
         _ paramName: String,
         in functionName: String?,
-        symbols: [TypstCompletionSymbolInfo]
+        symbols: () -> [TypstCompletionSymbolInfo]
     ) -> [CompletionItem] {
         switch paramName {
         case "font":
@@ -727,7 +735,7 @@ final class CompletionEngine {
             }
         default:
             guard let functionName,
-                  let function = functionSymbol(named: functionName, in: symbols),
+                  let function = functionSymbol(named: functionName, in: symbols()),
                   let param = function.params.first(where: { $0.name == paramName }) else { return [] }
             return param.values.map { value in
                 CompletionItem(label: value.label, insertText: value.insertText, kind: .value, detail: value.detail)

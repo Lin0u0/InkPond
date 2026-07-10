@@ -135,6 +135,7 @@ final class SVGPreviewContainerView: UIView {
     private let syncMarkerView = PreviewSyncMarkerView()
     private var pageContainers: [UIView] = []
     private var pageWebViews: [Int: WKWebView] = [:]
+    private var pageHTMLCache: [String: String] = [:]
     private var pageFrames: [CGRect] = []
     private var pages: [TypstPreviewPage] = []
     private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
@@ -244,6 +245,7 @@ final class SVGPreviewContainerView: UIView {
         let hadPages = !pages.isEmpty
         let savedOffset = scrollView.contentOffset
         tearDownPageViews()
+        pageHTMLCache.removeAll(keepingCapacity: true)
         guard !newPages.isEmpty else {
             pages = []
             pageFrames = []
@@ -653,7 +655,12 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func html(forPage page: TypstPreviewPage) -> String {
-        return """
+        if let cached = pageHTMLCache[page.id] {
+            return cached
+        }
+
+        let svg = (try? page.loadSVG()) ?? ""
+        let html = """
         <!doctype html>
         <html>
         <head>
@@ -678,10 +685,12 @@ final class SVGPreviewContainerView: UIView {
         </style>
         </head>
         <body>
-        \(page.svg)
+        \(svg)
         </body>
         </html>
         """
+        pageHTMLCache[page.id] = html
+        return html
     }
 
     private static func cssPixels(_ value: Double) -> String {

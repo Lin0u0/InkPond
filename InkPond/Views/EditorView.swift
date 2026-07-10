@@ -169,6 +169,7 @@ struct EditorView: UIViewRepresentable {
         /// the cursor moved because of typing, not a deliberate navigation.
         private var isProcessingTextChange = false
         private var isApplyingProgrammaticUpdate = false
+        private var textChangeSelectionLocationToSkip: Int?
         /// Track previous text length to detect deletion.
         var previousTextLength: Int = 0
 
@@ -224,6 +225,7 @@ struct EditorView: UIViewRepresentable {
             parent.text = textView.text
             captureViewState(from: typstTextView)
             typstTextView.scheduleHighlighting(.debounced, textChanged: true)
+            textChangeSelectionLocationToSkip = typstTextView.selectedRange.location
             typstTextView.updateCompletion()
         }
 
@@ -233,6 +235,11 @@ struct EditorView: UIViewRepresentable {
             captureViewState(from: typstTextView)
             // After a tap-to-dismiss, skip re-triggering completion for this selection change
             if typstTextView.consumeSelectionSuppression() { return }
+            if textChangeSelectionLocationToSkip == typstTextView.selectedRange.location {
+                textChangeSelectionLocationToSkip = nil
+                return
+            }
+            textChangeSelectionLocationToSkip = nil
             typstTextView.updateCompletion()
             // Only sync cursor to preview on deliberate navigation (tap, arrow keys),
             // not on every keystroke — typing causes noisy preview jumps.
@@ -250,11 +257,7 @@ struct EditorView: UIViewRepresentable {
 
             let cursorLocation = textView.selectedRange.location
             let text = textView.text as NSString
-            // Count newlines up to cursor to get 1-based line number.
-            let prefix = cursorLocation <= text.length
-                ? text.substring(to: cursorLocation)
-                : textView.text ?? ""
-            let line = prefix.components(separatedBy: "\n").count
+            let line = Self.lineNumber(atUTF16Offset: cursorLocation, in: text)
 
             if let target = sourceMap.pdfPosition(forLine: line) {
                 syncCoordinator.previewScrollTarget = PreviewScrollTarget(
@@ -264,6 +267,17 @@ struct EditorView: UIViewRepresentable {
                 )
             }
             syncCoordinator.endSync()
+        }
+
+        private static func lineNumber(atUTF16Offset cursorLocation: Int, in text: NSString) -> Int {
+            let upperBound = min(max(cursorLocation, 0), text.length)
+            guard upperBound > 0 else { return 1 }
+
+            var line = 1
+            for index in 0..<upperBound where text.character(at: index) == 10 {
+                line += 1
+            }
+            return line
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {

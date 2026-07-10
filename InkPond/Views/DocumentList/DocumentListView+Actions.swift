@@ -84,6 +84,9 @@ extension DocumentListView {
     }
 
     func selectDocumentIfAvailable(_ document: InkPondDocument?) {
+        documentOpenTask?.cancel()
+        clearDocumentOpenProgress()
+
         guard let document else {
             selectedDocument = nil
             return
@@ -92,12 +95,129 @@ extension DocumentListView {
         do {
             try ProjectFileManager.validateDocumentCanOpen(document)
             selectedDocument = document
+        } catch DocumentOpenError.downloadingFromICloud {
+            waitForICloudDownloadThenOpen(document)
         } catch {
             if selectedDocument == document {
                 selectedDocument = nil
             }
             projectActionError = error.localizedDescription
         }
+    }
+
+    func waitForICloudDownloadThenOpen(_ document: InkPondDocument) {
+        let projectID = document.projectID
+        let title = document.title
+        let linkedFolderURL: URL? = {
+            guard BookmarkManager.hasBookmark(projectID: projectID),
+                  let url = BookmarkManager.loadBookmark(projectID: projectID) else {
+                return nil
+            }
+            BookmarkManager.stopAccessing(projectID)
+            return url
+        }()
+
+        documentOpenProjectID = projectID
+        documentOpenProgressTitle = title
+        documentOpenProgress = LinkedFolderLoadProgress(
+            phase: .downloading,
+            scannedFileCount: 1,
+            downloadedFileCount: 0,
+            totalDownloadFileCount: 1
+        )
+
+        Diagnostics.record(
+            .documentOpen,
+            "selection.download_wait.start",
+            metadata: [
+                "projectHash": Diagnostics.hashIdentifier(projectID),
+                "entryHash": Diagnostics.hashIdentifier(document.entryFileName)
+            ]
+        )
+
+        documentOpenTask = Task { @MainActor in
+            if let linkedFolderURL {
+                Task.detached(priority: .utility) {
+                    let accessed = linkedFolderURL.startAccessingSecurityScopedResource()
+                    defer { if accessed { linkedFolderURL.stopAccessingSecurityScopedResource() } }
+                    do {
+                        let requestedCount = try CloudItemAvailability.requestDownloads(at: linkedFolderURL)
+                        Diagnostics.record(
+                            .documentOpen,
+                            "selection.linked_folder.download_request",
+                            metadata: [
+                                "projectHash": Diagnostics.hashIdentifier(projectID),
+                                "requestedCount": String(requestedCount)
+                            ]
+                        )
+                    } catch {
+                        Diagnostics.record(
+                            .documentOpen,
+                            "selection.linked_folder.download_request_failed",
+                            level: .error,
+                            metadata: Diagnostics.errorMetadata(error)
+                        )
+                    }
+                }
+            }
+
+            let timeout = Date().addingTimeInterval(120)
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(750))
+                guard !Task.isCancelled else { return }
+
+                do {
+                    try ProjectFileManager.validateDocumentCanOpen(document)
+                    guard documentOpenProjectID == projectID else { return }
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.download_wait.success",
+                        metadata: ["projectHash": Diagnostics.hashIdentifier(projectID)]
+                    )
+                    clearDocumentOpenProgress(projectID: projectID)
+                    selectedDocument = document
+                    return
+                } catch DocumentOpenError.downloadingFromICloud {
+                    documentOpenProgress = LinkedFolderLoadProgress(
+                        phase: .downloading,
+                        scannedFileCount: 1,
+                        downloadedFileCount: 0,
+                        totalDownloadFileCount: 1
+                    )
+                    if Date() >= timeout {
+                        Diagnostics.record(
+                            .documentOpen,
+                            "selection.download_wait.timeout",
+                            level: .error,
+                            metadata: ["projectHash": Diagnostics.hashIdentifier(projectID)]
+                        )
+                        clearDocumentOpenProgress(projectID: projectID)
+                        projectActionError = L10n.tr("icloud.error.download_timeout")
+                        return
+                    }
+                } catch {
+                    guard documentOpenProjectID == projectID else { return }
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.download_wait.failure",
+                        level: .error,
+                        metadata: Diagnostics.errorMetadata(error)
+                    )
+                    clearDocumentOpenProgress(projectID: projectID)
+                    projectActionError = error.localizedDescription
+                    return
+                }
+            }
+        }
+    }
+
+    func clearDocumentOpenProgress(projectID: String? = nil) {
+        if let projectID, documentOpenProjectID != projectID { return }
+        documentOpenProgress = nil
+        documentOpenProgressTitle = nil
+        documentOpenProjectID = nil
+        documentOpenTask = nil
     }
 
     func deduplicateDocumentsByProjectID() {
