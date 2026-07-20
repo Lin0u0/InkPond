@@ -1833,23 +1833,30 @@ extension DocumentEditorView {
                         .foregroundStyle(compactNavigationTextColor)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     if !navigationEditorSubtitle.isEmpty {
                         Text(navigationEditorSubtitle)
                             .font(.caption2)
                             .foregroundStyle(compactNavigationSecondaryTextColor)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(compactNavigationSecondaryTextColor)
                     .symbolRenderingMode(.hierarchical)
+                    .fixedSize()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .frame(maxWidth: 176, alignment: .leading)
+        .clipped()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(document.title)
     }
