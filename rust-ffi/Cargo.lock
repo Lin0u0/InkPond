@@ -2369,6 +2369,7 @@ version = "0.15.0"
 dependencies = [
  "flate2",
  "hayagriva",
+ "stacker",
  "syntect",
  "tar",
  "typst",

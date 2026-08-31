@@ -32,6 +32,10 @@ const MAX_PACKAGE_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
 const MAX_PACKAGE_ARCHIVE_ENTRIES: usize = 4_096;
 const MAX_PACKAGE_ENTRY_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_PACKAGE_EXTRACTED_BYTES: u64 = 512 * 1024 * 1024;
+/// Swift concurrency workers can have roughly 512 KiB stacks on iOS. Complex
+/// Typst layout and SVG generation need more headroom than that, so preview
+/// compilation always runs on a temporary stack owned by `stacker`.
+const PREVIEW_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 
 static BUNDLED_FONT_FACES: OnceLock<Arc<Vec<Font>>> = OnceLock::new();
 static EXTRA_FONT_FACES_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<Font>>>>> = OnceLock::new();
@@ -1214,8 +1218,10 @@ pub unsafe extern "C" fn typst_compile_preview(
     options: *const TypstOptions,
     session_key: *const c_char,
 ) -> TypstPreviewResult {
-    match catch_unwind(AssertUnwindSafe(|| unsafe {
-        typst_compile_preview_impl(source, options, session_key, true)
+    match catch_unwind(AssertUnwindSafe(|| {
+        with_preview_stack(|| unsafe {
+            typst_compile_preview_impl(source, options, session_key, true)
+        })
     })) {
         Ok(result) => result,
         Err(_) => error_result_preview("Typst compiler panicked"),
@@ -1235,12 +1241,19 @@ pub unsafe extern "C" fn typst_compile_preview_svg(
     options: *const TypstOptions,
     session_key: *const c_char,
 ) -> TypstPreviewResult {
-    match catch_unwind(AssertUnwindSafe(|| unsafe {
-        typst_compile_preview_impl(source, options, session_key, false)
+    match catch_unwind(AssertUnwindSafe(|| {
+        with_preview_stack(|| unsafe {
+            typst_compile_preview_impl(source, options, session_key, false)
+        })
     })) {
         Ok(result) => result,
         Err(_) => error_result_preview("Typst compiler panicked"),
     }
+}
+
+#[inline(never)]
+fn with_preview_stack<R>(callback: impl FnOnce() -> R) -> R {
+    stacker::grow(PREVIEW_STACK_SIZE_BYTES, callback)
 }
 
 unsafe fn typst_compile_preview_impl(
@@ -3504,6 +3517,42 @@ mod tests {
             typst_free_preview_result(result);
             typst_clear_preview_session(session_key.as_ptr());
         }
+    }
+
+    #[test]
+    fn preview_compilation_switches_to_large_stack() {
+        #[inline(never)]
+        fn consume_stack(depth: usize) -> usize {
+            let mut frame = [0_u8; 4 * 1024];
+            frame[0] = depth as u8;
+            let result = if depth == 0 {
+                0
+            } else {
+                consume_stack(depth - 1) + 1
+            };
+            std::hint::black_box(&mut frame);
+            result
+        }
+
+        let (remaining, completed_depth) = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                with_preview_stack(|| {
+                    let remaining = stacker::remaining_stack();
+                    (remaining, consume_stack(384))
+                })
+            })
+            .expect("small-stack test thread should start")
+            .join()
+            .expect("large-stack callback should not panic");
+
+        let remaining = remaining.expect("stacker should report the temporary stack size");
+
+        assert!(
+            remaining >= PREVIEW_STACK_SIZE_BYTES / 2,
+            "preview callback only had {remaining} bytes of stack remaining"
+        );
+        assert_eq!(completed_depth, 384);
     }
 
     #[test]
