@@ -354,6 +354,7 @@ extension DocumentEditorView {
             rootDir: rootDir,
             previewCacheDescriptor: compiledPreviewCacheDescriptor,
             compileToken: compileToken,
+            refreshCacheBypassToken: linkedFolderRefreshCacheBypassToken,
             requiresExternalFolderLink: previewRequiresExternalFolderLink,
             drivesCompilation: sizeClass == .regular,
             cancelsCompilerOnDisappear: sizeClass == .regular,
@@ -457,81 +458,64 @@ extension DocumentEditorView {
     }
 
     func refreshLinkedExternalFolder() {
-        let projectID = document.projectID
-        guard BookmarkManager.hasBookmark(projectID: projectID) else {
-            previewActionError = InkPondFileError.fileNotFound(document.title).localizedDescription
-            return
+        linkedFolderRefreshCoordinator.start(
+            .init(projectID: document.projectID, title: document.title)
+        ) { effect in
+            applyLinkedFolderRefreshEffect(effect)
         }
+    }
 
-        externalFolderLinkTask?.cancel()
-        compiler.cancel()
-        let operationID = beginExternalFolderLinkOperation()
-        externalFolderLinkProgressTitle = document.title
-        externalFolderLinkProgress = LinkedFolderLoadProgress(
-            phase: .scanning,
-            scannedFileCount: 0,
-            downloadedFileCount: 0,
-            totalDownloadFileCount: 0
-        )
+    private func applyLinkedFolderRefreshEffect(
+        _ effect: LinkedFolderRefreshCoordinator.Effect
+    ) {
+        switch effect {
+        case .cancelPreviewCompilation:
+            compiler.cancel()
 
-        externalFolderLinkTask = Task { @MainActor in
-            do {
-                guard let folderURL = BookmarkManager.loadBookmark(projectID: projectID) else {
-                    throw InkPondFileError.fileNotFound(document.title)
-                }
-                defer { BookmarkManager.stopAccessing(projectID) }
+        case .applyWorkspaceRefresh(let workspace):
+            guard document.projectID == workspace.projectID else { return }
 
-                let result = try await ProjectFileManager.refreshLinkedFolderContents(
-                    at: folderURL,
-                    projectID: projectID
-                ) { progress in
-                    await MainActor.run {
-                        guard document.projectID == projectID,
-                              externalFolderLinkGeneration.isCurrent(operationID) else { return }
-                        externalFolderLinkProgress = progress
-                    }
-                }
-
-                try Task.checkCancellation()
-                guard document.projectID == projectID,
-                      externalFolderLinkGeneration.isCurrent(operationID) else { return }
-
-                let refreshedFontFileNames = ProjectFileManager.refreshedLinkedFolderFontFileNames(
-                    existing: document.fontFileNames,
-                    relativePaths: result.relativePaths
+            let refreshedEditorState = workspace.applying(
+                to: LinkedFolderRefreshCoordinator.WorkspaceEditorState(
+                    editorText: editorText,
+                    entrySource: entrySource,
+                    fontFileNames: document.fontFileNames
                 )
-                if document.fontFileNames != refreshedFontFileNames {
-                    document.fontFileNames = refreshedFontFileNames
-                }
+            )
+            if editorText != refreshedEditorState.editorText {
+                editorText = refreshedEditorState.editorText
+            }
+            if entrySource != refreshedEditorState.entrySource {
+                entrySource = refreshedEditorState.entrySource
+            }
 
+            if workspace.targets.contains(.fileTree) {
                 projectFileTreeRefreshToken = UUID()
+            }
+            if workspace.targets.contains(.referenceCompletions) {
                 refreshReferenceCompletions()
+            }
+            if workspace.targets.contains(.fonts) {
+                if document.fontFileNames != refreshedEditorState.fontFileNames {
+                    document.fontFileNames = refreshedEditorState.fontFileNames
+                }
                 scheduleAvailableFontFamilyRefresh()
                 _ = refreshResolvedFonts(includeAvailableFamilies: false)
-                if canTriggerPreviewActions {
-                    pendingManualCompileFeedback = true
-                }
-                compileToken = UUID()
-
-                InteractionFeedback.notify(.success)
-                let completedProgress = LinkedFolderLoadProgress(
-                    phase: .complete,
-                    scannedFileCount: result.scannedFileCount,
-                    downloadedFileCount: result.downloadedFileCount,
-                    totalDownloadFileCount: result.downloadedFileCount
-                )
-                AccessibilitySupport.announce(completedProgress.localizedStatusMessage)
-
-                try await Task.sleep(for: .milliseconds(700))
-                clearExternalFolderLinkProgress(projectID: projectID, operationID: operationID)
-            } catch is CancellationError {
-                clearExternalFolderLinkProgress(projectID: projectID, operationID: operationID)
-            } catch {
-                guard externalFolderLinkGeneration.isCurrent(operationID) else { return }
-                clearExternalFolderLinkProgress(projectID: projectID, operationID: operationID)
-                previewActionError = error.localizedDescription
-                InteractionFeedback.notify(.error)
             }
+
+            if canTriggerPreviewActions {
+                pendingManualCompileFeedback = true
+            }
+            if workspace.compileRequest == .bypassCacheOnce {
+                linkedFolderRefreshCacheBypassToken = UUID()
+            }
+            InteractionFeedback.notify(.success)
+            AccessibilitySupport.announce(workspace.completionProgress.localizedStatusMessage)
+
+        case .presentFailure(let projectID, let message):
+            guard document.projectID == projectID else { return }
+            previewActionError = message
+            InteractionFeedback.notify(.error)
         }
     }
 
@@ -663,7 +647,7 @@ extension DocumentEditorView {
             setEntryFile: setEntryProjectFile,
             onNodeDeleted: handleProjectFileDeleted,
             refreshLinkedFolder: refreshLinkedExternalFolder,
-            isRefreshingLinkedFolder: externalFolderLinkTask != nil,
+            isRefreshingLinkedFolder: linkedFolderRefreshCoordinator.isRefreshing || externalFolderLinkTask != nil,
             usesNavigationToolbar: false,
             topContentInset: topContentInset,
             refreshToken: projectFileTreeRefreshToken
@@ -1350,6 +1334,7 @@ extension DocumentEditorView {
                         rootDir: rootDir,
                         previewCacheDescriptor: compiledPreviewCacheDescriptor,
                         compileToken: compileToken,
+                        refreshCacheBypassToken: linkedFolderRefreshCacheBypassToken,
                         requiresExternalFolderLink: previewRequiresExternalFolderLink
                     )
                     workspaceEditorPane(topViewportInset: topViewportInset)
@@ -1735,9 +1720,13 @@ extension DocumentEditorView {
                 } label: {
                     Label(L10n.tr("Refresh"), systemImage: "arrow.clockwise")
                 }
-                .disabled(externalFolderLinkTask != nil)
+                .disabled(linkedFolderRefreshCoordinator.isRefreshing || externalFolderLinkTask != nil)
                 .accessibilityHint(L10n.tr("a11y.project_files.refresh_linked_folder.hint"))
-                .accessibilityValue(externalFolderLinkProgress?.localizedStatusMessage ?? "")
+                .accessibilityValue(
+                    linkedFolderRefreshCoordinator.presentedProgress?.localizedStatusMessage
+                        ?? externalFolderLinkProgress?.localizedStatusMessage
+                        ?? ""
+                )
             }
         }
 
@@ -2041,10 +2030,14 @@ extension DocumentEditorView {
                     setEntryFile: setEntryProjectFile,
                     onNodeDeleted: handleProjectFileDeleted,
                     refreshLinkedFolder: refreshLinkedExternalFolder,
-                    isRefreshingLinkedFolder: externalFolderLinkTask != nil,
-                    linkedFolderProgress: externalFolderLinkProgress,
+                    isRefreshingLinkedFolder: linkedFolderRefreshCoordinator.isRefreshing || externalFolderLinkTask != nil,
+                    linkedFolderProgress: linkedFolderRefreshCoordinator.presentedProgress ?? externalFolderLinkProgress,
                     cancelLinkedFolderRefresh: {
-                        externalFolderLinkTask?.cancel()
+                        if linkedFolderRefreshCoordinator.isRefreshing {
+                            linkedFolderRefreshCoordinator.cancel()
+                        } else {
+                            externalFolderLinkTask?.cancel()
+                        }
                     },
                     refreshToken: projectFileTreeRefreshToken
                 )
@@ -2118,6 +2111,7 @@ extension DocumentEditorView {
                 externalFolderLinkGeneration = AsyncOperationGeneration()
                 externalFolderLinkProgress = nil
                 externalFolderLinkProgressTitle = nil
+                linkedFolderRefreshCoordinator.cancel()
                 _ = flushPendingSave()
                 persistEditorPositionIfNeeded()
                 persistProjectEditorTabState()
@@ -2257,6 +2251,7 @@ extension DocumentEditorView {
                 externalFolderLinkProgressInset
             }
             .animation(.snappy(duration: 0.25), value: externalFolderLinkProgress)
+            .animation(.snappy(duration: 0.25), value: linkedFolderRefreshCoordinator.presentedProgress)
             .overlay(alignment: .bottom) {
                 if let toast = imageImportToast {
                     Text(toast)
@@ -2403,12 +2398,18 @@ extension DocumentEditorView {
 
     @ViewBuilder
     private var externalFolderLinkProgressInset: some View {
-        if let externalFolderLinkProgress {
+        if let progress = linkedFolderRefreshCoordinator.presentedProgress ?? externalFolderLinkProgress {
             LinkedFolderLoadProgressView(
-                title: externalFolderLinkProgressTitle ?? L10n.tr("preview.external_link_required.button"),
-                progress: externalFolderLinkProgress
+                title: linkedFolderRefreshCoordinator.presentedTitle
+                    ?? externalFolderLinkProgressTitle
+                    ?? L10n.tr("preview.external_link_required.button"),
+                progress: progress
             ) {
-                externalFolderLinkTask?.cancel()
+                if linkedFolderRefreshCoordinator.isRefreshing {
+                    linkedFolderRefreshCoordinator.cancel()
+                } else {
+                    externalFolderLinkTask?.cancel()
+                }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)

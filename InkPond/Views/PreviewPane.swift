@@ -29,17 +29,45 @@ struct PreviewCompileInputSignature: Equatable {
     let rootDir: String?
     let previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     let compileToken: UUID
+    let refreshCacheBypassToken: UUID?
     let requiresExternalFolderLink: Bool
 }
 
-enum PreviewCompileCachePolicyResolver {
-    nonisolated static func cachePolicy(
-        previous: PreviewCompileInputSignature?,
-        current: PreviewCompileInputSignature
+struct PreviewCompileRequestTracker {
+    private var previousSignature: PreviewCompileInputSignature?
+    private var lastDispatchedRefreshCacheBypassToken: UUID?
+
+    mutating func cachePolicy(
+        for signature: PreviewCompileInputSignature,
+        canDispatch: Bool
     ) -> TypstPreviewCachePolicy? {
-        guard previous != current else { return nil }
-        guard let previous else { return .useCacheIfValid }
-        return previous.compileToken == current.compileToken ? .useCacheIfValid : .bypassCache
+        guard previousSignature != signature else { return nil }
+        if previousSignature == nil {
+            previousSignature = signature
+            lastDispatchedRefreshCacheBypassToken = signature.refreshCacheBypassToken
+            return canDispatch ? .useCacheIfValid : nil
+        }
+
+        previousSignature = signature
+        guard canDispatch else { return nil }
+        if let refreshCacheBypassToken = signature.refreshCacheBypassToken,
+           refreshCacheBypassToken != lastDispatchedRefreshCacheBypassToken {
+            lastDispatchedRefreshCacheBypassToken = refreshCacheBypassToken
+            return .bypassCache
+        }
+        return .useCacheIfValid
+    }
+
+    mutating func dispatchIfNeeded(
+        for signature: PreviewCompileInputSignature,
+        canDispatch: Bool,
+        dispatch: (TypstPreviewCachePolicy) -> Void
+    ) {
+        guard let cachePolicy = cachePolicy(
+            for: signature,
+            canDispatch: canDispatch
+        ) else { return }
+        dispatch(cachePolicy)
     }
 }
 
@@ -859,6 +887,7 @@ struct PreviewPane: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor? = nil
     var compileToken: UUID = UUID()
+    var refreshCacheBypassToken: UUID? = nil
     var requiresExternalFolderLink: Bool = false
     var drivesCompilation: Bool = true
     var cancelsCompilerOnDisappear: Bool = true
@@ -889,7 +918,7 @@ struct PreviewPane: View {
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
     @State private var isSVGPreviewRendering = false
-    @State private var lastCompileSignature: PreviewCompileInputSignature?
+    @State private var compileRequestTracker = PreviewCompileRequestTracker()
 
     private var previewStatistics: PreviewStatistics? {
         guard compiler.compiledOnce, let cachedTextStatistics else { return nil }
@@ -997,6 +1026,10 @@ struct PreviewPane: View {
                 compileIfNeeded()
             }
             .onChange(of: compileToken) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: refreshCacheBypassToken) {
                 guard drivesCompilation else { return }
                 compileIfNeeded()
             }
@@ -1155,13 +1188,26 @@ struct PreviewPane: View {
             rootDir: rootDir,
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
+            refreshCacheBypassToken: refreshCacheBypassToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard let cachePolicy = PreviewCompileCachePolicyResolver.cachePolicy(
-            previous: lastCompileSignature,
-            current: signature
-        ) else { return }
-        lastCompileSignature = signature
+        let canDispatch = !requiresExternalFolderLink
+            && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && preflightError == nil
+        compileRequestTracker.dispatchIfNeeded(
+            for: signature,
+            canDispatch: canDispatch
+        ) { cachePolicy in
+            let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
+            compiler.compile(
+                source: effectiveCompileSource,
+                fontPaths: fontPaths,
+                rootDir: rootDir,
+                mode: mode,
+                previewCachePolicy: cachePolicy,
+                previewCacheDescriptor: previewCacheDescriptor
+            )
+        }
 
         if requiresExternalFolderLink {
             isSVGPreviewRendering = false
@@ -1179,15 +1225,6 @@ struct PreviewPane: View {
             compiler.presentPreflightError(preflightError)
             return
         }
-        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-        compiler.compile(
-            source: effectiveCompileSource,
-            fontPaths: fontPaths,
-            rootDir: rootDir,
-            mode: mode,
-            previewCachePolicy: cachePolicy,
-            previewCacheDescriptor: previewCacheDescriptor
-        )
     }
 
     // MARK: Sub-views
@@ -1583,8 +1620,9 @@ struct PreviewCompileDriver: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     var compileToken: UUID
+    var refreshCacheBypassToken: UUID?
     var requiresExternalFolderLink: Bool = false
-    @State private var lastCompileSignature: PreviewCompileInputSignature?
+    @State private var compileRequestTracker = PreviewCompileRequestTracker()
 
     var body: some View {
         Color.clear
@@ -1607,6 +1645,9 @@ struct PreviewCompileDriver: View {
             .onChange(of: compileToken) {
                 compileIfNeeded()
             }
+            .onChange(of: refreshCacheBypassToken) {
+                compileIfNeeded()
+            }
             .onChange(of: requiresExternalFolderLink, initial: true) { _, _ in
                 compileIfNeeded()
             }
@@ -1626,13 +1667,26 @@ struct PreviewCompileDriver: View {
             rootDir: rootDir,
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
+            refreshCacheBypassToken: refreshCacheBypassToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard let cachePolicy = PreviewCompileCachePolicyResolver.cachePolicy(
-            previous: lastCompileSignature,
-            current: signature
-        ) else { return }
-        lastCompileSignature = signature
+        let canDispatch = !requiresExternalFolderLink
+            && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && preflightError == nil
+        compileRequestTracker.dispatchIfNeeded(
+            for: signature,
+            canDispatch: canDispatch
+        ) { cachePolicy in
+            let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
+            compiler.compile(
+                source: effectiveCompileSource,
+                fontPaths: fontPaths,
+                rootDir: rootDir,
+                mode: mode,
+                previewCachePolicy: cachePolicy,
+                previewCacheDescriptor: previewCacheDescriptor
+            )
+        }
 
         if requiresExternalFolderLink {
             compiler.cancel()
@@ -1647,15 +1701,6 @@ struct PreviewCompileDriver: View {
             compiler.presentPreflightError(preflightError)
             return
         }
-        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-        compiler.compile(
-            source: effectiveCompileSource,
-            fontPaths: fontPaths,
-            rootDir: rootDir,
-            mode: mode,
-            previewCachePolicy: cachePolicy,
-            previewCacheDescriptor: previewCacheDescriptor
-        )
     }
 }
 

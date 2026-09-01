@@ -89,7 +89,7 @@ extension ProjectFileManager {
 
     nonisolated static func loadLinkedFolderContents(
         at folderURL: URL,
-        maxDownloadWait: TimeInterval = 120,
+        maxDownloadWait: TimeInterval = 600,
         environment: LinkedFolderLoadEnvironment = .live,
         progress: (LinkedFolderLoadProgress) async -> Void
     ) async throws -> LinkedFolderLoadResult {

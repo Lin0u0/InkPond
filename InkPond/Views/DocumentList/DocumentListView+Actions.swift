@@ -152,7 +152,8 @@ extension DocumentListView {
                 do {
                     let result = try await ProjectFileManager.refreshLinkedFolderContents(
                         at: linkedFolderURL,
-                        projectID: projectID
+                        projectID: projectID,
+                        maxDownloadWait: 120
                     ) { progress in
                         await MainActor.run {
                             guard documentOpenProjectID == projectID,

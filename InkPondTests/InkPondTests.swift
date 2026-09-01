@@ -35,6 +35,11 @@ private enum TestRequirementError: Error {
     case linkedFolderDownloadFailed
 }
 
+private struct LinkedFolderAccessTestError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 private final class LinkedFolderAvailabilityStub: @unchecked Sendable {
     private let lock = NSLock()
     private let pendingFileNames: Set<String>
@@ -65,17 +70,87 @@ private final class LinkedFolderAvailabilityStub: @unchecked Sendable {
 private final class LinkedFolderClockStub: @unchecked Sendable {
     private let lock = NSLock()
     private let start: Date
+    private let elapsedAfterFirstCall: TimeInterval
     private var callCount = 0
 
-    init(start: Date = Date()) {
+    init(start: Date = Date(), elapsedAfterFirstCall: TimeInterval = 121) {
         self.start = start
+        self.elapsedAfterFirstCall = elapsedAfterFirstCall
     }
 
     func now() -> Date {
         lock.withLock {
             defer { callCount += 1 }
-            return callCount == 0 ? start : start.addingTimeInterval(121)
+            return callCount == 0 ? start : start.addingTimeInterval(elapsedAfterFirstCall)
         }
+    }
+}
+
+@MainActor
+private final class LinkedFolderRefreshEnvironmentStub {
+    struct PendingRefresh {
+        let progress: LinkedFolderRefreshCoordinator.ProgressHandler
+        let continuation: CheckedContinuation<LinkedFolderLoadResult, any Error>
+    }
+
+    var acquireError: (any Error)?
+    var refreshError: (any Error)?
+    var result = LinkedFolderLoadResult(
+        relativePaths: ["main.typ"],
+        scannedFileCount: 1,
+        downloadedFileCount: 0
+    )
+    var suspendsRefresh = false
+    private(set) var pendingRefreshes: [PendingRefresh] = []
+    private(set) var acquireCount = 0
+    private(set) var releaseCount = 0
+
+    var environment: LinkedFolderRefreshCoordinator.Environment {
+        LinkedFolderRefreshCoordinator.Environment(
+            acquireFolder: { [self] _, _ in
+                acquireCount += 1
+                if let acquireError { throw acquireError }
+                return URL(fileURLWithPath: "/linked-folder")
+            },
+            releaseFolder: { [self] _ in
+                releaseCount += 1
+            },
+            refreshContents: { [self] _, _, progress in
+                if suspendsRefresh {
+                    return try await withCheckedThrowingContinuation { continuation in
+                        pendingRefreshes.append(
+                            PendingRefresh(progress: progress, continuation: continuation)
+                        )
+                    }
+                }
+                await progress(
+                    LinkedFolderLoadProgress(
+                        phase: .downloading,
+                        scannedFileCount: result.scannedFileCount,
+                        downloadedFileCount: 0,
+                        totalDownloadFileCount: result.downloadedFileCount
+                    )
+                )
+                if let refreshError { throw refreshError }
+                return result
+            },
+            sleep: { _ in }
+        )
+    }
+
+    func sendProgress(
+        _ progress: LinkedFolderLoadProgress,
+        toPendingRefreshAt index: Int
+    ) async {
+        await pendingRefreshes[index].progress(progress)
+    }
+
+    func succeedPendingRefresh(at index: Int, with result: LinkedFolderLoadResult? = nil) {
+        pendingRefreshes[index].continuation.resume(returning: result ?? self.result)
+    }
+
+    func failPendingRefresh(at index: Int, with error: any Error) {
+        pendingRefreshes[index].continuation.resume(throwing: error)
     }
 }
 
@@ -86,6 +161,16 @@ struct InkPondTests {
     private let editorThemeDefaultsKey = "editorThemeID"
     private let editorFontIDDefaultsKey = "editorFontID"
     private let editorFontSizeDefaultsKey = "editorFontSize"
+
+    private func waitUntil(
+        _ condition: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        for _ in 0..<100 {
+            if condition() { return true }
+            await Task.yield()
+        }
+        return condition()
+    }
 
     @Test func appDistributionDetectsTestFlightReceipt() {
         #expect(AppDistribution.isTestFlightReceiptURL(URL(fileURLWithPath: "/private/var/mobile/sandboxReceipt")))
@@ -1062,6 +1147,39 @@ struct InkPondTests {
         #expect(didTimeOut)
     }
 
+    @Test func initialLinkRetainsLongTimeoutWhileRefreshUsesHotfixTimeout() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try Data("= Main".utf8).write(to: folder.appendingPathComponent("main.typ"))
+        func environment(clock: LinkedFolderClockStub) -> LinkedFolderLoadEnvironment {
+            LinkedFolderLoadEnvironment(
+                downloadingStatus: { _ in nil },
+                startDownloading: { _ in },
+                now: clock.now,
+                sleep: { _ in }
+            )
+        }
+
+        let initialResult = try await ProjectFileManager.loadLinkedFolderContents(
+            at: folder,
+            environment: environment(clock: LinkedFolderClockStub(elapsedAfterFirstCall: 121))
+        ) { _ in }
+        #expect(initialResult.relativePaths == ["main.typ"])
+
+        var refreshDidTimeOut = false
+        do {
+            _ = try await ProjectFileManager.refreshLinkedFolderContents(
+                at: folder,
+                projectID: "timeout-boundary",
+                environment: environment(clock: LinkedFolderClockStub(elapsedAfterFirstCall: 121))
+            ) { _ in }
+        } catch StorageManager.MigrationError.downloadTimeout {
+            refreshDidTimeOut = true
+        }
+        #expect(refreshDidTimeOut)
+    }
+
     @Test func linkedFolderLoaderStopsWhenRefreshIsCancelled() async throws {
         let folder = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -1228,53 +1346,317 @@ struct InkPondTests {
         #expect(refreshed == ["Custom/Nested.otf", "Legacy.ttf", "New.ttf"])
     }
 
-    @Test func previewCompileTokenBypassesCacheExactlyOnce() throws {
-        let firstToken = UUID()
-        let secondToken = UUID()
-        let previous = PreviewCompileInputSignature(
-            source: "= Main",
-            fontPaths: [],
-            preflightError: nil,
-            rootDir: "/project",
-            previewCacheDescriptor: nil,
-            compileToken: firstToken,
-            requiresExternalFolderLink: false
-        )
-        let refreshed = PreviewCompileInputSignature(
-            source: "= Main",
-            fontPaths: [],
-            preflightError: nil,
-            rootDir: "/project",
-            previewCacheDescriptor: nil,
-            compileToken: secondToken,
-            requiresExternalFolderLink: false
-        )
-
-        let refreshPolicy = try #require(
-            PreviewCompileCachePolicyResolver.cachePolicy(previous: previous, current: refreshed)
-        )
-        guard case .bypassCache = refreshPolicy else {
-            Issue.record("A compile-token refresh must bypass the previous cache")
-            return
+    @Test func previewPaneAndHiddenDriverBypassCacheOnlyForLinkedRefresh() {
+        enum RecordedPolicy: Equatable {
+            case useCache
+            case bypassCache
         }
-        #expect(PreviewCompileCachePolicyResolver.cachePolicy(previous: refreshed, current: refreshed) == nil)
 
-        let sourceEdit = PreviewCompileInputSignature(
+        func signature(
+            source: String = "= Main",
+            fontPaths: [String] = [],
+            preflightError: String? = nil,
+            compileToken: UUID,
+            refreshCacheBypassToken: UUID? = nil
+        ) -> PreviewCompileInputSignature {
+            PreviewCompileInputSignature(
+                source: source,
+                fontPaths: fontPaths,
+                preflightError: preflightError,
+                rootDir: "/project",
+                previewCacheDescriptor: nil,
+                compileToken: compileToken,
+                refreshCacheBypassToken: refreshCacheBypassToken,
+                requiresExternalFolderLink: false
+            )
+        }
+
+        func recordedPolicy(_ policy: TypstPreviewCachePolicy) -> RecordedPolicy {
+            if case .bypassCache = policy { return .bypassCache }
+            return .useCache
+        }
+
+        let initialCompileToken = UUID()
+        let fileOperationCompileToken = UUID()
+        let firstRefreshToken = UUID()
+        let secondRefreshToken = UUID()
+        let initial = signature(
+            compileToken: initialCompileToken
+        )
+        let fileOperationCompile = signature(
+            compileToken: fileOperationCompileToken
+        )
+        let sourceEdit = signature(
             source: "= Updated",
-            fontPaths: [],
-            preflightError: nil,
-            rootDir: "/project",
-            previewCacheDescriptor: nil,
-            compileToken: secondToken,
-            requiresExternalFolderLink: false
+            compileToken: fileOperationCompileToken
         )
-        let editPolicy = try #require(
-            PreviewCompileCachePolicyResolver.cachePolicy(previous: refreshed, current: sourceEdit)
+        let fontEdit = signature(
+            source: "= Updated",
+            fontPaths: ["/project/fonts/New.ttf"],
+            compileToken: fileOperationCompileToken
         )
-        guard case .useCacheIfValid = editPolicy else {
-            Issue.record("A normal source edit must retain the existing cache policy")
-            return
+        let firstRefresh = signature(
+            source: "= Updated",
+            fontPaths: ["/project/fonts/New.ttf"],
+            compileToken: fileOperationCompileToken,
+            refreshCacheBypassToken: firstRefreshToken
+        )
+        let blockedFirstRefresh = signature(
+            source: "= Updated",
+            fontPaths: ["/project/fonts/New.ttf"],
+            preflightError: "Font unavailable",
+            compileToken: fileOperationCompileToken,
+            refreshCacheBypassToken: firstRefreshToken
+        )
+        let compileAfterRefresh = signature(
+            source: "= Updated",
+            fontPaths: ["/project/fonts/New.ttf"],
+            compileToken: UUID(),
+            refreshCacheBypassToken: firstRefreshToken
+        )
+        let secondRefresh = signature(
+            source: "= Updated",
+            fontPaths: ["/project/fonts/New.ttf"],
+            compileToken: compileAfterRefresh.compileToken,
+            refreshCacheBypassToken: secondRefreshToken
+        )
+
+        func exerciseDispatchPath(
+            _ tracker: inout PreviewCompileRequestTracker
+        ) -> [RecordedPolicy] {
+            var dispatchedPolicies: [RecordedPolicy] = []
+            func dispatch(_ signature: PreviewCompileInputSignature, canDispatch: Bool = true) {
+                tracker.dispatchIfNeeded(
+                    for: signature,
+                    canDispatch: canDispatch
+                ) { policy in
+                    dispatchedPolicies.append(recordedPolicy(policy))
+                }
+            }
+
+            dispatch(initial)
+            dispatch(fileOperationCompile)
+            dispatch(sourceEdit)
+            dispatch(fontEdit)
+            dispatch(blockedFirstRefresh, canDispatch: false)
+            dispatch(firstRefresh)
+            dispatch(firstRefresh)
+            dispatch(compileAfterRefresh)
+            dispatch(secondRefresh)
+            dispatch(secondRefresh)
+            return dispatchedPolicies
         }
+
+        let expectedPolicies: [RecordedPolicy] = [
+            .useCache,
+            .useCache,
+            .useCache,
+            .useCache,
+            .bypassCache,
+            .useCache,
+            .bypassCache
+        ]
+        var previewPaneTracker = PreviewCompileRequestTracker()
+        let previewPaneDispatches = exerciseDispatchPath(&previewPaneTracker)
+        var hiddenDriverTracker = PreviewCompileRequestTracker()
+        let hiddenDriverDispatches = exerciseDispatchPath(&hiddenDriverTracker)
+
+        #expect(previewPaneDispatches == expectedPolicies)
+        #expect(hiddenDriverDispatches == expectedPolicies)
+    }
+
+    @Test func linkedFolderRefreshCoordinatorPreservesEditorSourceAndPlansEveryRefreshEffectOnce() async throws {
+        let stub = LinkedFolderRefreshEnvironmentStub()
+        stub.result = LinkedFolderLoadResult(
+            relativePaths: ["fonts/New.ttf", "imgs/cover.png", "main.typ"],
+            scannedFileCount: 3,
+            downloadedFileCount: 1
+        )
+        stub.suspendsRefresh = true
+        let coordinator = LinkedFolderRefreshCoordinator(environment: stub.environment)
+        var effects: [LinkedFolderRefreshCoordinator.Effect] = []
+        var editorText = "= Unsaved current file text"
+        var editorSource = "= Unsaved entry source"
+        var currentFontReferences = ["Custom/Nested.otf"]
+        var treeRefreshCount = 0
+        var completionRefreshCount = 0
+        var fontRefreshCount = 0
+        var bypassCompileCount = 0
+
+        coordinator.start(
+            .init(projectID: "linked", title: "Linked")
+        ) { effect in
+            effects.append(effect)
+            guard case .applyWorkspaceRefresh(let workspace) = effect else { return }
+            if workspace.targets.contains(.fileTree) { treeRefreshCount += 1 }
+            if workspace.targets.contains(.referenceCompletions) { completionRefreshCount += 1 }
+            if workspace.targets.contains(.fonts) {
+                fontRefreshCount += 1
+                let refreshedState = workspace.applying(
+                    to: LinkedFolderRefreshCoordinator.WorkspaceEditorState(
+                        editorText: editorText,
+                        entrySource: editorSource,
+                        fontFileNames: currentFontReferences
+                    )
+                )
+                editorText = refreshedState.editorText
+                editorSource = refreshedState.entrySource
+                currentFontReferences = refreshedState.fontFileNames
+            }
+            if workspace.compileRequest == .bypassCacheOnce { bypassCompileCount += 1 }
+        }
+
+        #expect(await waitUntil { stub.pendingRefreshes.count == 1 })
+        editorText = "= Newer unsaved current file text"
+        editorSource = "= Newer unsaved entry source"
+        currentFontReferences.append("Custom/DuringRefresh.otf")
+        stub.succeedPendingRefresh(at: 0)
+        #expect(await waitUntil { !coordinator.isRefreshing })
+        let workspaceEffects = effects.compactMap { effect -> LinkedFolderRefreshCoordinator.WorkspaceRefresh? in
+            guard case .applyWorkspaceRefresh(let workspace) = effect else { return nil }
+            return workspace
+        }
+        let workspace = try #require(workspaceEffects.first)
+        #expect(workspaceEffects.count == 1)
+        #expect(workspace.targets == [.fileTree, .referenceCompletions, .fonts])
+        #expect(workspace.compileRequest == .bypassCacheOnce)
+        #expect(editorText == "= Newer unsaved current file text")
+        #expect(editorSource == "= Newer unsaved entry source")
+        #expect(currentFontReferences == ["Custom/DuringRefresh.otf", "Custom/Nested.otf", "New.ttf"])
+        #expect(treeRefreshCount == 1)
+        #expect(completionRefreshCount == 1)
+        #expect(fontRefreshCount == 1)
+        #expect(bypassCompileCount == 1)
+        #expect(stub.acquireCount == 1)
+        #expect(stub.releaseCount == 1)
+        #expect(coordinator.presentedProgress == nil)
+    }
+
+    @Test func linkedFolderRefreshCoordinatorFailuresClearProgressAndRemainRetryable() async {
+        let stub = LinkedFolderRefreshEnvironmentStub()
+        let coordinator = LinkedFolderRefreshCoordinator(environment: stub.environment)
+        var effects: [LinkedFolderRefreshCoordinator.Effect] = []
+        let emit: @MainActor (LinkedFolderRefreshCoordinator.Effect) -> Void = { effects.append($0) }
+
+        let accessFailureMessages = [
+            "Missing bookmark",
+            "Permission denied",
+            "Stale bookmark"
+        ]
+        for (index, message) in accessFailureMessages.enumerated() {
+            stub.acquireError = LinkedFolderAccessTestError(message: message)
+            coordinator.start(.init(projectID: "linked", title: "Linked"), emit: emit)
+            #expect(
+                await waitUntil {
+                    effects.filter { if case .presentFailure = $0 { true } else { false } }.count == index + 1
+                }
+            )
+            #expect(!coordinator.isRefreshing)
+            #expect(coordinator.presentedProgress == nil)
+        }
+
+        stub.acquireError = nil
+        stub.refreshError = TestRequirementError.linkedFolderDownloadFailed
+        coordinator.start(.init(projectID: "linked", title: "Linked"), emit: emit)
+        #expect(await waitUntil { stub.releaseCount == 1 && !coordinator.isRefreshing })
+        #expect(effects.filter { if case .applyWorkspaceRefresh = $0 { true } else { false } }.isEmpty)
+
+        stub.refreshError = nil
+        coordinator.start(.init(projectID: "linked", title: "Linked"), emit: emit)
+        #expect(await waitUntil { stub.releaseCount == 2 && !coordinator.isRefreshing })
+        #expect(effects.filter { if case .applyWorkspaceRefresh = $0 { true } else { false } }.count == 1)
+        let failureMessages = effects.compactMap { effect -> String? in
+            guard case .presentFailure(_, let message) = effect else { return nil }
+            return message
+        }
+        #expect(Array(failureMessages.prefix(3)) == accessFailureMessages)
+        #expect(failureMessages.count == 4)
+        #expect(coordinator.presentedProgress == nil)
+    }
+
+    @Test func linkedFolderRefreshCoordinatorCancellationClearsImmediatelyAndCanRetry() async throws {
+        let stub = LinkedFolderRefreshEnvironmentStub()
+        stub.suspendsRefresh = true
+        let coordinator = LinkedFolderRefreshCoordinator(environment: stub.environment)
+        var effects: [LinkedFolderRefreshCoordinator.Effect] = []
+        let emit: @MainActor (LinkedFolderRefreshCoordinator.Effect) -> Void = { effects.append($0) }
+
+        coordinator.start(.init(projectID: "linked", title: "Linked"), emit: emit)
+        #expect(await waitUntil { stub.pendingRefreshes.count == 1 })
+        coordinator.cancel()
+        #expect(!coordinator.isRefreshing)
+        #expect(coordinator.presentedProgress == nil)
+
+        await stub.sendProgress(
+            LinkedFolderLoadProgress(
+                phase: .downloading,
+                scannedFileCount: 4,
+                downloadedFileCount: 1,
+                totalDownloadFileCount: 2
+            ),
+            toPendingRefreshAt: 0
+        )
+        stub.succeedPendingRefresh(at: 0)
+        await Task.yield()
+        #expect(effects.filter { if case .applyWorkspaceRefresh = $0 { true } else { false } }.isEmpty)
+        #expect(effects.filter { if case .presentFailure = $0 { true } else { false } }.isEmpty)
+
+        stub.suspendsRefresh = false
+        coordinator.start(.init(projectID: "linked", title: "Linked"), emit: emit)
+        #expect(await waitUntil { !coordinator.isRefreshing })
+        #expect(effects.filter { if case .applyWorkspaceRefresh = $0 { true } else { false } }.count == 1)
+    }
+
+    @Test func linkedFolderRefreshCoordinatorRejectsReplacedTaskProgressAndCompletion() async throws {
+        let stub = LinkedFolderRefreshEnvironmentStub()
+        stub.suspendsRefresh = true
+        let coordinator = LinkedFolderRefreshCoordinator(environment: stub.environment)
+        var effects: [LinkedFolderRefreshCoordinator.Effect] = []
+        let emit: @MainActor (LinkedFolderRefreshCoordinator.Effect) -> Void = { effects.append($0) }
+
+        coordinator.start(.init(projectID: "old", title: "Old"), emit: emit)
+        #expect(await waitUntil { stub.pendingRefreshes.count == 1 })
+        coordinator.start(.init(projectID: "new", title: "New"), emit: emit)
+        #expect(await waitUntil { stub.pendingRefreshes.count == 2 })
+
+        let currentProgress = LinkedFolderLoadProgress(
+            phase: .downloading,
+            scannedFileCount: 2,
+            downloadedFileCount: 1,
+            totalDownloadFileCount: 2
+        )
+        await stub.sendProgress(currentProgress, toPendingRefreshAt: 1)
+        #expect(coordinator.presentedTitle == "New")
+        #expect(coordinator.presentedProgress == currentProgress)
+
+        let newResult = LinkedFolderLoadResult(
+            relativePaths: ["new.typ"],
+            scannedFileCount: 1,
+            downloadedFileCount: 0
+        )
+        stub.succeedPendingRefresh(at: 1, with: newResult)
+        #expect(await waitUntil { !coordinator.isRefreshing })
+
+        await stub.sendProgress(
+            LinkedFolderLoadProgress(
+                phase: .downloading,
+                scannedFileCount: 99,
+                downloadedFileCount: 99,
+                totalDownloadFileCount: 99
+            ),
+            toPendingRefreshAt: 0
+        )
+        stub.succeedPendingRefresh(at: 0)
+        await Task.yield()
+
+        let workspaces = effects.compactMap { effect -> LinkedFolderRefreshCoordinator.WorkspaceRefresh? in
+            guard case .applyWorkspaceRefresh(let workspace) = effect else { return nil }
+            return workspace
+        }
+        #expect(workspaces.count == 1)
+        #expect(workspaces.first?.projectID == "new")
+        #expect(workspaces.first?.result == newResult)
+        #expect(coordinator.presentedProgress == nil)
     }
 
     @Test func projectFileManagerFindsImportDirectoryCandidates() {
