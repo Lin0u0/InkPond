@@ -628,7 +628,7 @@ final class TypstCompiler {
                     "hasSourceMap": String(artifact.sourceMap != nil)
                 ]
             )
-            if let cacheInput, !artifact.svgPages.isEmpty {
+            if let cacheInput, !artifact.svgPages.isEmpty, !Task.isCancelled {
                 let startedAt = Date()
                 let estimatedBytes = Int64(artifact.svgPages.reduce(0) { $0 + $1.estimatedByteCount }
                     + (artifact.pdfData?.count ?? 0))
@@ -648,6 +648,9 @@ final class TypstCompiler {
                     ]
                 )
                 do {
+                    guard !Task.isCancelled else {
+                        return .success(artifact, loadedFromCache: false)
+                    }
                     try previewCacheStore.save(
                         artifact: artifact,
                         for: cacheInput,

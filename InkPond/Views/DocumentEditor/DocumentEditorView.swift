@@ -114,6 +114,7 @@ struct DocumentEditorView: View {
     @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?
+    @State var externalFolderLinkGeneration = AsyncOperationGeneration()
     @State var positionSyncTask: Task<Void, Never>?
     @State var openTabs: [ProjectFileTab] = []
     @State var activeTabPath: String?

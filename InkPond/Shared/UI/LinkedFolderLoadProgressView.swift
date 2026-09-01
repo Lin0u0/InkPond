@@ -59,7 +59,13 @@ struct LinkedFolderLoadProgressView: View {
 
     @ViewBuilder
     private var progressAccessory: some View {
-        if progress.fractionCompleted == nil {
+        if progress.phase == .complete {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.green)
+                .frame(width: 22, height: 22)
+                .accessibilityHidden(true)
+        } else if progress.fractionCompleted == nil {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 22, height: 22)
@@ -84,10 +90,12 @@ extension LinkedFolderLoadProgress {
         case .scanning:
             L10n.tr("icloud.status.checking")
         case .downloading:
-            if totalDownloadFileCount == 0 || remainingDownloadFileCount == 0 {
-                L10n.format("icloud.status.synced", scannedFileCount)
+            L10n.format("icloud.status.downloading", remainingDownloadFileCount)
+        case .complete:
+            if totalDownloadFileCount == 0 {
+                L10n.format("icloud.status.checked", scannedFileCount)
             } else {
-                L10n.format("icloud.status.downloading", remainingDownloadFileCount)
+                L10n.format("icloud.status.synced", scannedFileCount)
             }
         }
     }

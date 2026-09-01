@@ -116,15 +116,27 @@ extension DocumentListView {
             BookmarkManager.stopAccessing(projectID)
             return url
         }()
+        var generation = documentOpenGeneration
+        let operationID = generation.begin()
+        documentOpenGeneration = generation
 
         documentOpenProjectID = projectID
         documentOpenProgressTitle = title
-        documentOpenProgress = LinkedFolderLoadProgress(
-            phase: .downloading,
-            scannedFileCount: 1,
-            downloadedFileCount: 0,
-            totalDownloadFileCount: 1
-        )
+        documentOpenProgress = if linkedFolderURL == nil {
+            LinkedFolderLoadProgress(
+                phase: .downloading,
+                scannedFileCount: 1,
+                downloadedFileCount: 0,
+                totalDownloadFileCount: 1
+            )
+        } else {
+            LinkedFolderLoadProgress(
+                phase: .scanning,
+                scannedFileCount: 0,
+                downloadedFileCount: 0,
+                totalDownloadFileCount: 0
+            )
+        }
 
         Diagnostics.record(
             .documentOpen,
@@ -137,45 +149,77 @@ extension DocumentListView {
 
         documentOpenTask = Task { @MainActor in
             if let linkedFolderURL {
-                Task.detached(priority: .utility) {
-                    let accessed = linkedFolderURL.startAccessingSecurityScopedResource()
-                    defer { if accessed { linkedFolderURL.stopAccessingSecurityScopedResource() } }
-                    do {
-                        let requestedCount = try CloudItemAvailability.requestDownloads(at: linkedFolderURL)
-                        Diagnostics.record(
-                            .documentOpen,
-                            "selection.linked_folder.download_request",
-                            metadata: [
-                                "projectHash": Diagnostics.hashIdentifier(projectID),
-                                "requestedCount": String(requestedCount)
-                            ]
-                        )
-                    } catch {
-                        Diagnostics.record(
-                            .documentOpen,
-                            "selection.linked_folder.download_request_failed",
-                            level: .error,
-                            metadata: Diagnostics.errorMetadata(error)
-                        )
+                do {
+                    let result = try await ProjectFileManager.refreshLinkedFolderContents(
+                        at: linkedFolderURL,
+                        projectID: projectID
+                    ) { progress in
+                        await MainActor.run {
+                            guard documentOpenProjectID == projectID,
+                                  documentOpenGeneration.isCurrent(operationID) else { return }
+                            documentOpenProgress = progress
+                        }
                     }
+                    try Task.checkCancellation()
+                    try ProjectFileManager.validateDocumentCanOpen(document)
+                    guard documentOpenProjectID == projectID,
+                          documentOpenGeneration.isCurrent(operationID) else { return }
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.linked_folder.refresh.success",
+                        metadata: [
+                            "projectHash": Diagnostics.hashIdentifier(projectID),
+                            "scannedCount": String(result.scannedFileCount),
+                            "downloadedCount": String(result.downloadedFileCount)
+                        ]
+                    )
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                    selectedDocument = document
+                } catch is CancellationError {
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                } catch {
+                    guard documentOpenProjectID == projectID,
+                          documentOpenGeneration.isCurrent(operationID) else { return }
+                    Diagnostics.record(
+                        .documentOpen,
+                        "selection.linked_folder.refresh.failure",
+                        level: .error,
+                        metadata: Diagnostics.errorMetadata(error)
+                    )
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                    projectActionError = error.localizedDescription
                 }
+                return
             }
 
             let timeout = Date().addingTimeInterval(120)
 
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(750))
-                guard !Task.isCancelled else { return }
+                do {
+                    try await Task.sleep(for: .milliseconds(750))
+                } catch is CancellationError {
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                    return
+                } catch {
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                    return
+                }
+                guard !Task.isCancelled else {
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
+                    return
+                }
+                guard documentOpenGeneration.isCurrent(operationID) else { return }
 
                 do {
                     try ProjectFileManager.validateDocumentCanOpen(document)
-                    guard documentOpenProjectID == projectID else { return }
+                    guard documentOpenProjectID == projectID,
+                          documentOpenGeneration.isCurrent(operationID) else { return }
                     Diagnostics.record(
                         .documentOpen,
                         "selection.download_wait.success",
                         metadata: ["projectHash": Diagnostics.hashIdentifier(projectID)]
                     )
-                    clearDocumentOpenProgress(projectID: projectID)
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
                     selectedDocument = document
                     return
                 } catch DocumentOpenError.downloadingFromICloud {
@@ -192,28 +236,37 @@ extension DocumentListView {
                             level: .error,
                             metadata: ["projectHash": Diagnostics.hashIdentifier(projectID)]
                         )
-                        clearDocumentOpenProgress(projectID: projectID)
+                        clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
                         projectActionError = L10n.tr("icloud.error.download_timeout")
                         return
                     }
                 } catch {
-                    guard documentOpenProjectID == projectID else { return }
+                    guard documentOpenProjectID == projectID,
+                          documentOpenGeneration.isCurrent(operationID) else { return }
                     Diagnostics.record(
                         .documentOpen,
                         "selection.download_wait.failure",
                         level: .error,
                         metadata: Diagnostics.errorMetadata(error)
                     )
-                    clearDocumentOpenProgress(projectID: projectID)
+                    clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
                     projectActionError = error.localizedDescription
                     return
                 }
             }
+            clearDocumentOpenProgress(projectID: projectID, operationID: operationID)
         }
     }
 
-    func clearDocumentOpenProgress(projectID: String? = nil) {
+    func clearDocumentOpenProgress(projectID: String? = nil, operationID: UUID? = nil) {
         if let projectID, documentOpenProjectID != projectID { return }
+        if let operationID {
+            var generation = documentOpenGeneration
+            guard generation.finish(operationID) else { return }
+            documentOpenGeneration = generation
+        } else {
+            documentOpenGeneration = AsyncOperationGeneration()
+        }
         documentOpenProgress = nil
         documentOpenProgressTitle = nil
         documentOpenProjectID = nil

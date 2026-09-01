@@ -32,6 +32,51 @@ private func makeSourceMap() -> SourceMap {
 
 private enum TestRequirementError: Error {
     case missingCacheEntry
+    case linkedFolderDownloadFailed
+}
+
+private final class LinkedFolderAvailabilityStub: @unchecked Sendable {
+    private let lock = NSLock()
+    private let pendingFileNames: Set<String>
+    private let completesDownloads: Bool
+    private var downloadedFileNames: Set<String> = []
+
+    init(pendingFileNames: Set<String>, completesDownloads: Bool = true) {
+        self.pendingFileNames = pendingFileNames
+        self.completesDownloads = completesDownloads
+    }
+
+    func downloadingStatus(for url: URL) -> URLUbiquitousItemDownloadingStatus? {
+        lock.withLock {
+            guard pendingFileNames.contains(url.lastPathComponent) else { return nil }
+            return downloadedFileNames.contains(url.lastPathComponent) ? .current : .notDownloaded
+        }
+    }
+
+    func startDownloading(_ url: URL) {
+        lock.withLock {
+            if completesDownloads, pendingFileNames.contains(url.lastPathComponent) {
+                downloadedFileNames.insert(url.lastPathComponent)
+            }
+        }
+    }
+}
+
+private final class LinkedFolderClockStub: @unchecked Sendable {
+    private let lock = NSLock()
+    private let start: Date
+    private var callCount = 0
+
+    init(start: Date = Date()) {
+        self.start = start
+    }
+
+    func now() -> Date {
+        lock.withLock {
+            defer { callCount += 1 }
+            return callCount == 0 ? start : start.addingTimeInterval(121)
+        }
+    }
 }
 
 @Suite(.serialized)
@@ -862,7 +907,8 @@ struct InkPondTests {
         #expect(result.relativePaths.contains("assets/icons/logo.png"))
         #expect(result.relativePaths.contains("note-124.txt"))
         #expect(updates.contains { $0.phase == .scanning && $0.scannedFileCount >= 50 })
-        #expect(updates.contains { $0.phase == .downloading })
+        #expect(updates.last?.phase == .complete)
+        #expect(!updates.contains { $0.phase == .downloading })
     }
 
     @Test func linkedFolderLoaderScansLargeLocalFolderWithoutDownloadWait() async throws {
@@ -890,7 +936,345 @@ struct InkPondTests {
         #expect(result.relativePaths.first == "bucket-0/note-0.typ")
         #expect(result.relativePaths.last == "bucket-5/note-599.typ")
         #expect(progressEvents.contains { $0.phase == .scanning && $0.scannedFileCount >= 500 })
-        #expect(progressEvents.last?.phase == .downloading)
+        #expect(progressEvents.last?.phase == .complete)
+    }
+
+    @Test func linkedFolderLoaderReportsCheckedFilesWithoutFakeDownload() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try Data("= Main".utf8).write(to: folder.appendingPathComponent("main.typ"))
+        try Data([0x01]).write(to: folder.appendingPathComponent("cover.png"))
+
+        var progressEvents: [LinkedFolderLoadProgress] = []
+        let result = try await ProjectFileManager.loadLinkedFolderContents(at: folder) { progress in
+            await MainActor.run {
+                progressEvents.append(progress)
+            }
+        }
+
+        let completed = try #require(progressEvents.last)
+        #expect(result.scannedFileCount == 2)
+        #expect(result.downloadedFileCount == 0)
+        #expect(completed.phase == .complete)
+        #expect(completed.scannedFileCount == 2)
+        #expect(completed.totalDownloadFileCount == 0)
+        #expect(completed.localizedStatusMessage == L10n.format("icloud.status.checked", 2))
+        #expect(!progressEvents.contains { $0.phase == .downloading })
+    }
+
+    @Test func linkedFolderLoaderReportsOneAndTwoRealPendingDownloads() async throws {
+        for pendingCount in 1...2 {
+            let folder = makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: folder) }
+
+            let pendingNames = Set((0..<pendingCount).map { "pending-\($0).png" })
+            try Data("= Main".utf8).write(to: folder.appendingPathComponent("main.typ"))
+            for name in pendingNames {
+                try Data([0x01]).write(to: folder.appendingPathComponent(name))
+            }
+
+            let availability = LinkedFolderAvailabilityStub(pendingFileNames: pendingNames)
+            let environment = LinkedFolderLoadEnvironment(
+                downloadingStatus: availability.downloadingStatus,
+                startDownloading: availability.startDownloading,
+                now: Date.init,
+                sleep: { _ in }
+            )
+            var progressEvents: [LinkedFolderLoadProgress] = []
+
+            let result = try await ProjectFileManager.loadLinkedFolderContents(
+                at: folder,
+                environment: environment
+            ) { progress in
+                await MainActor.run {
+                    progressEvents.append(progress)
+                }
+            }
+
+            #expect(result.scannedFileCount == pendingCount + 1)
+            #expect(result.downloadedFileCount == pendingCount)
+            #expect(progressEvents.contains {
+                $0.phase == .downloading
+                    && $0.totalDownloadFileCount == pendingCount
+                    && $0.downloadedFileCount == 0
+            })
+            #expect(progressEvents.last?.phase == .complete)
+            #expect(progressEvents.last?.downloadedFileCount == pendingCount)
+        }
+    }
+
+    @Test func linkedFolderLoaderTimesOutWhenPendingDownloadNeverCompletes() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let pendingName = "pending.png"
+        try Data([0x01]).write(to: folder.appendingPathComponent(pendingName))
+        let availability = LinkedFolderAvailabilityStub(
+            pendingFileNames: [pendingName],
+            completesDownloads: false
+        )
+        let environment = LinkedFolderLoadEnvironment(
+            downloadingStatus: availability.downloadingStatus,
+            startDownloading: availability.startDownloading,
+            now: Date.init,
+            sleep: { _ in }
+        )
+
+        var didTimeOut = false
+        do {
+            _ = try await ProjectFileManager.loadLinkedFolderContents(
+                at: folder,
+                maxDownloadWait: 0,
+                environment: environment
+            ) { _ in }
+        } catch StorageManager.MigrationError.downloadTimeout {
+            didTimeOut = true
+        }
+
+        #expect(didTimeOut)
+    }
+
+    @Test func linkedFolderLoaderAppliesTimeoutWhileScanning() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try Data("= Main".utf8).write(to: folder.appendingPathComponent("main.typ"))
+        let clock = LinkedFolderClockStub()
+        let environment = LinkedFolderLoadEnvironment(
+            downloadingStatus: { _ in nil },
+            startDownloading: { _ in },
+            now: clock.now,
+            sleep: { _ in }
+        )
+
+        var didTimeOut = false
+        do {
+            _ = try await ProjectFileManager.loadLinkedFolderContents(
+                at: folder,
+                maxDownloadWait: 120,
+                environment: environment
+            ) { _ in }
+        } catch StorageManager.MigrationError.downloadTimeout {
+            didTimeOut = true
+        }
+
+        #expect(didTimeOut)
+    }
+
+    @Test func linkedFolderLoaderStopsWhenRefreshIsCancelled() async throws {
+        let folder = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let pendingName = "pending.png"
+        try Data([0x01]).write(to: folder.appendingPathComponent(pendingName))
+        let availability = LinkedFolderAvailabilityStub(
+            pendingFileNames: [pendingName],
+            completesDownloads: false
+        )
+        let (downloadRequests, downloadRequestContinuation) = AsyncStream<Void>.makeStream()
+        let environment = LinkedFolderLoadEnvironment(
+            downloadingStatus: availability.downloadingStatus,
+            startDownloading: { url in
+                availability.startDownloading(url)
+                downloadRequestContinuation.yield()
+            },
+            now: Date.init,
+            sleep: { duration in try await Task.sleep(for: duration) }
+        )
+
+        let refreshTask = Task {
+            try await ProjectFileManager.loadLinkedFolderContents(
+                at: folder,
+                environment: environment
+            ) { _ in }
+        }
+        var iterator = downloadRequests.makeAsyncIterator()
+        _ = await iterator.next()
+        refreshTask.cancel()
+
+        var wasCancelled = false
+        do {
+            _ = try await refreshTask.value
+        } catch is CancellationError {
+            wasCancelled = true
+        }
+        downloadRequestContinuation.finish()
+
+        #expect(wasCancelled)
+    }
+
+    @Test func linkedFolderRefreshInvalidatesPreviewCacheAndDiscoversNewAssets() async throws {
+        let folder = makeTempDirectory()
+        let cacheRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: cacheRoot)
+        }
+
+        try Data("= Main\n#image(\"imgs/cover.png\")".utf8)
+            .write(to: folder.appendingPathComponent("main.typ"))
+        let imageDirectory = folder.appendingPathComponent("imgs", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try Data([0x01]).write(to: imageDirectory.appendingPathComponent("cover.png"))
+
+        let projectID = "linked-refresh-\(UUID().uuidString)"
+        let descriptor = CompiledPreviewCacheDescriptor(
+            projectID: projectID,
+            documentTitle: "Linked",
+            entryFileName: "main.typ"
+        )
+        let cacheStore = CompiledPreviewCacheStore(rootURL: cacheRoot)
+        let cacheInput = CompiledPreviewCacheInput(
+            descriptor: descriptor,
+            source: "= Main\n#image(\"imgs/cover.png\")",
+            fontPaths: [],
+            rootDir: folder.path,
+            localPackagesDir: nil,
+            typstVersion: "0.15.0"
+        )
+        try cacheStore.save(pdfData: Data("stale".utf8), for: cacheInput)
+        #expect(try cacheStore.snapshot().entries.count == 1)
+
+        var progressEvents: [LinkedFolderLoadProgress] = []
+        let result = try await ProjectFileManager.refreshLinkedFolderContents(
+            at: folder,
+            projectID: projectID,
+            previewCacheStore: cacheStore
+        ) { progress in
+            await MainActor.run {
+                progressEvents.append(progress)
+            }
+        }
+
+        #expect(result.relativePaths == ["imgs/cover.png", "main.typ"])
+        #expect(progressEvents.last?.phase == .complete)
+        #expect(try cacheStore.snapshot().entries.isEmpty)
+    }
+
+    @Test func linkedFolderRefreshFailurePreservesExistingPreviewCache() async throws {
+        let folder = makeTempDirectory()
+        let cacheRoot = makeTempDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: cacheRoot)
+        }
+
+        let source = "= Main"
+        try Data(source.utf8).write(to: folder.appendingPathComponent("main.typ"))
+        let projectID = "linked-refresh-failure-\(UUID().uuidString)"
+        let descriptor = CompiledPreviewCacheDescriptor(
+            projectID: projectID,
+            documentTitle: "Linked",
+            entryFileName: "main.typ"
+        )
+        let cacheStore = CompiledPreviewCacheStore(rootURL: cacheRoot)
+        let cacheInput = CompiledPreviewCacheInput(
+            descriptor: descriptor,
+            source: source,
+            fontPaths: [],
+            rootDir: folder.path,
+            localPackagesDir: nil,
+            typstVersion: "0.15.0"
+        )
+        try cacheStore.save(pdfData: Data("stable".utf8), for: cacheInput)
+        let environment = LinkedFolderLoadEnvironment(
+            downloadingStatus: { _ in .notDownloaded },
+            startDownloading: { _ in throw TestRequirementError.linkedFolderDownloadFailed },
+            now: Date.init,
+            sleep: { _ in }
+        )
+
+        var didFail = false
+        do {
+            _ = try await ProjectFileManager.refreshLinkedFolderContents(
+                at: folder,
+                projectID: projectID,
+                previewCacheStore: cacheStore,
+                environment: environment
+            ) { _ in }
+        } catch TestRequirementError.linkedFolderDownloadFailed {
+            didFail = true
+        }
+
+        #expect(didFail)
+        #expect(try cacheStore.snapshot().entries.count == 1)
+        #expect(try Data(contentsOf: folder.appendingPathComponent("main.typ")) == Data(source.utf8))
+    }
+
+    @Test func asyncOperationGenerationRejectsStaleTaskCompletion() {
+        var generation = AsyncOperationGeneration()
+        let first = generation.begin()
+        let second = generation.begin()
+
+        let staleDidFinish = generation.finish(first)
+        #expect(!staleDidFinish)
+        #expect(generation.current == second)
+        let currentDidFinish = generation.finish(second)
+        #expect(currentDidFinish)
+        #expect(generation.current == nil)
+    }
+
+    @Test func linkedFolderRefreshPreservesExistingFontReferences() {
+        let refreshed = ProjectFileManager.refreshedLinkedFolderFontFileNames(
+            existing: ["Custom/Nested.otf", "Legacy.ttf"],
+            relativePaths: [
+                "fonts/New.ttf",
+                "fonts/nested/Another.otf",
+                "vendor/Flux.ttf"
+            ]
+        )
+
+        #expect(refreshed == ["Custom/Nested.otf", "Legacy.ttf", "New.ttf"])
+    }
+
+    @Test func previewCompileTokenBypassesCacheExactlyOnce() throws {
+        let firstToken = UUID()
+        let secondToken = UUID()
+        let previous = PreviewCompileInputSignature(
+            source: "= Main",
+            fontPaths: [],
+            preflightError: nil,
+            rootDir: "/project",
+            previewCacheDescriptor: nil,
+            compileToken: firstToken,
+            requiresExternalFolderLink: false
+        )
+        let refreshed = PreviewCompileInputSignature(
+            source: "= Main",
+            fontPaths: [],
+            preflightError: nil,
+            rootDir: "/project",
+            previewCacheDescriptor: nil,
+            compileToken: secondToken,
+            requiresExternalFolderLink: false
+        )
+
+        let refreshPolicy = try #require(
+            PreviewCompileCachePolicyResolver.cachePolicy(previous: previous, current: refreshed)
+        )
+        guard case .bypassCache = refreshPolicy else {
+            Issue.record("A compile-token refresh must bypass the previous cache")
+            return
+        }
+        #expect(PreviewCompileCachePolicyResolver.cachePolicy(previous: refreshed, current: refreshed) == nil)
+
+        let sourceEdit = PreviewCompileInputSignature(
+            source: "= Updated",
+            fontPaths: [],
+            preflightError: nil,
+            rootDir: "/project",
+            previewCacheDescriptor: nil,
+            compileToken: secondToken,
+            requiresExternalFolderLink: false
+        )
+        let editPolicy = try #require(
+            PreviewCompileCachePolicyResolver.cachePolicy(previous: refreshed, current: sourceEdit)
+        )
+        guard case .useCacheIfValid = editPolicy else {
+            Issue.record("A normal source edit must retain the existing cache policy")
+            return
+        }
     }
 
     @Test func projectFileManagerFindsImportDirectoryCandidates() {
@@ -1620,6 +2004,55 @@ struct InkPondTests {
         #expect(!compiler.isCompiling)
         #expect(compiler.pdfData == nil)
         #expect(!compiler.compiledOnce)
+    }
+
+    @MainActor
+    @Test func typstCompilerCancellationDoesNotWriteCompiledPreviewCache() async throws {
+        let doc = makeDocument(projectID: "compiler-cancel-cache-\(UUID().uuidString)")
+        let cacheRoot = makeTempDirectory()
+        let source = "= Cancelled"
+        defer {
+            try? FileManager.default.removeItem(at: cacheRoot)
+            try? ProjectFileManager.deleteProjectDirectory(for: doc)
+        }
+
+        try ProjectFileManager.createInitialProject(for: doc)
+        try ProjectFileManager.writeTypFile(named: doc.entryFileName, content: source, for: doc)
+        let store = CompiledPreviewCacheStore(rootURL: cacheRoot)
+        let descriptor = CompiledPreviewCacheDescriptor(
+            projectID: doc.projectID,
+            documentTitle: doc.title,
+            entryFileName: doc.entryFileName
+        )
+        let probe = CompileProbe()
+        probe.block(source)
+        let compiler = TypstCompiler(
+            compileWorker: { input, _, _, _ in probe.compile(source: input) },
+            documentBuilder: { _ in PDFDocument() },
+            sleep: { _ in },
+            previewCacheStore: store,
+            typstVersionProvider: { "1.0" }
+        )
+
+        compiler.compileNow(
+            source: source,
+            fontPaths: [],
+            rootDir: ProjectFileManager.projectDirectory(for: doc).path,
+            previewCachePolicy: .bypassCache,
+            previewCacheDescriptor: descriptor
+        )
+        await waitUntil {
+            probe.startedSources == [source]
+        }
+
+        compiler.cancel()
+        probe.release(source)
+        await waitUntil {
+            probe.completedSources == [source]
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+
+        #expect(try store.snapshot().entries.isEmpty)
     }
 
     @MainActor
@@ -3642,12 +4075,17 @@ private final class LockedCounter: @unchecked Sendable {
 private final class CompileProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var started: [String] = []
+    private var completed: [String] = []
     private var blockers: [String: DispatchSemaphore] = [:]
     private var activeCount = 0
     private var maxActiveCount = 0
 
     var startedSources: [String] {
         lock.withLock { started }
+    }
+
+    var completedSources: [String] {
+        lock.withLock { completed }
     }
 
     var maxConcurrent: Int {
@@ -3677,6 +4115,7 @@ private final class CompileProbe: @unchecked Sendable {
 
         lock.withLock {
             activeCount -= 1
+            completed.append(source)
         }
         return .success(makePreviewArtifact(pdfData: Data(source.utf8)))
     }

@@ -12,6 +12,8 @@ struct ProjectFileTreeView: View {
     var openNode: (ProjectTreeNode) -> Void
     var setEntryFile: (String) -> Bool
     var onNodeDeleted: (ProjectTreeNode) -> Void
+    var refreshLinkedFolder: (() -> Void)? = nil
+    var isRefreshingLinkedFolder = false
     var closeAfterOpen: Bool = false
     var usesNavigationToolbar: Bool = true
     var topContentInset: CGFloat = 0
@@ -79,6 +81,7 @@ struct ProjectFileTreeView: View {
             if usesNavigationToolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     projectSettingsButton
+                    refreshLinkedFolderButtonIfNeeded
                     downloadAllButtonIfNeeded
                     addFileMenu
                 }
@@ -151,6 +154,7 @@ struct ProjectFileTreeView: View {
     private var inlineProjectActionControls: some View {
         HStack(spacing: 2) {
             projectSettingsButton
+            refreshLinkedFolderButtonIfNeeded
             downloadAllButtonIfNeeded
             addFileMenu
         }
@@ -170,6 +174,31 @@ struct ProjectFileTreeView: View {
         .accessibilityLabel(L10n.a11yProjectFilesSettingsLabel)
         .accessibilityHint(L10n.a11yProjectFilesSettingsHint)
         .accessibilityIdentifier("project-files.settings")
+    }
+
+    @ViewBuilder
+    private var refreshLinkedFolderButtonIfNeeded: some View {
+        if BookmarkManager.hasBookmark(projectID: document.projectID),
+           let refreshLinkedFolder {
+            Button {
+                InteractionFeedback.impact(.light)
+                refreshLinkedFolder()
+            } label: {
+                if isRefreshingLinkedFolder {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: usesNavigationToolbar ? 28 : 40, height: usesNavigationToolbar ? 28 : 40)
+                } else {
+                    projectControlIcon("arrow.clockwise")
+                }
+            }
+            .modifier(ProjectFileToolbarControlStyleModifier(usesNavigationToolbar: usesNavigationToolbar))
+            .disabled(isRefreshingLinkedFolder)
+            .accessibilityLabel(L10n.tr("Refresh"))
+            .accessibilityHint(L10n.tr("a11y.project_files.refresh_linked_folder.hint"))
+            .accessibilityValue(isRefreshingLinkedFolder ? L10n.tr("icloud.status.checking") : "")
+            .accessibilityIdentifier("project-files.refresh-linked-folder")
+        }
     }
 
     @ViewBuilder

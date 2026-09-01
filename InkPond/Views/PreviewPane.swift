@@ -22,7 +22,7 @@ struct PreviewStatistics {
     let characterCount: Int
 }
 
-private struct PreviewCompileInputSignature: Equatable {
+struct PreviewCompileInputSignature: Equatable {
     let source: String
     let fontPaths: [String]
     let preflightError: String?
@@ -30,6 +30,17 @@ private struct PreviewCompileInputSignature: Equatable {
     let previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     let compileToken: UUID
     let requiresExternalFolderLink: Bool
+}
+
+enum PreviewCompileCachePolicyResolver {
+    nonisolated static func cachePolicy(
+        previous: PreviewCompileInputSignature?,
+        current: PreviewCompileInputSignature
+    ) -> TypstPreviewCachePolicy? {
+        guard previous != current else { return nil }
+        guard let previous else { return .useCacheIfValid }
+        return previous.compileToken == current.compileToken ? .useCacheIfValid : .bypassCache
+    }
 }
 
 private struct PreviewStatisticItem: Identifiable {
@@ -1146,7 +1157,10 @@ struct PreviewPane: View {
             compileToken: compileToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard signature != lastCompileSignature else { return }
+        guard let cachePolicy = PreviewCompileCachePolicyResolver.cachePolicy(
+            previous: lastCompileSignature,
+            current: signature
+        ) else { return }
         lastCompileSignature = signature
 
         if requiresExternalFolderLink {
@@ -1171,7 +1185,7 @@ struct PreviewPane: View {
             fontPaths: fontPaths,
             rootDir: rootDir,
             mode: mode,
-            previewCachePolicy: .useCacheIfValid,
+            previewCachePolicy: cachePolicy,
             previewCacheDescriptor: previewCacheDescriptor
         )
     }
@@ -1614,7 +1628,10 @@ struct PreviewCompileDriver: View {
             compileToken: compileToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard signature != lastCompileSignature else { return }
+        guard let cachePolicy = PreviewCompileCachePolicyResolver.cachePolicy(
+            previous: lastCompileSignature,
+            current: signature
+        ) else { return }
         lastCompileSignature = signature
 
         if requiresExternalFolderLink {
@@ -1636,7 +1653,7 @@ struct PreviewCompileDriver: View {
             fontPaths: fontPaths,
             rootDir: rootDir,
             mode: mode,
-            previewCachePolicy: .useCacheIfValid,
+            previewCachePolicy: cachePolicy,
             previewCacheDescriptor: previewCacheDescriptor
         )
     }
