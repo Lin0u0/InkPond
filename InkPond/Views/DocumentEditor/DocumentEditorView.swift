@@ -40,6 +40,7 @@ struct DocumentEditorView: View {
     @State var editorText: String = ""
     @State var entrySource: String = ""
     @State var compileToken: UUID = UUID()
+    @State var linkedFolderRefreshCacheBypassToken: UUID?
     @State var isLoadingFileContent = false
     @State var lastPersistedText: String = ""
     @State var saveTask: Task<Void, Never>?
@@ -117,6 +118,8 @@ struct DocumentEditorView: View {
     @State var externalFolderLinkProgress: LinkedFolderLoadProgress?
     @State var externalFolderLinkProgressTitle: String?
     @State var externalFolderLinkTask: Task<Void, Never>?
+    @State var externalFolderLinkGeneration = AsyncOperationGeneration()
+    @State var linkedFolderRefreshCoordinator = LinkedFolderRefreshCoordinator()
     @State var positionSyncTask: Task<Void, Never>?
     @State var openTabs: [ProjectFileTab] = []
     @State var activeTabPath: String?

@@ -15,6 +15,11 @@ struct ProjectFileBrowserSheet: View {
     var importFile: (URL, String) async throws -> String
     var deleteNode: (ProjectTreeNode) async throws -> Void
     var onNodeDeleted: (ProjectTreeNode) -> Void
+    var refreshLinkedFolder: (() -> Void)? = nil
+    var isRefreshingLinkedFolder = false
+    var linkedFolderProgress: LinkedFolderLoadProgress?
+    var cancelLinkedFolderRefresh: (() -> Void)? = nil
+    var refreshToken: UUID? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -30,10 +35,25 @@ struct ProjectFileBrowserSheet: View {
                 importFile: importFile,
                 deleteNode: deleteNode,
                 onNodeDeleted: onNodeDeleted,
-                closeAfterOpen: true
+                refreshLinkedFolder: refreshLinkedFolder,
+                isRefreshingLinkedFolder: isRefreshingLinkedFolder,
+                closeAfterOpen: true,
+                refreshToken: refreshToken
             )
             .navigationTitle(L10n.tr("Project Files"))
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                if let linkedFolderProgress {
+                    LinkedFolderLoadProgressView(
+                        title: document.title,
+                        progress: linkedFolderProgress
+                    ) {
+                        cancelLinkedFolderRefresh?()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.tr("Done")) { dismiss() }

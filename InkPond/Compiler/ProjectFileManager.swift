@@ -132,6 +132,7 @@ struct LinkedFolderLoadProgress: Equatable, Sendable {
     enum Phase: Equatable, Sendable {
         case scanning
         case downloading
+        case complete
     }
 
     let phase: Phase
@@ -153,6 +154,50 @@ struct LinkedFolderLoadResult: Equatable, Sendable {
     let relativePaths: [String]
     let scannedFileCount: Int
     let downloadedFileCount: Int
+}
+
+struct LinkedFolderLoadEnvironment: Sendable {
+    let downloadingStatus: @Sendable (URL) throws -> URLUbiquitousItemDownloadingStatus?
+    let startDownloading: @Sendable (URL) throws -> Void
+    let now: @Sendable () -> Date
+    let sleep: @Sendable (Duration) async throws -> Void
+
+    nonisolated static let live = LinkedFolderLoadEnvironment(
+        downloadingStatus: { url in
+            try url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                .ubiquitousItemDownloadingStatus
+        },
+        startDownloading: { url in
+            try FileManager.default.startDownloadingUbiquitousItem(at: url)
+        },
+        now: Date.init,
+        sleep: { duration in
+            try await Task.sleep(for: duration)
+        }
+    )
+}
+
+struct AsyncOperationGeneration: Equatable, Sendable {
+    private(set) var current: UUID?
+
+    @discardableResult
+    mutating func begin() -> UUID {
+        let operationID = UUID()
+        current = operationID
+        return operationID
+    }
+
+    func isCurrent(_ operationID: UUID) -> Bool {
+        current == operationID
+    }
+
+    @discardableResult
+    mutating func finish(_ operationID: UUID) -> Bool {
+        guard current == operationID else { return false }
+        current = nil
+        return true
+    }
+
 }
 
 struct ProjectReferenceCompletionSnapshot: Sendable {
@@ -261,6 +306,19 @@ enum ProjectFileManager {
     /// and must be callable from any actor context (e.g. BackgroundDocumentFileWriter).
     nonisolated static var useCoordination: Bool {
         storageManager?.isUsingiCloud ?? false
+    }
+
+    static func reliabilityBackendKind(
+        for document: InkPondDocument,
+        coordinatingManagedFiles: Bool
+    ) -> ProjectStorageBackendKind {
+        // External providers require coordination independently of the app's
+        // managed-project iCloud preference.
+        if externalSingleFileURL(for: document) != nil
+            || BookmarkManager.hasBookmark(projectID: document.projectID) {
+            return .linkedExternal
+        }
+        return coordinatingManagedFiles ? .iCloud : .local
     }
 
     @discardableResult

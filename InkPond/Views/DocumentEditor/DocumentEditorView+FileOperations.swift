@@ -776,13 +776,10 @@ extension DocumentEditorView {
         let rootURL = externalURL?.deletingLastPathComponent() ?? ProjectFileManager.projectDirectory(for: document)
         let relativePath = externalURL?.lastPathComponent ?? fileName
         let entryRelativePath = externalURL?.lastPathComponent ?? document.entryFileName
-        let backendKind: ProjectStorageBackendKind = if externalURL != nil {
-            .linkedExternal
-        } else if ProjectFileManager.useCoordination {
-            .iCloud
-        } else {
-            .local
-        }
+        let backendKind = ProjectFileManager.reliabilityBackendKind(
+            for: document,
+            coordinatingManagedFiles: ProjectFileManager.useCoordination
+        )
         guard fileURL.standardizedFileURL == rootURL.appendingPathComponent(relativePath).standardizedFileURL else {
             throw InkPondFileError.unsafePath(fileName)
         }

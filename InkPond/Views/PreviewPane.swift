@@ -22,14 +22,53 @@ struct PreviewStatistics {
     let characterCount: Int
 }
 
-private struct PreviewCompileInputSignature: Equatable {
+struct PreviewCompileInputSignature: Equatable {
     let source: String
     let fontPaths: [String]
     let preflightError: String?
     let rootDir: String?
     let previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     let compileToken: UUID
+    let refreshCacheBypassToken: UUID?
     let requiresExternalFolderLink: Bool
+}
+
+struct PreviewCompileRequestTracker {
+    private var previousSignature: PreviewCompileInputSignature?
+    private var lastDispatchedRefreshCacheBypassToken: UUID?
+
+    mutating func cachePolicy(
+        for signature: PreviewCompileInputSignature,
+        canDispatch: Bool
+    ) -> TypstPreviewCachePolicy? {
+        guard previousSignature != signature else { return nil }
+        if previousSignature == nil {
+            previousSignature = signature
+            lastDispatchedRefreshCacheBypassToken = signature.refreshCacheBypassToken
+            return canDispatch ? .useCacheIfValid : nil
+        }
+
+        previousSignature = signature
+        guard canDispatch else { return nil }
+        if let refreshCacheBypassToken = signature.refreshCacheBypassToken,
+           refreshCacheBypassToken != lastDispatchedRefreshCacheBypassToken {
+            lastDispatchedRefreshCacheBypassToken = refreshCacheBypassToken
+            return .bypassCache
+        }
+        return .useCacheIfValid
+    }
+
+    mutating func dispatchIfNeeded(
+        for signature: PreviewCompileInputSignature,
+        canDispatch: Bool,
+        dispatch: (TypstPreviewCachePolicy) -> Void
+    ) {
+        guard let cachePolicy = cachePolicy(
+            for: signature,
+            canDispatch: canDispatch
+        ) else { return }
+        dispatch(cachePolicy)
+    }
 }
 
 private struct PreviewStatisticItem: Identifiable {
@@ -135,7 +174,6 @@ final class SVGPreviewContainerView: UIView {
     private let syncMarkerView = PreviewSyncMarkerView()
     private var pageContainers: [UIView] = []
     private var pageWebViews: [Int: WKWebView] = [:]
-    private var pageHTMLCache: [String: String] = [:]
     private var pageFrames: [CGRect] = []
     private var pages: [TypstPreviewPage] = []
     private weak var horizontalPanRecognizer: UIPanGestureRecognizer?
@@ -245,7 +283,6 @@ final class SVGPreviewContainerView: UIView {
         let hadPages = !pages.isEmpty
         let savedOffset = scrollView.contentOffset
         tearDownPageViews()
-        pageHTMLCache.removeAll(keepingCapacity: true)
         guard !newPages.isEmpty else {
             pages = []
             pageFrames = []
@@ -564,7 +601,7 @@ final class SVGPreviewContainerView: UIView {
         let container = pageContainers[index]
         container.addSubview(webView)
         applyWebViewBackingLayout(to: webView, logicalContentSize: container.bounds.size)
-        webView.loadHTMLString(html(forPage: pages[index]), baseURL: nil)
+        webView.loadHTMLString(Self.makePageHTML(forPage: pages[index]), baseURL: nil)
     }
 
     private func unloadPageView(at index: Int) {
@@ -654,13 +691,9 @@ final class SVGPreviewContainerView: UIView {
         }
     }
 
-    private func html(forPage page: TypstPreviewPage) -> String {
-        if let cached = pageHTMLCache[page.id] {
-            return cached
-        }
-
+    static func makePageHTML(forPage page: TypstPreviewPage) -> String {
         let svg = (try? page.loadSVG()) ?? ""
-        let html = """
+        return """
         <!doctype html>
         <html>
         <head>
@@ -689,8 +722,6 @@ final class SVGPreviewContainerView: UIView {
         </body>
         </html>
         """
-        pageHTMLCache[page.id] = html
-        return html
     }
 
     private static func cssPixels(_ value: Double) -> String {
@@ -856,6 +887,7 @@ struct PreviewPane: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor? = nil
     var compileToken: UUID = UUID()
+    var refreshCacheBypassToken: UUID? = nil
     var requiresExternalFolderLink: Bool = false
     var drivesCompilation: Bool = true
     var cancelsCompilerOnDisappear: Bool = true
@@ -886,7 +918,7 @@ struct PreviewPane: View {
     @State private var dismissedFontWarningIDs: Set<String> = []
     @State private var keyboardOverlap: CGFloat = 0
     @State private var isSVGPreviewRendering = false
-    @State private var lastCompileSignature: PreviewCompileInputSignature?
+    @State private var compileRequestTracker = PreviewCompileRequestTracker()
 
     private var previewStatistics: PreviewStatistics? {
         guard compiler.compiledOnce, let cachedTextStatistics else { return nil }
@@ -994,6 +1026,10 @@ struct PreviewPane: View {
                 compileIfNeeded()
             }
             .onChange(of: compileToken) {
+                guard drivesCompilation else { return }
+                compileIfNeeded()
+            }
+            .onChange(of: refreshCacheBypassToken) {
                 guard drivesCompilation else { return }
                 compileIfNeeded()
             }
@@ -1152,10 +1188,26 @@ struct PreviewPane: View {
             rootDir: rootDir,
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
+            refreshCacheBypassToken: refreshCacheBypassToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard signature != lastCompileSignature else { return }
-        lastCompileSignature = signature
+        let canDispatch = !requiresExternalFolderLink
+            && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && preflightError == nil
+        compileRequestTracker.dispatchIfNeeded(
+            for: signature,
+            canDispatch: canDispatch
+        ) { cachePolicy in
+            let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
+            compiler.compile(
+                source: effectiveCompileSource,
+                fontPaths: fontPaths,
+                rootDir: rootDir,
+                mode: mode,
+                previewCachePolicy: cachePolicy,
+                previewCacheDescriptor: previewCacheDescriptor
+            )
+        }
 
         if requiresExternalFolderLink {
             isSVGPreviewRendering = false
@@ -1173,15 +1225,6 @@ struct PreviewPane: View {
             compiler.presentPreflightError(preflightError)
             return
         }
-        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-        compiler.compile(
-            source: effectiveCompileSource,
-            fontPaths: fontPaths,
-            rootDir: rootDir,
-            mode: mode,
-            previewCachePolicy: .useCacheIfValid,
-            previewCacheDescriptor: previewCacheDescriptor
-        )
     }
 
     // MARK: Sub-views
@@ -1577,8 +1620,9 @@ struct PreviewCompileDriver: View {
     var rootDir: String?
     var previewCacheDescriptor: CompiledPreviewCacheDescriptor?
     var compileToken: UUID
+    var refreshCacheBypassToken: UUID?
     var requiresExternalFolderLink: Bool = false
-    @State private var lastCompileSignature: PreviewCompileInputSignature?
+    @State private var compileRequestTracker = PreviewCompileRequestTracker()
 
     var body: some View {
         Color.clear
@@ -1601,6 +1645,9 @@ struct PreviewCompileDriver: View {
             .onChange(of: compileToken) {
                 compileIfNeeded()
             }
+            .onChange(of: refreshCacheBypassToken) {
+                compileIfNeeded()
+            }
             .onChange(of: requiresExternalFolderLink, initial: true) { _, _ in
                 compileIfNeeded()
             }
@@ -1620,10 +1667,26 @@ struct PreviewCompileDriver: View {
             rootDir: rootDir,
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
+            refreshCacheBypassToken: refreshCacheBypassToken,
             requiresExternalFolderLink: requiresExternalFolderLink
         )
-        guard signature != lastCompileSignature else { return }
-        lastCompileSignature = signature
+        let canDispatch = !requiresExternalFolderLink
+            && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && preflightError == nil
+        compileRequestTracker.dispatchIfNeeded(
+            for: signature,
+            canDispatch: canDispatch
+        ) { cachePolicy in
+            let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
+            compiler.compile(
+                source: effectiveCompileSource,
+                fontPaths: fontPaths,
+                rootDir: rootDir,
+                mode: mode,
+                previewCachePolicy: cachePolicy,
+                previewCacheDescriptor: previewCacheDescriptor
+            )
+        }
 
         if requiresExternalFolderLink {
             compiler.cancel()
@@ -1638,15 +1701,6 @@ struct PreviewCompileDriver: View {
             compiler.presentPreflightError(preflightError)
             return
         }
-        let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-        compiler.compile(
-            source: effectiveCompileSource,
-            fontPaths: fontPaths,
-            rootDir: rootDir,
-            mode: mode,
-            previewCachePolicy: .useCacheIfValid,
-            previewCacheDescriptor: previewCacheDescriptor
-        )
     }
 }
 

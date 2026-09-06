@@ -94,6 +94,7 @@ extension ProjectFileManager {
     nonisolated static func loadLinkedFolderContents(
         at folderURL: URL,
         maxDownloadWait: TimeInterval = 600,
+        environment: LinkedFolderLoadEnvironment = .live,
         progress: (LinkedFolderLoadProgress) async -> Void
     ) async throws -> LinkedFolderLoadResult {
         try Task.checkCancellation()
@@ -105,6 +106,7 @@ extension ProjectFileManager {
         let fm = FileManager.default
         let rootURL = folderURL.standardizedFileURL
         let rootComponents = rootURL.pathComponents
+        let deadline = environment.now().addingTimeInterval(maxDownloadWait)
         guard let enumerator = fm.enumerator(
             at: rootURL,
             includingPropertiesForKeys: [
@@ -130,14 +132,21 @@ extension ProjectFileManager {
         var seenPendingPaths = Set<String>()
         var scannedFileCount = 0
 
-        while let fileURL = enumerator.nextObject() as? URL {
+        while true {
             try Task.checkCancellation()
+            guard environment.now() < deadline else {
+                throw StorageManager.MigrationError.downloadTimeout
+            }
+            guard let fileURL = enumerator.nextObject() as? URL else { break }
+            try Task.checkCancellation()
+            guard environment.now() < deadline else {
+                throw StorageManager.MigrationError.downloadTimeout
+            }
 
             let values = try? fileURL.resourceValues(forKeys: [
                 .isRegularFileKey,
                 .isDirectoryKey,
-                .isSymbolicLinkKey,
-                .ubiquitousItemDownloadingStatusKey
+                .isSymbolicLinkKey
             ])
 
             if values?.isSymbolicLink == true {
@@ -166,10 +175,11 @@ extension ProjectFileManager {
             relativePaths.append(relativePath)
             scannedFileCount += 1
 
-            if values?.ubiquitousItemDownloadingStatus != nil,
-               values?.ubiquitousItemDownloadingStatus != .current,
+            let downloadingStatus = try environment.downloadingStatus(fileURL)
+            if downloadingStatus != nil,
+               downloadingStatus != .current,
                seenPendingPaths.insert(relativePath).inserted {
-                try? fm.startDownloadingUbiquitousItem(at: fileURL)
+                try environment.startDownloading(fileURL)
                 pendingDownloadURLs.append(fileURL)
             }
 
@@ -186,23 +196,22 @@ extension ProjectFileManager {
         var downloadedFileCount = 0
         let totalDownloadFileCount = pendingDownloadURLs.count
         await progress(LinkedFolderLoadProgress(
-            phase: .downloading,
+            phase: totalDownloadFileCount == 0 ? .complete : .downloading,
             scannedFileCount: scannedFileCount,
             downloadedFileCount: downloadedFileCount,
             totalDownloadFileCount: totalDownloadFileCount
         ))
 
         var remainingDownloadURLs = pendingDownloadURLs
-        let deadline = Date().addingTimeInterval(maxDownloadWait)
         while !remainingDownloadURLs.isEmpty {
             try Task.checkCancellation()
 
             var stillPending: [URL] = []
             for fileURL in remainingDownloadURLs {
-                if isUbiquitousItemDownloaded(fileURL) {
+                if try environment.downloadingStatus(fileURL) == .current {
                     downloadedFileCount += 1
                 } else {
-                    try? fm.startDownloadingUbiquitousItem(at: fileURL)
+                    try environment.startDownloading(fileURL)
                     stillPending.append(fileURL)
                 }
             }
@@ -215,12 +224,21 @@ extension ProjectFileManager {
             ))
 
             guard !stillPending.isEmpty else { break }
-            guard Date() < deadline else {
+            guard environment.now() < deadline else {
                 throw StorageManager.MigrationError.downloadTimeout
             }
 
             remainingDownloadURLs = stillPending
-            try await Task.sleep(for: .milliseconds(500))
+            try await environment.sleep(.milliseconds(500))
+        }
+
+        if totalDownloadFileCount > 0 {
+            await progress(LinkedFolderLoadProgress(
+                phase: .complete,
+                scannedFileCount: scannedFileCount,
+                downloadedFileCount: downloadedFileCount,
+                totalDownloadFileCount: totalDownloadFileCount
+            ))
         }
 
         return LinkedFolderLoadResult(
@@ -228,6 +246,28 @@ extension ProjectFileManager {
             scannedFileCount: scannedFileCount,
             downloadedFileCount: downloadedFileCount
         )
+    }
+
+    /// Rehydrates a linked folder and drops the compiled preview derived from
+    /// its previous on-disk resources. The editor decides when to trigger the
+    /// next compilation so in-memory source text can remain authoritative.
+    nonisolated static func refreshLinkedFolderContents(
+        at folderURL: URL,
+        projectID: String,
+        maxDownloadWait: TimeInterval = 120,
+        previewCacheStore: CompiledPreviewCacheStore = CompiledPreviewCacheStore(),
+        environment: LinkedFolderLoadEnvironment = .live,
+        progress: (LinkedFolderLoadProgress) async -> Void
+    ) async throws -> LinkedFolderLoadResult {
+        let result = try await loadLinkedFolderContents(
+            at: folderURL,
+            maxDownloadWait: maxDownloadWait,
+            environment: environment,
+            progress: progress
+        )
+        try Task.checkCancellation()
+        try previewCacheStore.remove(projectID: projectID)
+        return result
     }
 
     nonisolated static func referenceCompletionSnapshot(
@@ -301,6 +341,21 @@ extension ProjectFileManager {
         relevantDirectoryCandidates(from: relativePaths, matching: fontFileExtensions)
     }
 
+    static func refreshedLinkedFolderFontFileNames(
+        existing: [String],
+        relativePaths: [String]
+    ) -> [String] {
+        let discoveredDefaultFontFileNames = relativePaths.compactMap { relativePath -> String? in
+            let path = relativePath as NSString
+            guard path.deletingLastPathComponent == "fonts",
+                  fontFileExtensions.contains(path.pathExtension.lowercased()) else {
+                return nil
+            }
+            return path.lastPathComponent
+        }
+        return Array(Set(existing + discoveredDefaultFontFileNames)).sorted()
+    }
+
     static func requiresImportDirectorySelection(_ directories: [String]) -> Bool {
         normalizedImportDirectoryOptions(directories).count > 1
     }
@@ -365,14 +420,6 @@ extension ProjectFileManager {
         }
         os_log(.info, "ProjectFileManager: saved image %{public}@", fileName)
         return relativePath
-    }
-
-    private nonisolated static func isUbiquitousItemDownloaded(_ url: URL) -> Bool {
-        guard let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-            .ubiquitousItemDownloadingStatus else {
-            return true
-        }
-        return status == .current
     }
 
     private nonisolated static func isBibliographyFilePath(_ path: String) -> Bool {
