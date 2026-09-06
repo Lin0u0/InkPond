@@ -198,7 +198,20 @@ extension DocumentListView {
         syncTask?.cancel()
         syncTask = nil
 
-        ProjectFileManager.migrateLegacyStructure(documents: documents)
+        let migrationAcknowledgements = ProjectFileManager.migrateLegacyStructure(documents: documents)
+        if !migrationAcknowledgements.isEmpty {
+            do {
+                try modelContext.save()
+                for acknowledgement in migrationAcknowledgements {
+                    try ProjectRootMigrationJournal.acknowledge(
+                        projectID: acknowledgement.projectID,
+                        destinationURL: acknowledgement.destinationURL
+                    )
+                }
+            } catch {
+                projectActionError = error.localizedDescription
+            }
+        }
         syncWithFilesystem()
 
         guard let docs = ProjectFileManager.syncDocumentsURL else { return }

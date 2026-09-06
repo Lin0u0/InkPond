@@ -32,7 +32,6 @@ enum ExportManager {
     /// Compile document to PDF data on a background thread.
     /// Reads source from the entry file on disk.
     static func compilePDF(for document: InkPondDocument) async -> Result<Data, TypstBridgeError> {
-        ProjectFileManager.migrateContentIfNeeded(for: document)
         let source: String
         do {
             source = try ProjectFileManager.readTypFile(named: document.entryFileName, for: document)
@@ -69,7 +68,6 @@ enum ExportManager {
         let sanitized = fileName.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(sanitized)
-        ProjectFileManager.migrateContentIfNeeded(for: document)
         let source = try ProjectFileManager.readTypFile(named: fileName, for: document)
         try source.write(to: url, atomically: true, encoding: .utf8)
         return url

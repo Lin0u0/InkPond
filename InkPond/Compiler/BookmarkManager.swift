@@ -16,6 +16,42 @@ enum BookmarkManager {
         return FileManager.default.fileExists(atPath: fileURL.path)
     }
 
+    /// Idempotent URL access for high-frequency project path queries. The
+    /// first query establishes one session reference; repeated queries do not
+    /// inflate the count.
+    nonisolated static func projectPathURL(projectID: String) -> URL? {
+        if let cached = _lock.withLock({ $0[projectID]?.url }) {
+            return cached
+        }
+        return loadBookmark(projectID: projectID)
+    }
+
+#if DEBUG
+    nonisolated static func referenceCount(projectID: String) -> Int {
+        _lock.withLock { $0[projectID]?.refCount ?? 0 }
+    }
+#endif
+
+    /// Resolve a bookmark into a bounded RAII lease for new storage code.
+    /// Legacy callers still use the reference-counted API below until their
+    /// operations are moved behind `ProjectStorageBackend`.
+    nonisolated static func acquireLease(projectID: String) -> SecurityScopeLease? {
+        let fileURL = bookmarksDirectory.appendingPathComponent("\(projectID).bookmark")
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        var isStale = false
+        guard let resolvedURL = try? URL(
+            resolvingBookmarkData: data,
+            options: [.withoutImplicitStartAccessing],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else { return nil }
+        if isStale,
+           let refreshed = try? resolvedURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+            try? refreshed.write(to: fileURL, options: [.atomic])
+        }
+        return SecurityScopeLease.accessing(resolvedURL)
+    }
+
     static func saveBookmark(for url: URL, projectID: String) throws {
         let fm = FileManager.default
         if !fm.fileExists(atPath: bookmarksDirectory.path) {

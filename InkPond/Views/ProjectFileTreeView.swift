@@ -9,8 +9,12 @@ import UniformTypeIdentifiers
 struct ProjectFileTreeView: View {
     @Bindable var document: InkPondDocument
     var activePath: String?
-    var openNode: (ProjectTreeNode) -> Void
-    var setEntryFile: (String) -> Bool
+    var canMutate: Bool = true
+    var openNode: (ProjectTreeNode) async -> Void
+    var setEntryFile: (String) async -> Bool
+    var createFile: (String) async throws -> Void
+    var importFile: (URL, String) async throws -> String
+    var deleteNode: (ProjectTreeNode) async throws -> Void
     var onNodeDeleted: (ProjectTreeNode) -> Void
     var refreshLinkedFolder: (() -> Void)? = nil
     var isRefreshingLinkedFolder = false
@@ -129,13 +133,15 @@ struct ProjectFileTreeView: View {
         }
         .sheet(isPresented: $showingProjectSettings, onDismiss: refreshProjectState) {
             ProjectSettingsSheet(document: document) { path in
-                openNode(ProjectTreeNode(
-                    relativePath: path,
-                    displayName: (path as NSString).lastPathComponent,
-                    kind: ProjectFileManager.fileKind(for: path, imageDirectoryName: document.imageDirectoryName),
-                    children: []
-                ))
-                if closeAfterOpen { dismiss() }
+                Task {
+                    await openNode(ProjectTreeNode(
+                        relativePath: path,
+                        displayName: (path as NSString).lastPathComponent,
+                        kind: ProjectFileManager.fileKind(for: path, imageDirectoryName: document.imageDirectoryName),
+                        children: []
+                    ))
+                    if closeAfterOpen { dismiss() }
+                }
             }
         }
     }
@@ -165,11 +171,13 @@ struct ProjectFileTreeView: View {
 
     private var projectSettingsButton: some View {
         Button {
+            guard canMutate else { return }
             InteractionFeedback.impact(.light)
             showingProjectSettings = true
         } label: {
             projectControlIcon("gearshape")
         }
+        .disabled(!canMutate)
         .modifier(ProjectFileToolbarControlStyleModifier(usesNavigationToolbar: usesNavigationToolbar))
         .accessibilityLabel(L10n.a11yProjectFilesSettingsLabel)
         .accessibilityHint(L10n.a11yProjectFilesSettingsHint)
@@ -259,8 +267,10 @@ struct ProjectFileTreeView: View {
             if node.isDirectory {
                 toggleExpansion(for: node.relativePath)
             } else {
-                openNode(node)
-                if closeAfterOpen { dismiss() }
+                Task {
+                    await openNode(node)
+                    if closeAfterOpen { dismiss() }
+                }
             }
         } label: {
             rowLabel(for: row)
@@ -271,8 +281,10 @@ struct ProjectFileTreeView: View {
             if !node.isDirectory {
                 if node.kind == .typ, node.relativePath != document.entryFileName {
                     Button {
-                        if setEntryFile(node.relativePath) {
-                            refreshProjectState()
+                        Task {
+                            if await setEntryFile(node.relativePath) {
+                                refreshProjectState()
+                            }
                         }
                     } label: {
                         Label(L10n.tr("Set Entry"), systemImage: "target")
@@ -290,16 +302,20 @@ struct ProjectFileTreeView: View {
         .contextMenu {
             if !node.isDirectory {
                 Button {
-                    openNode(node)
-                    if closeAfterOpen { dismiss() }
+                    Task {
+                        await openNode(node)
+                        if closeAfterOpen { dismiss() }
+                    }
                 } label: {
                     Label(L10n.tr(node.kind.isTextEditable ? "Open" : "Preview"), systemImage: node.kind.iconName)
                 }
 
                 if node.kind == .typ, node.relativePath != document.entryFileName {
                     Button {
-                        if setEntryFile(node.relativePath) {
-                            refreshProjectState()
+                        Task {
+                            if await setEntryFile(node.relativePath) {
+                                refreshProjectState()
+                            }
                         }
                     } label: {
                         Label(L10n.tr("Set Entry"), systemImage: "target")
@@ -456,41 +472,44 @@ struct ProjectFileTreeView: View {
     }
 
     private func createNewFile() {
+        guard canMutate else { return }
         var name = newFileName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty && !name.hasSuffix(".typ") {
             name += ".typ"
         }
         guard !name.isEmpty else { return }
-        do {
-            try ProjectFileManager.createTypFile(named: name, for: document)
-            refreshProjectState()
-            openNode(ProjectTreeNode(relativePath: name, displayName: (name as NSString).lastPathComponent, kind: .typ, children: []))
-            InteractionFeedback.notify(.success)
-            if closeAfterOpen { dismiss() }
-        } catch {
-            present(error)
+        Task {
+            do {
+                try await createFile(name)
+                refreshProjectState()
+                await openNode(ProjectTreeNode(relativePath: name, displayName: (name as NSString).lastPathComponent, kind: .typ, children: []))
+                InteractionFeedback.notify(.success)
+                if closeAfterOpen { dismiss() }
+            } catch {
+                present(error)
+            }
         }
     }
 
     private func deleteFile(_ node: ProjectTreeNode) {
-        do {
-            if node.kind == .typ {
-                try ProjectFileManager.deleteTypFile(named: node.relativePath, for: document)
-            } else {
-                try ProjectFileManager.deleteProjectFile(relativePath: node.relativePath, for: document)
+        guard canMutate else { return }
+        Task {
+            do {
+                try await deleteNode(node)
+                if node.kind == .font {
+                    ProjectFileManager.removeFontReference(relativePath: node.relativePath, from: document)
+                }
+                onNodeDeleted(node)
+                refreshProjectState()
+                InteractionFeedback.notify(.warning)
+            } catch {
+                present(error)
             }
-            if node.kind == .font {
-                ProjectFileManager.removeFontReference(relativePath: node.relativePath, from: document)
-            }
-            onNodeDeleted(node)
-            refreshProjectState()
-            InteractionFeedback.notify(.warning)
-        } catch {
-            present(error)
         }
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
+        guard canMutate else { return }
         guard case .success(let urls) = result else {
             if case .failure(let error) = result {
                 present(error)
@@ -498,8 +517,9 @@ struct ProjectFileTreeView: View {
             return
         }
 
-        var firstError: Error?
-        for url in urls {
+        Task {
+            var firstError: Error?
+            for url in urls {
             let ext = url.pathExtension.lowercased()
             let subdir: String
             if ProjectFileManager.supportedImageFileExtensions.contains(ext) {
@@ -511,7 +531,7 @@ struct ProjectFileTreeView: View {
             }
 
             do {
-                let importedPath = try ProjectFileManager.importFile(from: url, to: subdir, for: document)
+                let importedPath = try await importFile(url, subdir)
                 if ProjectFileManager.fontFileExtensions.contains(ext) {
                     let name = url.lastPathComponent
                     if !document.fontFileNames.contains(name) {
@@ -519,22 +539,24 @@ struct ProjectFileTreeView: View {
                     }
                 }
                 if urls.count == 1 {
-                    openNode(ProjectTreeNode(
+                    let node = ProjectTreeNode(
                         relativePath: importedPath,
                         displayName: (importedPath as NSString).lastPathComponent,
                         kind: ProjectFileManager.fileKind(for: importedPath, imageDirectoryName: document.imageDirectoryName),
                         children: []
-                    ))
+                    )
+                    await openNode(node)
                     if closeAfterOpen { dismiss() }
                 }
             } catch {
                 firstError = firstError ?? error
             }
-        }
-        refreshProjectState()
-        InteractionFeedback.notify(.success)
-        if let firstError {
-            present(firstError)
+            }
+            refreshProjectState()
+            InteractionFeedback.notify(.success)
+            if let firstError {
+                present(firstError)
+            }
         }
     }
 

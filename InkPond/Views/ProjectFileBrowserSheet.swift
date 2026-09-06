@@ -8,8 +8,12 @@ import SwiftUI
 struct ProjectFileBrowserSheet: View {
     @Bindable var document: InkPondDocument
     var activePath: String?
-    var openNode: (ProjectTreeNode) -> Void
-    var setEntryFile: (String) -> Bool
+    var canMutate: Bool = true
+    var openNode: (ProjectTreeNode) async -> Void
+    var setEntryFile: (String) async -> Bool
+    var createFile: (String) async throws -> Void
+    var importFile: (URL, String) async throws -> String
+    var deleteNode: (ProjectTreeNode) async throws -> Void
     var onNodeDeleted: (ProjectTreeNode) -> Void
     var refreshLinkedFolder: (() -> Void)? = nil
     var isRefreshingLinkedFolder = false
@@ -24,8 +28,12 @@ struct ProjectFileBrowserSheet: View {
             ProjectFileTreeView(
                 document: document,
                 activePath: activePath,
+                canMutate: canMutate,
                 openNode: openNode,
                 setEntryFile: setEntryFile,
+                createFile: createFile,
+                importFile: importFile,
+                deleteNode: deleteNode,
                 onNodeDeleted: onNodeDeleted,
                 refreshLinkedFolder: refreshLinkedFolder,
                 isRefreshingLinkedFolder: isRefreshingLinkedFolder,

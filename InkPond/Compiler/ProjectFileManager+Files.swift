@@ -108,9 +108,11 @@ extension ProjectFileManager {
             try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
         }
         let fileName = sourceURL.lastPathComponent
-        let dest = destDir.appendingPathComponent(fileName)
+        try validateFileName(fileName)
+        let destinationPath = subdir.isEmpty ? fileName : "\(subdir)/\(fileName)"
+        let dest = try validatedProjectPath(relativePath: destinationPath, for: document)
         try copyItemReplacingSafely(from: sourceURL, to: dest)
         os_log(.info, "ProjectFileManager: imported %{public}@ into %{public}@/%{public}@", fileName, document.projectID, subdir)
-        return subdir.isEmpty ? fileName : "\(subdir)/\(fileName)"
+        return destinationPath
     }
 }

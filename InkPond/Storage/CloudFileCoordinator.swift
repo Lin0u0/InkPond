@@ -200,6 +200,34 @@ nonisolated enum CloudFileCoordinator {
         if let moveError { throw moveError }
     }
 
+    /// Atomically install a verified staged file while coordinating both URLs.
+    /// Unlike `moveItem`, this preserves the existing destination if replacement fails.
+    static func replaceItemAtomically(from stagedURL: URL, to destinationURL: URL) throws {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var replaceError: Error?
+
+        coordinator.coordinate(
+            writingItemAt: stagedURL, options: .forMoving,
+            writingItemAt: destinationURL, options: .forReplacing,
+            error: &coordinationError
+        ) { coordinatedStage, coordinatedDestination in
+            do {
+                let fm = FileManager.default
+                if fm.fileExists(atPath: coordinatedDestination.path) {
+                    _ = try fm.replaceItemAt(coordinatedDestination, withItemAt: coordinatedStage)
+                } else {
+                    try fm.moveItem(at: coordinatedStage, to: coordinatedDestination)
+                }
+            } catch {
+                replaceError = error
+            }
+        }
+
+        if let coordinationError { throw coordinationError }
+        if let replaceError { throw replaceError }
+    }
+
     // MARK: - Delete
 
     static func removeItem(at url: URL) throws {

@@ -270,14 +270,14 @@ enum ProjectFileManager {
         if let externalFileURL = externalSingleFileURL(for: document) {
             return externalFileURL.deletingLastPathComponent()
         }
-        if let bookmarkURL = BookmarkManager.loadBookmark(projectID: document.projectID) {
+        if let bookmarkURL = BookmarkManager.projectPathURL(projectID: document.projectID) {
             return bookmarkURL
         }
         return documentsURL.appendingPathComponent(document.projectID, isDirectory: true)
     }
 
     nonisolated static func projectDirectory(folderName: String) -> URL {
-        if let bookmarkURL = BookmarkManager.loadBookmark(projectID: folderName) {
+        if let bookmarkURL = BookmarkManager.projectPathURL(projectID: folderName) {
             return bookmarkURL
         }
         return documentsURL.appendingPathComponent(folderName, isDirectory: true)
@@ -308,15 +308,38 @@ enum ProjectFileManager {
         storageManager?.isUsingiCloud ?? false
     }
 
+    static func reliabilityBackendKind(
+        for document: InkPondDocument,
+        coordinatingManagedFiles: Bool
+    ) -> ProjectStorageBackendKind {
+        // External providers require coordination independently of the app's
+        // managed-project iCloud preference.
+        if externalSingleFileURL(for: document) != nil
+            || BookmarkManager.hasBookmark(projectID: document.projectID) {
+            return .linkedExternal
+        }
+        return coordinatingManagedFiles ? .iCloud : .local
+    }
+
     @discardableResult
     static func renameProjectDirectory(for document: InkPondDocument, to newTitle: String) throws -> String {
+        guard !BookmarkManager.hasBookmark(projectID: document.projectID) else {
+            throw InkPondFileError.unsafePath(document.projectID)
+        }
         let desiredFolderName = sanitizeFolderName(newTitle)
         if desiredFolderName == document.projectID {
             return document.projectID
         }
         let newFolderName = uniqueFolderName(for: newTitle)
-        let oldDir = projectDirectory(for: document)
-        let newDir = documentsURL.appendingPathComponent(newFolderName, isDirectory: true)
+        let policy = ProjectPathPolicy(rootURL: documentsURL)
+        let oldDir: URL
+        let newDir: URL
+        do {
+            oldDir = try policy.resolve(document.projectID)
+            newDir = try policy.resolve(newFolderName)
+        } catch {
+            throw InkPondFileError.unsafePath(document.projectID)
+        }
         guard FileManager.default.fileExists(atPath: oldDir.path) else {
             throw InkPondFileError.fileNotFound(document.projectID)
         }
@@ -475,29 +498,12 @@ enum ProjectFileManager {
             return externalFileURL
         }
 
-        guard !trimmed.hasPrefix("/"),
-              !trimmed.contains("\\"),
-              !trimmed.hasPrefix("~") else {
-            throw InkPondFileError.unsafePath(relativePath)
-        }
-
-        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
-        guard !components.isEmpty else { throw InkPondFileError.unsafePath(relativePath) }
-        for component in components {
-            if component.isEmpty || component == "." || component == ".." {
-                throw InkPondFileError.unsafePath(relativePath)
-            }
-        }
-
-        let normalized = components.map(String.init).joined(separator: "/")
         let root = projectDirectory(for: document).standardizedFileURL
-        let target = root.appendingPathComponent(normalized, isDirectory: false).standardizedFileURL
-        let rootPath = root.path
-        let targetPath = target.path
-        guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
+        do {
+            return try ProjectPathPolicy(rootURL: root).resolve(trimmed)
+        } catch {
             throw InkPondFileError.unsafePath(relativePath)
         }
-        return target
     }
 
     nonisolated static func relativePath(of fileURL: URL, in directoryURL: URL) -> String? {
