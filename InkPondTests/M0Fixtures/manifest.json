@@ -1,0 +1,12 @@
+{
+  "generatorVersion":1,
+  "fixtures":[
+    {"bytes":20000,"name":"source-020000-utf16.typ","sha256":"78bd1e43c8b4ce51ceb1c01656438f1f9e05f0cb5b0c839273b2ffa77d809e7e","utf16CodeUnits":20000},
+    {"bytes":100000,"name":"source-100000-utf16.typ","sha256":"6cea16567ae42e44ff6ab5b099d2f7714443ef364357a2f7d2d88895b7b84f5d","utf16CodeUnits":100000},
+    {"bytes":500000,"name":"source-500000-utf16.typ","sha256":"4eadb262e29cd490ace6995490dd18adb8407e1c8e1904d301f384949c279d2a","utf16CodeUnits":500000},
+    {"bytes":6300,"name":"headings-100.typ","sha256":"f08feadb9e5f4821e8b9c8a5408193cae48293d0e80b6c10902a6dba6abfcc83","utf16CodeUnits":6300},
+    {"bytes":31500,"name":"headings-500.typ","sha256":"1364ad68f3ac6ef1d31f81666347e836330953e2c09cf5adfbc6c8f744800f10","utf16CodeUnits":31500},
+    {"bytes":7395,"name":"projects-100.json","sha256":"d3c1a39ad5a115bc198464c99242e7d849ea420af2b76cdff26914fd8f5e8df0","utf16CodeUnits":7395},
+    {"bytes":27818,"name":"preview-300-pages.typ","sha256":"493d478150b09f84d70562a287e619d8af8dee558fee6d799616a8160bac981b","utf16CodeUnits":27818}
+  ]
+}
