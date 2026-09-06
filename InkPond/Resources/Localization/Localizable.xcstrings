@@ -2002,6 +2002,35 @@
         }
       }
     },
+    "a11y.project_files.refresh_linked_folder.hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checks the linked folder for changed files and refreshes the preview."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查链接文件夹中的文件变化并刷新预览。"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查連結資料夾中的檔案變更並重新整理預覽。"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查連結資料夾中的檔案變更並重新整理預覽。"
+          }
+        }
+      }
+    },
     "a11y.project_files.row.file.label" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6968,6 +6997,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "同步狀態"
+          }
+        }
+      }
+    },
+    "icloud.status.checked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checked %d files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已检查 %d 个文件"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已檢查 %d 個檔案"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已檢查 %d 個檔案"
           }
         }
       }

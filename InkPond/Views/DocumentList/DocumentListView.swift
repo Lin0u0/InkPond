@@ -79,6 +79,7 @@ struct DocumentListView: View {
     @State var documentOpenProgressTitle: String?
     @State var documentOpenProjectID: String?
     @State var documentOpenTask: Task<Void, Never>?
+    @State var documentOpenGeneration = AsyncOperationGeneration()
     @State var previewCacheEntriesByProjectID: [String: CompiledPreviewCacheEntry] = Self.loadPreviewCacheEntriesByProjectID()
 
     let rowDateFormat = Date.FormatStyle(date: .abbreviated, time: .shortened)

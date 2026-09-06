@@ -16,6 +16,7 @@ typst-library = "0.15.0"
 typst-layout  = "0.15.0"
 hayagriva     = "0.10.1"
 syntect       = { version = "5.3", default-features = false, features = ["parsing"] }
+stacker       = "0.1.23"
 # Package download
 ureq          = "2"
 tar           = "0.4"
