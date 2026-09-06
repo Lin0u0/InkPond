@@ -9,6 +9,22 @@ Recorded 2026-07-10 for issue #25.
 - Independent baseline commit: `bc5e86b` (`Preserve pre-remediation baseline`).
 - All M0 tooling, tests, fixtures, and documentation are after that commit, so later changes can always be compared against the preserved baseline.
 
+## Hotfix integration baseline — 2026-09-06
+
+- The original `bc5e86b` audit baseline and the measurements below remain historical evidence.
+- The new production comparison point is `8cb03d2` (TestFlight 1.1.2 build 57), containing build 56's preview crash fixes and build 57's linked-folder refresh fixes. That exact build was submitted to App Store review; submission is not evidence of App Store availability.
+- M0 merges this production baseline without replacing its fixtures, feasibility decisions, or historical measurements. M1 must inherit this merge before further session/storage work.
+- Preserve linked-folder refresh generation guards, unsaved editor text, real file progress, the 600-second initial-link wait, the 120-second explicit-refresh wait, and the refresh-only preview cache bypass.
+- Compiler deadlines retain the approved soft-timeout contract in `m0-feasibility.md`; the hotfix does not make synchronous Typst FFI work interruptible.
+- The integration environment is Xcode 27.0 beta (`27A5194q`) with an isolated iPhone 17 / iOS 26.5 simulator. `/Applications/Xcode.app` is no longer installed. New results must be recorded separately from the Xcode 26.6 measurements below.
+
+Integration validation passed with `CI=1 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer Tools/M0/run-baseline.sh`:
+
+- Generic simulator Debug build; 144 application regressions; 1 isolated product-corpus benchmark; 30 Rust tests (single-threaded); 8 diff3 cases; all 7 fixture hashes; formatting, plist, and both String Catalog checks.
+- Typst 0.15.0 corpus medians (seconds): 20k `0.12`, 100k `0.22`, 500k `2.31`, 100 headings `0.12`, 500 headings `0.13`, 300 pages `0.12`. These characterize this environment, not a UI performance promise.
+- `CI=1` selects the existing committed xcframework. Rust inputs and framework bytes match `8cb03d2`; a preliminary run was stopped after checkout timestamps triggered an unnecessary framework rebuild. No framework changes were retained.
+- Both preliminary and successful runs removed their temporary simulator and artifact directory. No user project data was used. Existing diagnostics concurrency warnings remain; unauthenticated iCloud sync still reports code 153 and is not claimed as verified.
+
 ## Pinned environment and cleanup
 
 - Xcode: 26.6 (`17F113`) from `/Applications/Xcode.app`.
