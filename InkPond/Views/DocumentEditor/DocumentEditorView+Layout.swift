@@ -2102,137 +2102,76 @@ extension DocumentEditorView {
             }
     }
 
+    // Shared appearance action: recovery and lease arbitration stay on the production path.
+    func openEditorOnAppear() {
+        stopObservingFailedClose()
+        let pendingClose = projectCloseTask
+        let generation = UUID()
+        projectLifecycleGeneration = generation
+        if ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" {
+            selectedTab = previewTab
+        }
+        if pendingClose == nil, restoreFailedCloseIfAvailable() {
+            resumeRecoveredEditorServices()
+            return
+        }
+        if pendingClose == nil, projectWritableLease != nil {
+            projectAccessResolved = true
+            return
+        }
+        if pendingClose != nil {
+            projectAccessResolved = false
+        }
+        observeFailedClose()
+        projectLeaseTask?.cancel()
+        projectLeaseTask = Task { @MainActor in
+            if let pendingClose { await pendingClose.value }
+            guard !Task.isCancelled, projectLifecycleGeneration == generation else { return }
+            if restoreFailedCloseIfAvailable() {
+                resumeRecoveredEditorServices()
+                return
+            }
+            let access = await ProjectWritableLeaseCoordinator.shared.open(projectID: document.stableProjectID)
+            if Task.isCancelled || projectLifecycleGeneration != generation {
+                if case .writable(let lease) = access { await lease.release() }
+                return
+            }
+            let isWritable: Bool
+            switch access {
+            case .writable(let lease):
+                stopObservingFailedClose()
+                projectWritableLease = lease
+                isWritable = true
+            case .readOnly:
+                projectWritableLease = nil
+                isWritable = false
+            }
+            projectAccessResolved = true
+            await prepareDocumentForEditing(allowMigration: isWritable)
+            restoreProjectEditorStateIfNeeded()
+            let handledExternalOpen = await handleExternalOpenRequestIfNeeded(externalOpenRequest)
+            refreshResolvedFonts(includeAvailableFamilies: false)
+            scheduleAvailableFontFamilyRefresh()
+            refreshReferenceCompletions()
+            if !handledExternalOpen && hasSavedPosition() {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showingPositionRestore = true
+                }
+                positionRestoreDismissTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(4))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showingPositionRestore = false
+                    }
+                }
+            }
+        }
+    }
+
     var editorLifecycleHandlers: some View {
         editorPresentation
-            .onAppear {
-                let pendingClose = projectCloseTask
-                let generation = UUID()
-                projectLifecycleGeneration = generation
-                if ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" {
-                    selectedTab = previewTab
-                }
-                if pendingClose == nil, projectWritableLease != nil {
-                    projectAccessResolved = true
-                    return
-                }
-                if pendingClose != nil {
-                    projectWritableLease = nil
-                    projectAccessResolved = false
-                }
-                projectLeaseTask?.cancel()
-                projectLeaseTask = Task { @MainActor in
-                    if let pendingClose { await pendingClose.value }
-                    guard !Task.isCancelled, projectLifecycleGeneration == generation else { return }
-                    let access = await ProjectWritableLeaseCoordinator.shared.open(projectID: document.stableProjectID)
-                    if Task.isCancelled || projectLifecycleGeneration != generation {
-                        if case .writable(let lease) = access { await lease.release() }
-                        return
-                    }
-                    let isWritable: Bool
-                    switch access {
-                    case .writable(let lease):
-                        projectWritableLease = lease
-                        isWritable = true
-                    case .readOnly:
-                        projectWritableLease = nil
-                        isWritable = false
-                    }
-                    projectAccessResolved = true
-                    await prepareDocumentForEditing(allowMigration: isWritable)
-                    restoreProjectEditorStateIfNeeded()
-                    let handledExternalOpen = await handleExternalOpenRequestIfNeeded(externalOpenRequest)
-                    refreshResolvedFonts(includeAvailableFamilies: false)
-                    scheduleAvailableFontFamilyRefresh()
-                    refreshReferenceCompletions()
-                    if !handledExternalOpen && hasSavedPosition() {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showingPositionRestore = true
-                        }
-                        positionRestoreDismissTask = Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(4))
-                            guard !Task.isCancelled else { return }
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showingPositionRestore = false
-                            }
-                        }
-                    }
-                }
-            }
-            .onDisappear {
-                projectLeaseTask?.cancel()
-                projectLeaseTask = nil
-                let generation = projectLifecycleGeneration
-                let leaseToRelease = projectWritableLease
-                positionRestoreDismissTask?.cancel()
-                positionRestoreDismissTask = nil
-                positionSyncTask?.cancel()
-                positionSyncTask = nil
-                previewStatsTask?.cancel()
-                previewStatsTask = nil
-                fontFamilyRefreshTask?.cancel()
-                fontFamilyRefreshTask = nil
-                externalFolderLinkTask?.cancel()
-                externalFolderLinkTask = nil
-                externalFolderLinkGeneration = AsyncOperationGeneration()
-                externalFolderLinkProgress = nil
-                externalFolderLinkProgressTitle = nil
-                linkedFolderRefreshCoordinator.cancel()
-                persistEditorPositionIfNeeded()
-                persistProjectEditorTabState()
-                stopConflictMonitoring()
-                focusCoordinator.clearFocusPreservation()
-                compiler.cancel()
-                let reliabilityRoot = ProjectFileManager.projectDirectory(for: document)
-                let reliabilityProjectID = document.stableProjectID
-                let legacyProjectID = document.projectID
-                let reliabilityExternalTarget = ProjectFileManager.externalSingleFileURL(for: document)
-                let reconciliationRequest = currentFileName.isEmpty
-                    ? nil
-                    : try? reliabilityWriteRequest(
-                        content: editorText,
-                        fileName: currentFileName,
-                        fileURL: ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
-                    )
-                if let leaseToRelease {
-                    projectCloseTask = Task { @MainActor in
-                        _ = await flushPendingSave()
-                        if let reconciliationRequest {
-                            var reconciled = false
-                            while !reconciled {
-                                do {
-                                    try await ProjectReliabilityWriterRegistry.shared.reconcile(reconciliationRequest)
-                                    reconciled = true
-                                } catch {
-                                    fileSaveError = error.localizedDescription
-                                    try? await Task.sleep(for: .seconds(1))
-                                }
-                            }
-                        }
-                        await ProjectReliabilityWriterRegistry.shared.close(
-                            projectID: reliabilityProjectID,
-                            rootURL: reliabilityRoot,
-                            externalTargetURL: reliabilityExternalTarget
-                        )
-                        if projectWritableLease === leaseToRelease {
-                            projectWritableLease = nil
-                        }
-                        await leaseToRelease.release()
-                        if BookmarkManager.hasBookmark(projectID: legacyProjectID) {
-                            BookmarkManager.stopAccessing(legacyProjectID)
-                        }
-                        if ExternalTypFileSessionStore.contains(projectID: legacyProjectID) {
-                            ExternalTypFileSessionStore.unregister(projectID: legacyProjectID)
-                        }
-                        if projectLifecycleGeneration == generation {
-                            projectWritableLease = nil
-                            projectAccessResolved = false
-                        }
-                        projectCloseTask = nil
-                    }
-                } else {
-                    projectAccessResolved = false
-                }
-            }
+            .onAppear { openEditorOnAppear() }
+            .onDisappear { closeEditorOnDisappear() }
             .onChange(of: editorText) { _, newText in
                 guard !isLoadingFileContent else { return }
                 handleEditorTextChange(newText)

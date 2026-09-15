@@ -544,7 +544,7 @@ extension DocumentEditorView {
     /// NSFileVersion conflict and the editor has no unsaved local text.
     func reloadPresentedFileIfSafe(named fileName: String) {
         guard fileName == currentFileName else { return }
-        guard saveTask == nil, editorText == lastPersistedText else { return }
+        guard saveTask == nil, recoveryWriteSequenceFloor == nil, editorText == lastPersistedText else { return }
 
         conflictMonitor.refreshConflictState()
         if conflictMonitor.hasConflict {
@@ -587,7 +587,7 @@ extension DocumentEditorView {
 
     func scheduleSave(content: String, for fileName: String) {
         guard fileName == currentFileName else { return }
-        guard content != lastPersistedText else {
+        guard content != lastPersistedText || recoveryWriteSequenceFloor != nil || saveTask != nil || savesInFlight > 0 else {
             saveTask?.cancel()
             saveTask = nil
             activeSaveGeneration = nil
@@ -605,6 +605,7 @@ extension DocumentEditorView {
         saveGeneration &+= 1
         let revision = saveGeneration
         activeSaveGeneration = revision
+        let receipt = capturedSaveReceipt(content: content, fileName: fileName, sequence: revision)
         let request: ProjectReliabilityWriteRequest
         do {
             request = try reliabilityWriteRequest(content: content, fileName: fileName, fileURL: fileURL)
@@ -616,7 +617,15 @@ extension DocumentEditorView {
         saveTask?.cancel()
         saveTask = Task { @MainActor in
             do {
+#if DEBUG
+                if let saveTestDebounce {
+                    try await saveTestDebounce()
+                } else {
+                    try await Task.sleep(for: .milliseconds(350))
+                }
+#else
                 try await Task.sleep(for: .milliseconds(350))
+#endif
             } catch {
                 return
             }
@@ -635,22 +644,23 @@ extension DocumentEditorView {
             guard !Task.isCancelled else { return }
 
             do {
+                savesInFlight += 1
+                defer { savesInFlight -= 1 }
                 try await backgroundFileWriter.write(request)
-                guard !Task.isCancelled else { return }
-                if self.currentFileName == fileName, self.editorText == content {
-                    self.lastPersistedText = content
+                // Cancellation cannot undo a successful registry commit.
+                if acknowledgeSave(receipt) {
                     self.document.modifiedAt = Date()
                     if shouldRefreshPreviewAfterSave {
                         _ = self.refreshResolvedFonts(includeAvailableFamilies: false)
                         self.compileToken = UUID()
                     }
                 }
-                if self.activeSaveGeneration == revision {
+                if self.activeSaveGeneration == revision && self.saveReceiptBelongsToLoadedFile(receipt) {
                     self.saveTask = nil
                     self.activeSaveGeneration = nil
                 }
             } catch {
-                if self.activeSaveGeneration == revision {
+                if self.activeSaveGeneration == revision && self.saveReceiptBelongsToLoadedFile(receipt) {
                     self.fileSaveError = error.localizedDescription
                     self.saveTask = nil
                     self.activeSaveGeneration = nil
@@ -726,34 +736,76 @@ extension DocumentEditorView {
 
     @discardableResult
     func flushPendingSave() async -> Bool {
+        let forceWrite = recoveryWriteSequenceFloor != nil || saveTask != nil || savesInFlight > 0
+        let loadedFile = currentFileName
+        let loadedToken = fileLoadToken
         saveTask?.cancel()
         saveTask = nil
         activeSaveGeneration = nil
-        return await persistCurrentFileImmediately(content: editorText)
+        let committed = await persistCurrentFileImmediately(content: editorText, forceWrite: forceWrite)
+        // Callers use this as permission to close, switch or export. A committed
+        // older buffer is not permission to abandon text typed during the await.
+        return committed && currentFileName == loadedFile && fileLoadToken == loadedToken
+            && editorText == lastPersistedText && recoveryWriteSequenceFloor == nil
     }
 
     @discardableResult
-    func persistCurrentFileImmediately(content: String) async -> Bool {
+    func persistCurrentFileImmediately(content: String, forceWrite: Bool = false) async -> Bool {
         guard !currentFileName.isEmpty else { return true }
-        guard content != lastPersistedText else { return true }
+        guard content != lastPersistedText || recoveryWriteSequenceFloor != nil || forceWrite || savesInFlight > 0 else { return true }
 
-        let shouldRefreshPreviewAfterSave = currentFileName != document.entryFileName
+        let fileName = currentFileName
+        let shouldRefreshPreviewAfterSave = fileName != document.entryFileName
+        saveGeneration &+= 1
+        let receipt = capturedSaveReceipt(content: content, fileName: fileName, sequence: saveGeneration)
+        savesInFlight += 1
+        defer { savesInFlight -= 1 }
 
         do {
             let fileURL = try ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
             let request = try reliabilityWriteRequest(content: content, fileName: currentFileName, fileURL: fileURL)
             try await backgroundFileWriter.write(request)
-            lastPersistedText = content
-            document.modifiedAt = Date()
-            if shouldRefreshPreviewAfterSave {
-                _ = refreshResolvedFonts(includeAvailableFamilies: false)
-                compileToken = UUID()
+            if acknowledgeSave(receipt) {
+                document.modifiedAt = Date()
+                if shouldRefreshPreviewAfterSave {
+                    _ = refreshResolvedFonts(includeAvailableFamilies: false)
+                    compileToken = UUID()
+                }
             }
-            return true
+            return true // The captured write committed, even if its view has moved on.
         } catch {
-            fileSaveError = error.localizedDescription
+            if saveReceiptBelongsToLoadedFile(receipt) {
+                fileSaveError = error.localizedDescription
+            }
             return false
         }
+    }
+
+    func capturedSaveReceipt(content: String, fileName: String, sequence: UInt64) -> EditorSaveReceipt {
+        EditorSaveReceipt(projectID: document.stableProjectID, fileName: fileName,
+                          lifecycle: projectLifecycleGeneration, loadToken: fileLoadToken,
+                          sequence: sequence, content: content)
+    }
+
+    func saveReceiptBelongsToLoadedFile(_ receipt: EditorSaveReceipt) -> Bool {
+        receipt.projectID == document.stableProjectID && receipt.fileName == currentFileName
+            && receipt.lifecycle == projectLifecycleGeneration && receipt.loadToken == fileLoadToken
+    }
+
+    @discardableResult
+    func acknowledgeSave(_ receipt: EditorSaveReceipt) -> Bool {
+        guard projectWritableLease != nil, saveReceiptBelongsToLoadedFile(receipt),
+              receipt.sequence >= (lastSaveReceipt?.sequence ?? 0) else { return false }
+        lastSaveReceipt = receipt
+        lastPersistedText = receipt.content
+        if let floor = recoveryWriteSequenceFloor, receipt.sequence > floor {
+            recoveryWriteSequenceFloor = nil
+        }
+        if recoveryWriteSequenceFloor == nil { fileSaveError = nil }
+        if recoveryWriteSequenceFloor == nil && editorText == lastPersistedText {
+            EditorFailedCloseStore.shared.remove(for: document.stableProjectID, lease: projectWritableLease)
+        }
+        return true
     }
 
     func reliabilityWriteRequest(
@@ -1258,5 +1310,174 @@ extension DocumentEditorView {
         }
 
         return line
+    }
+}
+
+// Shared verbatim lifecycle action; tests exercise the same close task as disappearance.
+extension DocumentEditorView {
+    @discardableResult
+    func restoreFailedCloseIfAvailable() -> Bool {
+        guard let draft = EditorFailedCloseStore.shared.take(for: document.stableProjectID) else { return false }
+        stopObservingFailedClose()
+        saveAuthority = UUID()
+        projectWritableLease = draft.lease
+        recoveryWriteSequenceFloor = saveGeneration
+        projectAccessResolved = true
+        currentFileName = draft.fileName
+        editorText = draft.text
+        lastPersistedText = draft.persistedText
+        entrySource = draft.entrySource
+        openTabs = draft.tabs
+        activeTabPath = draft.activePath
+        fileSaveError = draft.error
+        fileLoadToken = UUID()
+        lastSaveReceipt = nil
+        didRestoreProjectEditorState = true
+        return true
+    }
+
+    func resumeRecoveredEditorServices() {
+        refreshResolvedFonts(includeAvailableFamilies: false)
+        scheduleAvailableFontFamilyRefresh()
+        refreshReferenceCompletions()
+        if let url = try? ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document) {
+            startConflictMonitoring(for: url)
+        }
+    }
+
+    func stopObservingFailedClose() {
+        if let id = failedCloseSubscription {
+            EditorFailedCloseStore.shared.unsubscribe(for: document.stableProjectID, id: id)
+            failedCloseSubscription = nil
+        }
+    }
+
+    func observeFailedClose() {
+        stopObservingFailedClose()
+        let id = UUID()
+        failedCloseSubscription = id
+        EditorFailedCloseStore.shared.subscribe(for: document.stableProjectID, id: id) {
+            guard failedCloseSubscription == id, projectWritableLease == nil else { return }
+            // Initial read-only preparation must finish normally; never wait on
+            // another view's pending close. Publication installs the awaitable
+            // handoff synchronously, then restores behind that finite preparation.
+            let preparation = projectLeaseTask
+            projectLeaseTask = Task { @MainActor in
+                await preparation?.value
+                guard !Task.isCancelled, failedCloseSubscription == id,
+                      projectWritableLease == nil else { return }
+                if restoreFailedCloseIfAvailable() { resumeRecoveredEditorServices() }
+            }
+        }
+    }
+
+    func closeEditorOnDisappear() {
+        stopObservingFailedClose()
+        projectLeaseTask?.cancel()
+        projectLeaseTask = nil
+        let generation = projectLifecycleGeneration
+        let leaseToRelease = projectWritableLease
+        let authority = saveAuthority
+        positionRestoreDismissTask?.cancel()
+        positionRestoreDismissTask = nil
+        positionSyncTask?.cancel()
+        positionSyncTask = nil
+        previewStatsTask?.cancel()
+        previewStatsTask = nil
+        fontFamilyRefreshTask?.cancel()
+        fontFamilyRefreshTask = nil
+        externalFolderLinkTask?.cancel()
+        externalFolderLinkTask = nil
+        externalFolderLinkGeneration = AsyncOperationGeneration()
+        externalFolderLinkProgress = nil
+        externalFolderLinkProgressTitle = nil
+        linkedFolderRefreshCoordinator.cancel()
+        persistEditorPositionIfNeeded()
+        persistProjectEditorTabState()
+        stopConflictMonitoring()
+        focusCoordinator.clearFocusPreservation()
+        compiler.cancel()
+        let reliabilityRoot = ProjectFileManager.projectDirectory(for: document)
+        let reliabilityProjectID = document.stableProjectID
+        let legacyProjectID = document.projectID
+        let reliabilityExternalTarget = ProjectFileManager.externalSingleFileURL(for: document)
+        let reconciliationRequest = currentFileName.isEmpty
+            ? nil
+            : try? reliabilityWriteRequest(
+                content: editorText,
+                fileName: currentFileName,
+                fileURL: ProjectFileManager.projectFileURL(relativePath: currentFileName, for: document)
+            )
+        if let leaseToRelease {
+            projectCloseTask = Task { @MainActor in
+                let saved = await flushPendingSave()
+                guard saveAuthority == authority else { return }
+                guard saved else {
+                    recoveryWriteSequenceFloor = saveGeneration
+                    projectCloseTask = nil
+                    // Retain the buffer and the same lease even if SwiftUI destroys
+                    // this view. Reopening takes this draft before reading disk.
+                    EditorFailedCloseStore.shared.retain(.init(
+                        lease: leaseToRelease, fileName: currentFileName,
+                        text: editorText, persistedText: lastPersistedText,
+                        entrySource: entrySource, tabs: openTabs, activePath: activeTabPath,
+                        error: fileSaveError,
+                        relinquish: {
+                            guard saveAuthority == authority,
+                                  projectWritableLease === leaseToRelease else { return }
+                            saveAuthority = UUID()
+                            projectLifecycleGeneration = UUID()
+                            projectWritableLease = nil
+                            projectAccessResolved = false
+                            saveTask?.cancel()
+                            saveTask = nil
+                            activeSaveGeneration = nil
+                            lastSaveReceipt = nil
+                            projectCloseTask = nil
+                        }
+                    ), for: reliabilityProjectID)
+                    return
+                }
+                if let reconciliationRequest {
+                    var reconciled = false
+                    while !reconciled {
+                        guard saveAuthority == authority else { return }
+                        do {
+                            try await ProjectReliabilityWriterRegistry.shared.reconcile(reconciliationRequest)
+                            reconciled = true
+                        } catch {
+                            guard saveAuthority == authority else { return }
+                            fileSaveError = error.localizedDescription
+                            try? await Task.sleep(for: .seconds(1))
+                        }
+                    }
+                }
+                guard saveAuthority == authority else { return }
+                await ProjectReliabilityWriterRegistry.shared.close(
+                    projectID: reliabilityProjectID,
+                    rootURL: reliabilityRoot,
+                    externalTargetURL: reliabilityExternalTarget
+                )
+                guard saveAuthority == authority else { return }
+                if projectWritableLease === leaseToRelease {
+                    projectWritableLease = nil
+                }
+                await leaseToRelease.release()
+                guard saveAuthority == authority else { return }
+                if BookmarkManager.hasBookmark(projectID: legacyProjectID) {
+                    BookmarkManager.stopAccessing(legacyProjectID)
+                }
+                if ExternalTypFileSessionStore.contains(projectID: legacyProjectID) {
+                    ExternalTypFileSessionStore.unregister(projectID: legacyProjectID)
+                }
+                if projectLifecycleGeneration == generation {
+                    projectWritableLease = nil
+                    projectAccessResolved = false
+                }
+                projectCloseTask = nil
+            }
+        } else {
+            projectAccessResolved = false
+        }
     }
 }

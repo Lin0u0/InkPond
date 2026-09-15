@@ -8,8 +8,27 @@ import SwiftData
 import PhotosUI
 
 actor BackgroundDocumentFileWriter {
+#if DEBUG
+    // Instance-scoped checkpoints surround the real registry, never a substitute writer.
+    var beforeRegistry: (@Sendable (ProjectReliabilityWriteRequest) async throws -> Void)?
+    var afterRegistry: (@Sendable (ProjectReliabilityWriteRequest) async -> Void)?
+
+    func setCheckpoints(
+        before: (@Sendable (ProjectReliabilityWriteRequest) async throws -> Void)? = nil,
+        after: (@Sendable (ProjectReliabilityWriteRequest) async -> Void)? = nil
+    ) {
+        beforeRegistry = before
+        afterRegistry = after
+    }
+#endif
     func write(_ request: ProjectReliabilityWriteRequest) async throws {
+#if DEBUG
+        try await beforeRegistry?(request)
+#endif
         try await ProjectReliabilityWriterRegistry.shared.write(request)
+#if DEBUG
+        await afterRegistry?(request)
+#endif
     }
 }
 
@@ -45,6 +64,12 @@ struct DocumentEditorView: View {
     @State var lastPersistedText: String = ""
     @State var saveTask: Task<Void, Never>?
     @State var saveGeneration: UInt64 = 0
+    @State var savesInFlight = 0
+    // Only a write captured after this floor can discharge failed-close recovery.
+    @State var recoveryWriteSequenceFloor: UInt64?
+    @State var saveAuthority = UUID()
+    @State var failedCloseSubscription: UUID?
+    @State var lastSaveReceipt: EditorSaveReceipt?
     @State var activeSaveGeneration: UInt64?
     @State var backgroundFileWriter = BackgroundDocumentFileWriter()
     @State var projectWritableLease: ProjectWritableLease?
@@ -192,7 +217,25 @@ struct DocumentEditorView: View {
         self.onInitialOpenFailure = onInitialOpenFailure
     }
 
+#if DEBUG
+    // Mount @State without starting compilation, file loading, or unrelated UI effects.
+    var saveTestProbe: ((DocumentEditorView) -> Void)?
+    var saveTestUsesLifecycle = false
+    var saveTestDebounce: (@MainActor () async throws -> Void)?
+#endif
+
     var body: some View {
+#if DEBUG
+        if let saveTestProbe {
+            Color.clear.onAppear {
+                if saveTestUsesLifecycle { openEditorOnAppear() }
+                saveTestProbe(self)
+            }
+        } else {
+            editorOverlaysAndAlerts
+        }
+#else
         editorOverlaysAndAlerts
+#endif
     }
 }
