@@ -340,6 +340,87 @@ struct DocumentEditorSaveCharacterizationTests {
         }
     }
 
+    @Test func immediateSavePausedBeforeRegistryCannotOverwriteNewWindowAfterFailedCloseTransfer() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let old = h.editor!
+            let entered = SaveCheckpoint()
+            let release = SaveCheckpoint()
+            defer { Task { await release.open() } }
+            let requests = SaveRequests()
+            await old.backgroundFileWriter.setCheckpoints(before: { request in
+                await requests.append(request)
+                if request.data == Data("old immediate".utf8) {
+                    await entered.open()
+                    await release.wait() // The real registry has not seen this request yet.
+                } else if request.data == Data("failed close draft".utf8) {
+                    throw CocoaError(.fileWriteOutOfSpace)
+                }
+            })
+            old.editorText = "old immediate"
+            // Keep this immediate task independent of saveTask: transfer must not
+            // pass merely because the autosave cancellation path rejects it.
+            let earlier = Task { await old.persistCurrentFileImmediately(content: "old immediate") }
+            await entered.wait()
+            #expect(old.saveTask == nil)
+            #expect(try h.disk() == "initial")
+            old.editorText = "failed close draft"
+            old.closeEditorOnDisappear()
+            let close = old.projectCloseTask
+            await close?.value
+            #expect(old.fileSaveError != nil)
+            #expect(old.recoveryWriteSequenceFloor != nil)
+            #expect(old.projectWritableLease != nil)
+            #expect(old.editorText != old.lastPersistedText)
+            #expect(try h.disk() == "initial")
+
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount()
+            defer { fresh.unmount() }
+            let recovered = fresh.editor!
+            #expect(recovered.restoreFailedCloseIfAvailable())
+            #expect(recovered.editorText == "failed close draft")
+            #expect(recovered.lastPersistedText == "initial")
+            #expect(recovered.editorText != recovered.lastPersistedText)
+            #expect(recovered.projectWritableLease != nil)
+            #expect(old.projectWritableLease == nil)
+            #expect(old.lastSaveReceipt == nil)
+            await recovered.backgroundFileWriter.setCheckpoints(before: { request in
+                await requests.append(request)
+            })
+            recovered.editorText = "new window write"
+            #expect(await recovered.flushPendingSave())
+            #expect(try h.disk() == "new window write")
+            #expect(recovered.lastPersistedText == "new window write")
+            #expect(recovered.editorText == recovered.lastPersistedText)
+            #expect(recovered.recoveryWriteSequenceFloor == nil)
+            #expect(recovered.fileSaveError == nil)
+            expectReceipt(recovered, host: h, content: "new window write")
+            let receipt = try #require(recovered.lastSaveReceipt)
+
+            // Only now may the old immediate request reach the actual registry.
+            await release.open()
+            #expect(await earlier.value == false) // Revoked request must fail admission, not silently commit.
+            let finalBytes = try h.disk()
+            #expect(finalBytes == "new window write")
+            #expect(recovered.editorText == "new window write")
+            #expect(recovered.lastPersistedText == "new window write")
+            #expect(recovered.editorText == recovered.lastPersistedText)
+            #expect((recovered.editorText != recovered.lastPersistedText) == (recovered.editorText != finalBytes))
+            #expect(recovered.recoveryWriteSequenceFloor == nil)
+            #expect(recovered.fileSaveError == nil)
+            #expect(old.lastSaveReceipt == nil)
+            #expect(recovered.lastSaveReceipt?.projectID == receipt.projectID)
+            #expect(recovered.lastSaveReceipt?.fileName == receipt.fileName)
+            #expect(recovered.lastSaveReceipt?.lifecycle == receipt.lifecycle)
+            #expect(recovered.lastSaveReceipt?.loadToken == receipt.loadToken)
+            #expect(recovered.lastSaveReceipt?.sequence == receipt.sequence)
+            #expect(recovered.lastSaveReceipt?.content == receipt.content)
+            expectReceipt(recovered, host: h, content: "new window write")
+            requests.expect(h, paths: ["main.typ", "main.typ", "main.typ"],
+                            contents: ["old immediate", "failed close draft", "new window write"])
+        }
+    }
+
     @Test func recoveredLeaseMustExcludeOriginalViewOnReappearanceAndClose() async throws {
         try await withEditor { (h: SaveEditorHost) async throws in
             let old = h.editor!

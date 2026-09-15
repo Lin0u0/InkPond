@@ -1,4 +1,21 @@
 import Foundation
+import os
+
+/// One editor ownership epoch. Revocation is permanent, including for requests
+/// already captured by tasks that have not reached the registry yet.
+nonisolated final class ProjectReliabilityWriteAuthority: Sendable {
+    private let revoked = OSAllocatedUnfairLock(initialState: false)
+
+    func revoke() {
+        revoked.withLock { $0 = true }
+    }
+
+    func checkAuthorization() throws {
+        if revoked.withLock({ $0 }) {
+            throw ProjectReliabilityContextError.revokedAuthority
+        }
+    }
+}
 
 nonisolated struct ProjectReliabilityWriteRequest: Sendable {
     let rootURL: URL
@@ -10,6 +27,7 @@ nonisolated struct ProjectReliabilityWriteRequest: Sendable {
     let data: Data
     let externalTargetURL: URL?
     let securityScopeLease: SecurityScopeLease?
+    let writeAuthority: ProjectReliabilityWriteAuthority?
 
     init(
         rootURL: URL,
@@ -20,7 +38,8 @@ nonisolated struct ProjectReliabilityWriteRequest: Sendable {
         relativePath: String,
         data: Data,
         externalTargetURL: URL? = nil,
-        securityScopeLease: SecurityScopeLease? = nil
+        securityScopeLease: SecurityScopeLease? = nil,
+        writeAuthority: ProjectReliabilityWriteAuthority? = nil
     ) {
         self.rootURL = rootURL
         self.backendKind = backendKind
@@ -31,6 +50,7 @@ nonisolated struct ProjectReliabilityWriteRequest: Sendable {
         self.data = data
         self.externalTargetURL = externalTargetURL
         self.securityScopeLease = securityScopeLease
+        self.writeAuthority = writeAuthority
     }
 }
 
@@ -56,7 +76,8 @@ actor ProjectReliabilityWriterRegistry {
             relativePath: request.relativePath,
             data: request.data,
             displayName: request.displayName,
-            entryRelativePath: request.entryRelativePath
+            entryRelativePath: request.entryRelativePath,
+            writeAuthority: request.writeAuthority
         )
     }
 
@@ -89,7 +110,8 @@ actor ProjectReliabilityWriterRegistry {
         }
         try await context.reconcileFileSet(
             displayName: request.displayName,
-            entryRelativePath: request.entryRelativePath
+            entryRelativePath: request.entryRelativePath,
+            writeAuthority: request.writeAuthority
         )
     }
 
@@ -110,7 +132,8 @@ actor ProjectReliabilityWriterRegistry {
         try await context.remove(
             relativePath: request.relativePath,
             displayName: request.displayName,
-            entryRelativePath: request.entryRelativePath
+            entryRelativePath: request.entryRelativePath,
+            writeAuthority: request.writeAuthority
         )
     }
 
@@ -158,7 +181,8 @@ actor ProjectReliabilityWriteContext {
         relativePath: String,
         data: Data,
         displayName: String,
-        entryRelativePath: String
+        entryRelativePath: String,
+        writeAuthority: ProjectReliabilityWriteAuthority? = nil
     ) async throws {
         guard !isClosing else { throw ProjectReliabilityContextError.closing }
         try Task.checkCancellation()
@@ -166,6 +190,11 @@ actor ProjectReliabilityWriteContext {
         do {
             guard !isClosing else { throw ProjectReliabilityContextError.closing }
             try Task.checkCancellation()
+            // Check AFTER acquiring the transaction gate, before any mutation.
+            // If revocation wins, queued old requests cannot write. If this check
+            // wins, we retain the gate through the entire transaction: the new
+            // owner's write must run after this one, never be overwritten by it.
+            try writeAuthority?.checkAuthorization()
             try await manifest.updateConfiguration(
                 displayName: displayName,
                 entryRelativePath: entryRelativePath
@@ -195,11 +224,16 @@ actor ProjectReliabilityWriteContext {
         try await fileWriter.write(relativePath: relativePath, data: data)
     }
 
-    func reconcileFileSet(displayName: String, entryRelativePath: String) async throws {
+    func reconcileFileSet(
+        displayName: String,
+        entryRelativePath: String,
+        writeAuthority: ProjectReliabilityWriteAuthority? = nil
+    ) async throws {
         guard !isClosing else { throw ProjectReliabilityContextError.closing }
         await transactionGate.acquire()
         do {
             guard !isClosing else { throw ProjectReliabilityContextError.closing }
+            try writeAuthority?.checkAuthorization()
             try await recoverIfNeeded()
             try await manifest.updateConfiguration(
                 displayName: displayName,
@@ -213,11 +247,17 @@ actor ProjectReliabilityWriteContext {
         }
     }
 
-    func remove(relativePath: String, displayName: String, entryRelativePath: String) async throws {
+    func remove(
+        relativePath: String,
+        displayName: String,
+        entryRelativePath: String,
+        writeAuthority: ProjectReliabilityWriteAuthority? = nil
+    ) async throws {
         guard !isClosing else { throw ProjectReliabilityContextError.closing }
         await transactionGate.acquire()
         do {
             guard !isClosing else { throw ProjectReliabilityContextError.closing }
+            try writeAuthority?.checkAuthorization()
             try await recoverIfNeeded()
             try await manifest.updateConfiguration(
                 displayName: displayName,
@@ -268,6 +308,7 @@ actor ProjectReliabilityWriteContext {
 
 nonisolated enum ProjectReliabilityContextError: Error, Equatable, Sendable {
     case closing
+    case revokedAuthority
 }
 
 nonisolated enum ProjectReliabilityPaths {

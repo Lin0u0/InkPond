@@ -2140,6 +2140,8 @@ extension DocumentEditorView {
             switch access {
             case .writable(let lease):
                 stopObservingFailedClose()
+                reliabilityWriteAuthority.revoke()
+                reliabilityWriteAuthority = ProjectReliabilityWriteAuthority()
                 projectWritableLease = lease
                 isWritable = true
             case .readOnly:

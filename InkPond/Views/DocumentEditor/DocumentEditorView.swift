@@ -68,6 +68,7 @@ struct DocumentEditorView: View {
     // Only a write captured after this floor can discharge failed-close recovery.
     @State var recoveryWriteSequenceFloor: UInt64?
     @State var saveAuthority = UUID()
+    @State var reliabilityWriteAuthority = ProjectReliabilityWriteAuthority()
     @State var failedCloseSubscription: UUID?
     @State var lastSaveReceipt: EditorSaveReceipt?
     @State var activeSaveGeneration: UInt64?

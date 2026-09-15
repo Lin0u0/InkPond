@@ -846,7 +846,8 @@ extension DocumentEditorView {
             externalTargetURL: externalURL,
             securityScopeLease: externalURL == nil
                 ? BookmarkManager.acquireLease(projectID: document.projectID)
-                : nil
+                : nil,
+            writeAuthority: reliabilityWriteAuthority
         )
     }
 
@@ -1320,6 +1321,9 @@ extension DocumentEditorView {
         guard let draft = EditorFailedCloseStore.shared.take(for: document.stableProjectID) else { return false }
         stopObservingFailedClose()
         saveAuthority = UUID()
+        // Never reactivate the old token, even when this same State takes its draft.
+        reliabilityWriteAuthority.revoke()
+        reliabilityWriteAuthority = ProjectReliabilityWriteAuthority()
         projectWritableLease = draft.lease
         recoveryWriteSequenceFloor = saveGeneration
         projectAccessResolved = true
@@ -1425,6 +1429,10 @@ extension DocumentEditorView {
                         relinquish: {
                             guard saveAuthority == authority,
                                   projectWritableLease === leaseToRelease else { return }
+                            // Synchronously revoke captured requests before take() can
+                            // give the lease to another editor; task cancellation alone
+                            // does not cover independent immediate-save tasks.
+                            reliabilityWriteAuthority.revoke()
                             saveAuthority = UUID()
                             projectLifecycleGeneration = UUID()
                             projectWritableLease = nil
@@ -1453,6 +1461,8 @@ extension DocumentEditorView {
                     }
                 }
                 guard saveAuthority == authority else { return }
+                // Prevent delayed requests from writing through a new context after drain.
+                reliabilityWriteAuthority.revoke()
                 await ProjectReliabilityWriterRegistry.shared.close(
                     projectID: reliabilityProjectID,
                     rootURL: reliabilityRoot,
