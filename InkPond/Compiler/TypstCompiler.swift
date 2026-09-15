@@ -566,7 +566,12 @@ final class TypstCompiler {
         previewCacheStore: CompiledPreviewCacheStore,
         typstVersionProvider: @escaping @Sendable () -> String?
     ) -> TypstWorkerResult {
-        let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: request.fontPaths)
+        let materializedFontPaths: [String]
+        do {
+            materializedFontPaths = try CompileFontSnapshot.prepare(paths: request.fontPaths)
+        } catch {
+            return .failure(.compilationFailed(error.localizedDescription))
+        }
         let typstVersion = typstVersionProvider()
         let cacheInput = request.previewCacheDescriptor.map {
             CompiledPreviewCacheInput(

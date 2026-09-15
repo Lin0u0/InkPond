@@ -19,7 +19,7 @@ enum FontManager {
     }
 
     /// Cache parsed font name records to avoid re-reading OTF binaries on every call.
-    private nonisolated static let fontNameRecordCacheLock = OSAllocatedUnfairLock<[String: [FontNameRecord]]>(initialState: [:])
+    private nonisolated static let fontNameRecordCacheLock = OSAllocatedUnfairLock<[String: (fingerprint: String, records: [FontNameRecord])]>(initialState: [:])
 
     private static var registeredPreviewFontPaths: Set<String> = []
 
@@ -53,9 +53,11 @@ enum FontManager {
     }
 
     nonisolated private static func fontNameRecords(forFontAtPath path: String) -> [FontNameRecord] {
-        if let cached = fontNameRecordCacheLock.withLock({ $0[path] }) { return cached }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               data.count > 12 else { return [] }
+        let fingerprint = CompileFontSnapshot.fingerprint(data)
+        if let cached = fontNameRecordCacheLock.withLock({ $0[path] }),
+           cached.fingerprint == fingerprint { return cached.records }
         // Read sfnt offset table to find the 'name' table.
         let numTables = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self).bigEndian }
         var nameTableOffset: Int?
@@ -90,7 +92,7 @@ enum FontManager {
         }
         let cacheKey = path
         let parsedRecords = records
-        fontNameRecordCacheLock.withLock { $0[cacheKey] = parsedRecords }
+        fontNameRecordCacheLock.withLock { $0[cacheKey] = (fingerprint, parsedRecords) }
         return parsedRecords
     }
 

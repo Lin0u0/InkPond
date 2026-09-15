@@ -3236,6 +3236,73 @@ struct InkPondTests {
         #expect(resolved.implicitFallbackFamily == nil)
     }
 
+    @Test(arguments: [CompileFontSource.project, .app])
+    func compileFontResolverPassesUserFontsForPreviewPackageOnlyDeclarations(source: CompileFontSource) throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let font = AvailableCompileFont(
+            familyName: "Times New Roman",
+            faceName: "Regular",
+            postScriptName: "TimesNewRomanPSMT",
+            path: "/\(source.rawValue)/TimesNewRoman.ttf",
+            source: source
+        )
+        // Package internals are intentionally absent: only Typst sees their font declarations.
+        let entrySource = """
+        #import "@preview/charged-ieee:0.1.4": ieee
+        #show: ieee.with(title: [Example])
+        Hello
+        """
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: { [] }),
+            projectFontProvider: { _ in source == .project ? [font] : [] },
+            appFontProvider: { _ in source == .app ? [font] : [] },
+            sourceReader: { _, _ in ["main.typ": entrySource] }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        #expect(resolved.fontPaths == [font.path])
+        #expect(resolved.sourcesByFamily[font.familyName] == source)
+        #expect(resolved.families.isEmpty)
+        #expect(CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolved) == entrySource)
+    }
+
+    @Test func compileFontResolverPrefersProjectOverAppDuplicateForPreviewPackageOnlyDeclarations() throws {
+        let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
+        let projectFont = AvailableCompileFont(
+            familyName: "Times New Roman",
+            faceName: "Regular",
+            postScriptName: "TimesNewRomanPSMT",
+            path: "/project/TimesNewRoman.ttf",
+            source: .project
+        )
+        let appFont = AvailableCompileFont(
+            familyName: projectFont.familyName,
+            faceName: projectFont.faceName,
+            postScriptName: projectFont.postScriptName,
+            path: "/app/TimesNewRoman.ttf",
+            source: .app
+        )
+        let resolver = CompileFontResolver(
+            systemCatalog: SystemFontCatalog(loader: { [] }),
+            projectFontProvider: { _ in [projectFont] },
+            appFontProvider: { _ in [appFont] },
+            sourceReader: { _, _ in
+                ["main.typ": """
+                #import "@preview/charged-ieee:0.1.4": ieee
+                #show: ieee.with(title: [Example])
+                Hello
+                """]
+            }
+        )
+
+        let resolved = try resolver.resolveFonts(for: doc)
+
+        // A duplicate may be omitted or registered later, but must not take priority.
+        #expect(resolved.fontPaths.first == projectFont.path)
+        #expect(resolved.sourcesByFamily[projectFont.familyName] == .project)
+    }
+
     @Test func compileFontResolverUsesImplicitSystemCJKFallbackWhenNoFontIsSpecified() throws {
         let doc = makeDocument(projectID: "tests-\(UUID().uuidString)")
         let resolver = CompileFontResolver(

@@ -48,8 +48,12 @@ enum ExportManager {
         let rootDir = ProjectFileManager.projectDirectory(for: document).path
 
         return await Task.detached(priority: TypstCompiler.taskPriority(for: .immediate)) {
-            let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: resolvedFonts.fontPaths)
-            return TypstBridge.compile(source: effectiveSource, fontPaths: materializedFontPaths, rootDir: rootDir)
+            do {
+                let materializedFontPaths = try CompileFontSnapshot.prepare(paths: resolvedFonts.fontPaths)
+                return TypstBridge.compile(source: effectiveSource, fontPaths: materializedFontPaths, rootDir: rootDir)
+            } catch {
+                return .failure(.compilationFailed(error.localizedDescription))
+            }
         }.value
     }
 

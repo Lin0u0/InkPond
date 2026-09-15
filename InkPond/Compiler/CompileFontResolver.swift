@@ -62,6 +62,16 @@ struct CompileFontResolver {
         preserving previousFonts: ResolvedCompileFonts? = nil
     ) throws -> ResolvedCompileFonts {
         let sources = sourceReader(document, entrySourceOverride)
+        // A listed project font must not disappear from the compiler silently.
+        // Surface the existing file error before any cached preview/export is used.
+        for fileName in document.fontFileNames {
+            let url = ProjectFileManager.fontsDirectory(for: document).appendingPathComponent(fileName)
+            let data = try Data(contentsOf: url)
+            let descriptors = CTFontManagerCreateFontDescriptorsFromData(data as CFData)
+            guard CFArrayGetCount(descriptors) > 0 else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
+            }
+        }
         let scanResult = scanner.scan(fileContents: sources)
         let projectFonts = projectFontProvider(document)
         let appFonts = appFontProvider(appRootURL)
@@ -93,7 +103,14 @@ struct CompileFontResolver {
             )
             : nil
 
-        let dynamicFontDatabase = hasDynamicFontExpressions ? projectFonts + appFonts : []
+        // Package templates can select fonts without any local font expression.
+        // Match --font-path semantics while preserving project-over-app priority.
+        let userFontDatabase = projectFonts + appFonts.filter { appFont in
+            !projectFonts.contains { projectFont in
+                FontManager.normalizeFamilyName(projectFont.familyName) == FontManager.normalizeFamilyName(appFont.familyName)
+                    && projectFont.faceName == appFont.faceName
+            }
+        }
 
         guard !scanResult.families.isEmpty else {
             var automaticFallbacks: [String] = []
@@ -118,7 +135,7 @@ struct CompileFontResolver {
                     implicitFallbackFamily: nil,
                     automaticFallbackFamilies: automaticFallbacks,
                     warningFamilies: automaticFallbacks,
-                    additionalFonts: dynamicFontDatabase,
+                    additionalFonts: userFontDatabase,
                     requiredCodepoints: requiredCodepoints
                 )
             }
@@ -132,10 +149,11 @@ struct CompileFontResolver {
                     implicitFallbackFamily: implicitCJKFamily,
                     automaticFallbackFamilies: automaticFallbacks,
                     warningFamilies: automaticFallbacks,
+                    additionalFonts: userFontDatabase,
                     requiredCodepoints: requiredCodepoints
                 )
             }
-            if !automaticFallbacks.isEmpty {
+            if !automaticFallbacks.isEmpty || !userFontDatabase.isEmpty {
                 return try resolveRequestedFamilies(
                     [],
                     projectFonts: projectFonts,
@@ -144,6 +162,7 @@ struct CompileFontResolver {
                     implicitFallbackFamily: nil,
                     automaticFallbackFamilies: automaticFallbacks,
                     warningFamilies: automaticFallbacks,
+                    additionalFonts: userFontDatabase,
                     requiredCodepoints: requiredCodepoints
                 )
             }
@@ -178,7 +197,7 @@ struct CompileFontResolver {
             implicitFallbackFamily: nil,
             automaticFallbackFamilies: automaticFallbacks,
             warningFamilies: automaticFallbacks,
-            additionalFonts: dynamicFontDatabase,
+            additionalFonts: userFontDatabase,
             requiredCodepoints: requiredCodepoints
         )
     }

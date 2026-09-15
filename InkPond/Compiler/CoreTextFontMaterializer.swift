@@ -155,6 +155,12 @@ enum CoreTextFontMaterializer {
         return dest.path
     }
 
+    /// System materializations already have their own versioned identity and lifecycle.
+    nonisolated static func ownsMaterializedPath(_ path: String) -> Bool {
+        URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL
+            == cacheDirURL.standardizedFileURL
+    }
+
     nonisolated static func materializePlannedFonts(in paths: [String]) -> [String] {
         paths.map { path in
             guard let request = request(forPlannedPath: path) else {
