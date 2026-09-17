@@ -269,18 +269,8 @@ extension DocumentEditorView {
     }
 
     func activateTab(relativePath: String, kind: FileKind) {
-        guard kind.canBecomeTab else { return }
-        let tab = ProjectFileTab(
-            relativePath: relativePath,
-            displayName: (relativePath as NSString).lastPathComponent,
-            kind: kind
-        )
-        if let index = openTabs.firstIndex(where: { $0.relativePath == relativePath }) {
-            openTabs[index] = tab
-        } else {
-            openTabs.append(tab)
-        }
-        activeTabPath = relativePath
+        guard hasSessionAttachment else { return }
+        workspace.activate(relativePath: relativePath, kind: kind)
     }
 
     func restoreProjectEditorStateIfNeeded() {
@@ -290,6 +280,10 @@ extension DocumentEditorView {
         let savedState = ProjectEditorStateStore.load(projectID: document.projectID)
         let restoredTabs = savedState.openTabPaths.compactMap(savedProjectTab(for:))
         guard !restoredTabs.isEmpty else {
+            if savedState.hasSavedTabs == true {
+                openTabs = []
+                activeTabPath = nil
+            }
             persistProjectEditorTabState()
             return
         }
@@ -378,25 +372,13 @@ extension DocumentEditorView {
     }
 
     func closeProjectTab(_ tab: ProjectFileTab) async {
-        if tab.relativePath == currentFileName {
-            guard await flushPendingSave() else { return }
+        guard hasSessionAttachment else { return }
+        let attachment = sessionAttachment
+        guard await workspace.closeTab(tab.relativePath), attachment.isValid else { return }
+        if let next = workspace.activeTab, next.kind.isTextEditable {
+            _ = loadFile(named: next.relativePath)
         }
-
-        openTabs.removeAll { $0.relativePath == tab.relativePath }
-        guard activeTabPath == tab.relativePath else { return }
-
-        if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
-            activeTabPath = currentTextTab.relativePath
-        } else if let nextTab = openTabs.first {
-            await selectProjectTab(nextTab)
-        } else if !currentFileName.isEmpty {
-            activateTab(
-                relativePath: currentFileName,
-                kind: ProjectFileManager.fileKind(for: currentFileName, imageDirectoryName: document.imageDirectoryName)
-            )
-        } else {
-            activeTabPath = nil
-        }
+        persistProjectEditorTabState()
     }
 
     @discardableResult
@@ -427,27 +409,10 @@ extension DocumentEditorView {
             removed.stopConflictMonitoring()
         }
         openTabs.removeAll { $0.relativePath == node.relativePath }
-        if node.relativePath == currentFileName {
-            saveTask?.cancel()
-            saveTask = nil
-            stopConflictMonitoring()
-            if ProjectFileManager.listAllTypFiles(for: document).contains(document.entryFileName) {
-                _ = loadFile(named: document.entryFileName)
-            } else {
-                currentFileName = ""
-                editorText = ""
-                lastPersistedText = ""
-            }
-            return
-        }
-
         if node.relativePath == activeTabPath {
-            if let currentTextTab = openTabs.first(where: { $0.relativePath == currentFileName }) {
-                activeTabPath = currentTextTab.relativePath
-            } else if let firstTab = openTabs.first {
-                activeTabPath = firstTab.relativePath
-            } else {
-                activeTabPath = currentFileName.isEmpty ? nil : currentFileName
+            activeTabPath = openTabs.first?.relativePath
+            if let next = activeProjectTab, next.kind.isTextEditable {
+                _ = loadFile(named: next.relativePath)
             }
         }
 
@@ -793,6 +758,7 @@ extension DocumentEditorView {
     }
 
     func handleOutlineJump(characterOffset offset: Int) {
+        guard activeTabIsTextEditable else { return }
         // Always jump the editor cursor to the heading.
         pendingCursorJump = offset
 
@@ -1115,6 +1081,7 @@ extension DocumentEditorView {
         if documentSession.context !== draft.session.context {
             for session in documentSession.context.sessions.values { session.stopConflictMonitoring() }
             documentSession.context.sessions.removeAll()
+            documentSession.context.releaseExternalAccess()
         }
         sessionAttachment = DocumentSessionAttachment(session: draft.session)
         for session in documentSession.context.sessions.values {
@@ -1203,11 +1170,7 @@ extension DocumentEditorView {
         for session in documentSession.context.sessions.values { session.stopConflictMonitoring() }
         focusCoordinator.clearFocusPreservation()
         compiler.cancel()
-        if projectWritableLease == nil {
-            documentSession.context.sessions.removeAll()
-            projectAccessResolved = false
-            return
-        }
+        didRestoreProjectEditorState = false
         documentSession.context.close(session: documentSession, presentation: .init(
             entrySource: entrySource, tabs: openTabs, activePath: activeTabPath))
     }

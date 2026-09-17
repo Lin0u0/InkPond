@@ -288,7 +288,7 @@ extension DocumentEditorView {
         let session = documentSession
         return EditorView(
             text: Binding(get: { session.editorText }, set: {
-                guard attachment.isValid, attachment.session === session else { return }
+                guard attachment.acceptsTextMutation(for: session) else { return }
                 session.editorText = $0
             }),
             insertionRequest: $insertionRequest,
@@ -638,7 +638,7 @@ extension DocumentEditorView {
                 backgroundColor: regularWorkspaceChromeUIColor
             )
         } else {
-            editorPane(topViewportInset: topViewportInset)
+            Color(uiColor: regularWorkspaceChromeUIColor)
         }
         }
         .animation(.smooth(duration: 0.22, extraBounce: 0), value: openTabs.count)
@@ -842,11 +842,13 @@ extension DocumentEditorView {
                 .contentShape(Rectangle())
                 .accessibilityLabel(L10n.tr("action.find_replace"))
                 .accessibilityIdentifier("editor.search")
+                .disabled(!activeTabIsTextEditable)
             }
 
             Button {
                 InteractionFeedback.impact(.light)
                 presentAfterKeyboardDismissal {
+                    guard activeTabIsTextEditable else { return }
                     showingOutline = true
                 }
             } label: {
@@ -855,6 +857,7 @@ extension DocumentEditorView {
             .contentShape(Rectangle())
             .accessibilityLabel(L10n.tr("outline.title"))
             .accessibilityIdentifier("editor.outline")
+            .disabled(!activeTabIsTextEditable)
 
             if !usesMinimalLayout {
                 Button {
@@ -1063,9 +1066,11 @@ extension DocumentEditorView {
     }
 
     private func requestFindReplaceFromToolbar() {
+        guard activeTabIsTextEditable else { return }
         focusCoordinator.activateKeyboard()
         Task { @MainActor in
             await Task.yield()
+            guard activeTabIsTextEditable else { return }
             findRequested = true
         }
     }
@@ -1787,16 +1792,19 @@ extension DocumentEditorView {
         }
 
         Section {
-            Button { findRequested = true } label: {
+            Button { requestFindReplaceFromToolbar() } label: {
                 Label(L10n.tr("action.find_replace"), systemImage: "magnifyingglass")
             }
+            .disabled(!activeTabIsTextEditable)
             Button {
                 InteractionFeedback.impact(.light)
                 focusCoordinator.dismissKeyboard()
+                guard activeTabIsTextEditable else { return }
                 showingOutline = true
             } label: {
                 Label(L10n.tr("outline.title"), systemImage: "list.bullet")
             }
+            .disabled(!activeTabIsTextEditable)
             Button {
                 InteractionFeedback.impact(.light)
                 focusCoordinator.dismissKeyboard()
@@ -2109,13 +2117,13 @@ extension DocumentEditorView {
 
     // Shared appearance action: recovery and lease arbitration stay on the production path.
     func openEditorOnAppear() {
-        if !hasSessionAttachment {
+        let pendingClose = projectCloseTask
+        if !hasSessionAttachment, pendingClose == nil {
             sessionAttachment = DocumentSessionAttachment(session: DocumentSession(document: document))
         }
         stopObservingFailedClose()
-        let pendingClose = projectCloseTask
         let generation = UUID()
-        projectLifecycleGeneration = generation
+        workspace.projectLifecycleGeneration = generation
         if ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" {
             selectedTab = previewTab
         }
@@ -2132,16 +2140,28 @@ extension DocumentEditorView {
         }
         observeFailedClose()
         projectLeaseTask?.cancel()
+        let appearingWorkspace = workspace
         projectLeaseTask = Task { @MainActor in
+            let appearanceTask = appearingWorkspace.acquisitionTask
             if let pendingClose { await pendingClose.value }
             guard !Task.isCancelled, projectLifecycleGeneration == generation else { return }
             if restoreFailedCloseIfAvailable() {
                 resumeRecoveredEditorServices()
                 return
             }
-            let access = await ProjectWritableLeaseCoordinator.shared.open(projectID: document.stableProjectID)
-            if Task.isCancelled || projectLifecycleGeneration != generation {
+            // Successful drain revokes the old attachment while appearance waits.
+            if !hasSessionAttachment {
+                sessionAttachment = DocumentSessionAttachment(session: DocumentSession(document: document))
+                workspace.projectLifecycleGeneration = generation
+                workspace.acquisitionTask = appearanceTask
+            }
+            didRestoreProjectEditorState = false
+            let acquiringWorkspace = workspace
+            guard let access = await acquiringWorkspace.acquireAccess(generation: generation) else { return }
+            guard !Task.isCancelled, hasSessionAttachment, workspace === acquiringWorkspace,
+                  projectLifecycleGeneration == generation else {
                 if case .writable(let lease) = access { await lease.release() }
+                acquiringWorkspace.releaseExternalAccess()
                 return
             }
             let isWritable: Bool
@@ -2182,6 +2202,13 @@ extension DocumentEditorView {
         editorPresentation
             .onAppear { openEditorOnAppear() }
             .onDisappear { closeEditorOnDisappear() }
+            .onChange(of: activeTabPath) { _, _ in
+                findRequested = false
+                showingOutline = false
+                showingSnippetBrowser = false
+                insertionRequest = nil
+                pendingCursorJump = nil
+            }
             .onChange(of: documentSession.commitVersion) { _, _ in
                 if isEditingEntryFile { entrySource = editorText }
                 compilationErrorLines = recomputeCompilationErrorLines()
@@ -2356,6 +2383,7 @@ extension DocumentEditorView {
             }
             .sheet(isPresented: $showingSnippetBrowser) {
                 SnippetBrowserSheet { snippet in
+                    guard activeTabIsTextEditable, projectWritableLease != nil else { return }
                     let (text, cursorOffset) = snippet.bodyWithCursorOffset()
                     let targetRange = NSRange(
                         location: editorViewState.selectedLocation,

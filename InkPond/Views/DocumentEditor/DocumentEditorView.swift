@@ -37,8 +37,12 @@ struct DocumentEditorView: View {
     var currentFileName: String {
         get { documentSession.currentFileName }
         nonmutating set {
-            guard hasSessionAttachment, currentFileName != newValue else { return }
+            guard hasSessionAttachment else { return }
             let context = documentSession.context
+            // The attachment may still point at a closed tab. Matching paths do
+            // not make that evicted session an owner again: reopening must obtain
+            // the retained session (or a fresh one), never revive stale bindings.
+            if currentFileName == newValue, context.sessions[newValue] === documentSession { return }
             let next = context.sessions[newValue] ?? DocumentSession(document: document, fileName: newValue, context: context)
             sessionAttachment.session = next
             context.retain(next)
@@ -103,14 +107,21 @@ struct DocumentEditorView: View {
         nonmutating set {
             guard hasSessionAttachment else { return }
             documentSession.projectWritableLease = newValue
-            if newValue != nil { DocumentSessionRegistry.shared.retain(documentSession) }
+            if newValue != nil {
+                workspace.retainExternalAccess()
+                DocumentSessionRegistry.shared.retain(documentSession)
+            }
         }
     }
     var projectAccessResolved: Bool {
         get { documentSession.projectAccessResolved }
         nonmutating set { guard hasSessionAttachment else { return }; documentSession.projectAccessResolved = newValue }
     }
-    @State var projectLeaseTask: Task<Void, Never>?
+    var workspace: WorkspaceSession { documentSession.context }
+    var projectLeaseTask: Task<Void, Never>? {
+        get { workspace.acquisitionTask }
+        nonmutating set { workspace.acquisitionTask = newValue }
+    }
     var projectCloseTask: Task<Void, Never>? {
         get { documentSession.closeTask }
         nonmutating set { guard hasSessionAttachment else { return }; documentSession.closeTask = newValue }
@@ -130,7 +141,10 @@ struct DocumentEditorView: View {
 
     let editorTab:Int = 0
     let previewTab:Int = 1
-    @State var selectedTab:Int = ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" ? 1 : 0
+    var selectedTab: Int {
+        get { workspace.mode == .edit ? 0 : 1 }
+        nonmutating set { guard hasSessionAttachment else { return }; workspace.mode = newValue == 0 ? .edit : .preview }
+    }
     @State var pendingCompactSwipeFeedback = false
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
@@ -203,8 +217,14 @@ struct DocumentEditorView: View {
     @State var externalFolderLinkGeneration = AsyncOperationGeneration()
     @State var linkedFolderRefreshCoordinator = LinkedFolderRefreshCoordinator()
     @State var positionSyncTask: Task<Void, Never>?
-    @State var openTabs: [ProjectFileTab] = []
-    @State var activeTabPath: String?
+    var openTabs: [ProjectFileTab] {
+        get { workspace.openTabs }
+        nonmutating set { guard hasSessionAttachment else { return }; workspace.openTabs = newValue }
+    }
+    var activeTabPath: String? {
+        get { workspace.activeTabPath }
+        nonmutating set { guard hasSessionAttachment else { return }; workspace.activeTabPath = newValue }
+    }
     @State var didRestoreProjectEditorState = false
     @State var documentOpenSessionID: String?
 
@@ -213,7 +233,7 @@ struct DocumentEditorView: View {
     var isEditingEntryFile: Bool { currentFileName == document.entryFileName }
 
     var activeProjectPath: String {
-        activeTabPath ?? currentFileName
+        activeTabPath ?? ""
     }
 
     var activeProjectTab: ProjectFileTab? {
@@ -222,11 +242,11 @@ struct DocumentEditorView: View {
     }
 
     var activeTabIsTextEditable: Bool {
-        activeProjectTab?.kind.isTextEditable ?? true
+        workspace.allowsTextCommands
     }
 
     var activeEditorSubtitle: String {
-        activeProjectTab?.relativePath ?? currentFileName
+        activeProjectTab?.relativePath ?? ""
     }
 
     var previewRequiresExternalFolderLink: Bool {

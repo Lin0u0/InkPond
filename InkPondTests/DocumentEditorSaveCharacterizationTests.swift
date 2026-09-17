@@ -11,6 +11,211 @@ import UIKit
 @Suite(.serialized)
 @MainActor
 struct DocumentEditorSaveCharacterizationTests {
+    @Test func appearanceWaitsForDrainAndInstallsFreshLease() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let old = editor.workspace
+            let entered = SaveCheckpoint()
+            let resume = SaveCheckpoint()
+            old.beforeFinalClose = {
+                await entered.open()
+                await resume.wait()
+            }
+            editor.closeEditorOnDisappear()
+            await entered.wait()
+            editor.openEditorOnAppear()
+            let appearance = editor.projectLeaseTask
+            await resume.open()
+            await appearance?.value
+            #expect(editor.hasSessionAttachment)
+            #expect(editor.workspace !== old)
+            #expect(editor.projectWritableLease != nil)
+            #expect(editor.projectAccessResolved)
+        }
+    }
+
+    @Test func sameStateReappearancePreservesExplicitlyEmptyTabs() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            editor.restoreProjectEditorStateIfNeeded()
+            for tab in editor.openTabs { await editor.closeProjectTab(tab) }
+            editor.closeEditorOnDisappear()
+            await editor.workspace.closeTask?.value
+            editor.openEditorOnAppear()
+            await editor.projectLeaseTask?.value
+            #expect(editor.openTabs.isEmpty)
+            #expect(editor.activeTabPath == nil)
+        }
+    }
+
+    @Test func readOnlySameStateReappearancePreservesEmptyTabs() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            editor.closeEditorOnDisappear()
+            await editor.workspace.closeTask?.value
+            let blocker = try await ProjectWritableLeaseCoordinator.shared.acquire(projectID: h.document.stableProjectID)
+            editor.openEditorOnAppear()
+            await editor.projectLeaseTask?.value
+            #expect(editor.projectWritableLease == nil)
+            for tab in editor.openTabs { await editor.closeProjectTab(tab) }
+            editor.closeEditorOnDisappear()
+            editor.openEditorOnAppear()
+            await editor.projectLeaseTask?.value
+            #expect(editor.openTabs.isEmpty)
+            #expect(editor.activeTabPath == nil)
+            #expect(editor.projectWritableLease == nil)
+            await blocker.release()
+        }
+    }
+
+    @Test func readOnlyClosePreservesSharedAccessUntilLastWorkspace() async throws {
+        let id = UUID().uuidString
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(id + ".typ")
+        try Data("read only".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = InkPondDocument(title: "shared access")
+        document.projectID = id
+        try ExternalTypFileSessionStore.register(url: url, projectID: id)
+        let writer = WorkspaceSession(document: document)
+        let reader = WorkspaceSession(document: document)
+        writer.retainExternalAccess()
+        reader.retainExternalAccess()
+        let session = DocumentSession(document: document, context: reader)
+        let attachment = DocumentSessionAttachment(session: session)
+        reader.retain(session)
+        reader.close(session: session, presentation: .init(entrySource: "", tabs: [], activePath: nil))
+        #expect(!attachment.isValid)
+        #expect(reader.sessions.isEmpty)
+        #expect(ExternalTypFileSessionStore.contains(projectID: id))
+        writer.releaseExternalAccess()
+        #expect(!ExternalTypFileSessionStore.contains(projectID: id))
+    }
+
+    @Test func evictedSessionRejectsCapturedTextBinding() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let attachment = editor.sessionAttachment
+            let session = editor.documentSession
+            editor.activateTab(relativePath: "main.typ", kind: .typ)
+            #expect(attachment.acceptsTextMutation(for: session))
+            #expect(await editor.workspace.closeTab("main.typ"))
+            #expect(!attachment.acceptsTextMutation(for: session))
+            #expect(editor.loadFile(named: "main.typ"))
+            #expect(editor.documentSession !== session)
+            #expect(editor.workspace.sessions["main.typ"] === editor.documentSession)
+            #expect(attachment.acceptsTextMutation(for: editor.documentSession))
+            #expect(!attachment.acceptsTextMutation(for: session))
+        }
+    }
+
+    @Test func inactiveCloseFailureSurfacesThroughActiveDraft() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let a = editor.documentSession
+            #expect(editor.loadFile(named: "B.typ"))
+            let b = editor.documentSession
+            #expect(await b.persistCurrentFileImmediately(content: b.editorText, forceWrite: true))
+            #expect(!b.isDirty)
+            #expect(b.lastSaveReceipt?.content == "B on disk")
+            #expect(try h.disk("B.typ") == "B on disk")
+            let bSequence = b.lastSaveReceipt?.sequence
+            a.editorText = "inactive unsaved draft"
+            await a.backgroundFileWriter.setCheckpoints(before: { _ in
+                throw CocoaError(.fileWriteOutOfSpace)
+            })
+            editor.closeEditorOnDisappear()
+            await editor.workspace.closeTask?.value
+            #expect(a.isDirty)
+            // Failed project close intentionally fences the presentation session
+            // for recovery, even when its own disk write succeeded. B's content
+            // and acknowledged receipt must remain unaffected by A's failure.
+            #expect(b.editorText == b.lastPersistedText)
+            #expect(b.lastSaveReceipt?.content == "B on disk")
+            #expect(b.lastSaveReceipt?.sequence == bSequence)
+            #expect(try h.disk("B.typ") == "B on disk")
+            #expect(b.recoveryWriteSequenceFloor == b.saveGeneration)
+            #expect(b.isDirty)
+            #expect(editor.restoreFailedCloseIfAvailable())
+            #expect(editor.documentSession === b)
+            #expect(editor.fileSaveError != nil)
+            await a.backgroundFileWriter.setCheckpoints(before: nil, after: nil)
+        }
+    }
+
+    @Test func workspaceResourceCapabilitiesUseRealKinds() {
+        let workspace = WorkspaceSession(document: InkPondDocument(title: "resource commands"))
+        for kind: FileKind in [.image, .vector, .pdf, .font, .archive, .other] {
+            workspace.activate(relativePath: "resource", kind: kind)
+            #expect(!workspace.allowsTextCommands)
+            #expect(workspace.activeTextSession == nil)
+        }
+        workspace.activate(relativePath: "text.typ", kind: .typ)
+        #expect(workspace.allowsTextCommands)
+    }
+
+    @Test func workspaceCloseDoesNotResurrectTextBehindResource() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let workspace = editor.workspace
+            workspace.activate(relativePath: "main.typ", kind: .typ)
+            let text = workspace.activeTab!
+            workspace.activate(relativePath: "photo.png", kind: .image)
+            #expect(workspace.activeTextSession == nil)
+            #expect(!workspace.allowsTextCommands)
+            await editor.closeProjectTab(text)
+            #expect(workspace.activeTabPath == "photo.png")
+            #expect(workspace.sessions[text.relativePath] == nil)
+            await editor.closeProjectTab(workspace.activeTab!)
+            await editor.closeProjectTab(text)
+            #expect(workspace.openTabs.isEmpty)
+            #expect(workspace.activeTabPath == nil)
+            #expect(!editor.activeTabIsTextEditable)
+        }
+    }
+
+    @Test func workspaceRepeatedCloseIsBoundedAndReleasesRealLease() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let workspace = editor.workspace
+            // This fixture seeds main's buffer without running appearance. Open
+            // its real tab before asserting that closing all tabs evicts it.
+            #expect(editor.loadFile(named: "main.typ"))
+            for _ in 0..<12 {
+                #expect(editor.loadFile(named: "B.typ"))
+                await editor.closeProjectTab(workspace.activeTab!)
+                #expect(workspace.sessions.count <= 1)
+            }
+            for tab in workspace.openTabs { await editor.closeProjectTab(tab) }
+            #expect(workspace.sessions.isEmpty)
+            editor.closeEditorOnDisappear()
+            await workspace.closeTask?.value
+            #expect(!DocumentSessionRegistry.shared.hasRetainedSession(for: h.document.stableProjectID))
+            let lease = try await ProjectWritableLeaseCoordinator.shared.acquire(projectID: h.document.stableProjectID)
+            await lease.release()
+        }
+    }
+
+    @Test func workspaceFailedTabCloseRetainsDraftAndRetries() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let session = editor.documentSession
+            editor.activateTab(relativePath: "main.typ", kind: .typ)
+            let tab = editor.workspace.activeTab!
+            session.editorText = "retry tab close"
+            await session.backgroundFileWriter.setCheckpoints(before: { _ in
+                throw CocoaError(.fileWriteOutOfSpace)
+            })
+            await editor.closeProjectTab(tab)
+            #expect(editor.workspace.activeTab == tab)
+            #expect(session.isDirty)
+            #expect(editor.workspace.projectWritableLease != nil)
+            await session.backgroundFileWriter.setCheckpoints(before: nil, after: nil)
+            await editor.closeProjectTab(tab)
+            #expect(editor.workspace.openTabs.isEmpty)
+            #expect(try h.disk() == "retry tab close")
+        }
+    }
+
     @Test func cleanSiblingAcknowledgementPreservesFailedProjectRecovery() async throws {
         try await withEditor { (h: SaveEditorHost) async throws in
             let editor = h.editor!
@@ -220,6 +425,17 @@ struct DocumentEditorSaveCharacterizationTests {
             let recovered = fresh.editor!
             #expect(recovered.restoreFailedCloseIfAvailable())
             #expect(!old.hasSessionAttachment)
+            let retainedTabs = recovered.openTabs
+            let retainedPath = recovered.activeTabPath
+            let retainedMode = recovered.selectedTab
+            old.openTabs = []
+            old.activeTabPath = "stale.png"
+            old.selectedTab = retainedMode == 0 ? 1 : 0
+            old.activateTab(relativePath: "stale.png", kind: .image)
+            for tab in retainedTabs { await old.closeProjectTab(tab) }
+            #expect(recovered.openTabs == retainedTabs)
+            #expect(recovered.activeTabPath == retainedPath)
+            #expect(recovered.selectedTab == retainedMode)
             old.editorText = "stale mutation"
             old.scheduleSave(content: "stale scheduled save", for: "main.typ")
             #expect(await old.flushPendingSave() == false)
@@ -242,7 +458,7 @@ struct DocumentEditorSaveCharacterizationTests {
             editor.closeEditorOnDisappear()
             await session.closeTask?.value
             h.unmount()
-            await session.backgroundFileWriter.setCheckpoints()
+            await session.backgroundFileWriter.setCheckpoints(before: nil, after: nil)
             await DocumentSessionRegistry.shared.flushForBackground()
             #expect(try h.disk() == "detached background retry")
             #expect(session.projectWritableLease == nil)

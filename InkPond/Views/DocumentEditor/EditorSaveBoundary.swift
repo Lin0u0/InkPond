@@ -66,7 +66,7 @@ final class DocumentSessionRegistry {
         var fileName: String { session.currentFileName }
         var text: String { session.editorText }
         var persistedText: String { session.lastPersistedText }
-        var error: String? { session.fileSaveError }
+        var error: String? { session.context.closeError ?? session.fileSaveError }
     }
 
     private var drafts: [ProjectID: Draft] = [:]

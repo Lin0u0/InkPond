@@ -7,6 +7,7 @@ import Foundation
 
 struct ProjectEditorSavedState: Codable, Equatable {
     var openTabPaths: [String] = []
+    var hasSavedTabs: Bool?
     var activeTabPath: String?
     var outlineCollapsedItemIDsByFile: [String: [String]] = [:]
 
@@ -39,6 +40,7 @@ enum ProjectEditorStateStore {
         defaults: UserDefaults = .standard
     ) {
         update(projectID: projectID, defaults: defaults) { state in
+            state.hasSavedTabs = true
             state.openTabPaths = uniquePaths(openTabPaths)
             state.activeTabPath = activeTabPath
         }

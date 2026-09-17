@@ -24,6 +24,7 @@ private enum ImageImportError: LocalizedError {
 
 extension DocumentEditorView {
     func handleImageDrop(providers: [NSItemProvider]) -> Bool {
+        guard activeTabIsTextEditable, projectWritableLease != nil else { return false }
         let anchorRange = currentInsertionRange()
         let targetFileName = currentFileName
         guard let provider = providers.first(where: {
@@ -75,12 +76,14 @@ extension DocumentEditorView {
     }
 
     func handleImageSelection(_ items: [PhotosPickerItem]) {
+        guard activeTabIsTextEditable, projectWritableLease != nil else { return }
         guard let item = items.first else { return }
         importImage(from: .photoItem(item), anchorRange: currentInsertionRange(), targetFileName: currentFileName)
         selectedPhotoItems = []
     }
 
     func importImage(from source: ImageImportSource, anchorRange: NSRange, targetFileName: String) {
+        guard activeTabIsTextEditable, activeTabPath == targetFileName, projectWritableLease != nil else { return }
         Task {
             do {
                 let result = try await importImageAsset(from: source)
@@ -288,7 +291,7 @@ extension DocumentEditorView {
             targetRange: targetRange,
             targetFileName: targetFileName
         )
-        if insertionRequest == nil, currentFileName == targetFileName {
+        if activeTabIsTextEditable, insertionRequest == nil, activeTabPath == targetFileName {
             insertionRequest = request
         } else {
             pendingInsertionQueue.append(request)
@@ -297,7 +300,7 @@ extension DocumentEditorView {
 
     @MainActor
     func pumpPendingInsertionsIfNeeded() {
-        guard insertionRequest == nil else { return }
+        guard activeTabIsTextEditable, insertionRequest == nil else { return }
         guard let index = pendingInsertionQueue.firstIndex(where: { $0.targetFileName == currentFileName }) else {
             return
         }
