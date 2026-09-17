@@ -2161,7 +2161,7 @@ extension DocumentEditorView {
             guard !Task.isCancelled, hasSessionAttachment, workspace === acquiringWorkspace,
                   projectLifecycleGeneration == generation else {
                 if case .writable(let lease) = access { await lease.release() }
-                acquiringWorkspace.releaseExternalAccess()
+                acquiringWorkspace.releaseExternalAccess(forAcquisition: generation)
                 return
             }
             let isWritable: Bool

@@ -11,6 +11,121 @@ import UIKit
 @Suite(.serialized)
 @MainActor
 struct DocumentEditorSaveCharacterizationTests {
+    @Test func cancelledOlderAcquisitionMustNotReleaseNewAttemptExternalAccess() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let workspace = editor.workspace
+            let url = h.root.appendingPathComponent("main.typ")
+            try ExternalTypFileSessionStore.register(url: url, projectID: h.document.projectID)
+            defer { ExternalTypFileSessionStore.unregister(projectID: h.document.projectID) }
+            let entered = SaveCheckpoint()
+            let resume = SaveCheckpoint()
+            defer { Task { await resume.open() } }
+            workspace.afterAccessAcquisition = {
+                await entered.open()
+                await resume.wait()
+            }
+            let generation = workspace.projectLifecycleGeneration
+            // The fixture lease makes the older attempt read-only. Suspend it
+            // after the real coordinator returns, before cancellation cleanup.
+            let older = Task { await workspace.acquireAccess(generation: generation) }
+            await entered.wait()
+            older.cancel()
+            workspace.afterAccessAcquisition = nil
+            await workspace.projectWritableLease?.release()
+            workspace.projectWritableLease = nil
+            let newer = await workspace.acquireAccess(generation: generation)
+            guard case .writable(let lease) = newer else {
+                await resume.open()
+                _ = await older.value
+                Issue.record("New acquisition did not obtain the released fixture lease")
+                return
+            }
+            workspace.projectWritableLease = lease
+            editor.editorText = "new acquisition durable text"
+            #expect(await editor.flushPendingSave())
+            #expect(try h.disk() == "new acquisition durable text")
+            #expect(!editor.documentSession.isDirty)
+            expectReceipt(editor, host: h, content: "new acquisition durable text")
+            let receipt = editor.lastSaveReceipt
+            #expect(ExternalTypFileSessionStore.fileURL(projectID: h.document.projectID) == url)
+
+            await resume.open()
+            #expect(await older.value == nil)
+            // The old continuation must not unregister the newer owner's file.
+            #expect(ExternalTypFileSessionStore.fileURL(projectID: h.document.projectID) == url)
+            #expect(try h.disk() == "new acquisition durable text")
+            #expect(!editor.documentSession.isDirty)
+            #expect(editor.lastSaveReceipt?.sequence == receipt?.sequence)
+            expectReceipt(editor, host: h, content: "new acquisition durable text")
+            editor.editorText = "write after old acquisition cleanup"
+            #expect(await editor.flushPendingSave())
+            #expect(try h.disk() == "write after old acquisition cleanup")
+            #expect(!editor.documentSession.isDirty)
+            expectReceipt(editor, host: h, content: "write after old acquisition cleanup")
+            await ProjectReliabilityWriterRegistry.shared.close(
+                projectID: h.document.stableProjectID, rootURL: h.root, externalTargetURL: url)
+            workspace.releaseExternalAccess()
+            #expect(!ExternalTypFileSessionStore.contains(projectID: h.document.projectID))
+            await lease.release()
+            workspace.projectWritableLease = nil
+        }
+    }
+
+    @Test func duplicateCloseMustNotEvictReopenedSamePathSession() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let workspace = editor.workspace
+            #expect(editor.loadFile(named: "main.typ"))
+            let old = editor.documentSession
+            editor.editorText = "old tab committed"
+            let entered = SaveCheckpoint()
+            let resume = SaveCheckpoint()
+            defer { Task { await resume.open() } }
+            workspace.afterTabCloseFlush = { path, target in
+                #expect(path == "main.typ")
+                #expect(target === old)
+                await entered.open()
+                await resume.wait()
+            }
+            let lateClose = Task { await workspace.closeTab("main.typ") }
+            await entered.wait()
+            #expect(try h.disk() == "old tab committed")
+            #expect(!old.isDirty)
+            #expect(old.lastSaveReceipt?.content == "old tab committed")
+            workspace.afterTabCloseFlush = nil
+            #expect(await workspace.closeTab("main.typ"))
+            #expect(workspace.sessions["main.typ"] == nil)
+            #expect(editor.loadFile(named: "main.typ"))
+            let reopened = editor.documentSession
+            #expect(reopened !== old)
+            editor.editorText = "reopened durable baseline"
+            #expect(await editor.flushPendingSave())
+            expectReceipt(editor, host: h, content: "reopened durable baseline")
+            let receipt = reopened.lastSaveReceipt
+            let token = reopened.fileLoadToken
+            editor.editorText = "reopened unsaved draft"
+            #expect(reopened.isDirty)
+
+            await resume.open()
+            _ = await lateClose.value // Return convention is secondary to retention.
+            #expect(workspace.sessions["main.typ"] === reopened)
+            #expect(workspace.openTabs.contains { $0.relativePath == "main.typ" })
+            #expect(workspace.activeTextSession === reopened)
+            #expect(editor.sessionAttachment.acceptsTextMutation(for: reopened))
+            #expect(reopened.editorText == "reopened unsaved draft")
+            #expect(reopened.isDirty)
+            #expect(reopened.fileLoadToken == token)
+            #expect(reopened.lastSaveReceipt?.sequence == receipt?.sequence)
+            #expect(reopened.lastSaveReceipt?.content == "reopened durable baseline")
+            #expect(try h.disk() == "reopened durable baseline")
+            #expect(await editor.flushPendingSave())
+            #expect(try h.disk() == "reopened unsaved draft")
+            #expect(!reopened.isDirty)
+            expectReceipt(editor, host: h, content: "reopened unsaved draft")
+        }
+    }
+
     @Test func appearanceWaitsForDrainAndInstallsFreshLease() async throws {
         try await withEditor { (h: SaveEditorHost) async throws in
             let editor = h.editor!

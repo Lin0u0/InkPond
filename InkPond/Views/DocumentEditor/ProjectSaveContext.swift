@@ -31,14 +31,25 @@ final class WorkspaceSession {
     var closeError: String?
     private static var accessOwners: [ProjectID: Set<UUID>] = [:]
     private let accessOwnerID = UUID()
+    private var installedAccessGeneration: UUID?
 
     func retainExternalAccess() {
         Self.accessOwners[document.stableProjectID, default: []].insert(accessOwnerID)
     }
 
     func releaseExternalAccess() {
+        installedAccessGeneration = nil
+        releaseExternalAccess(owner: accessOwnerID)
+    }
+
+    func releaseExternalAccess(forAcquisition generation: UUID) {
+        guard installedAccessGeneration == generation else { return }
+        releaseExternalAccess()
+    }
+
+    private func releaseExternalAccess(owner: UUID) {
         let id = document.stableProjectID
-        Self.accessOwners[id]?.remove(accessOwnerID)
+        Self.accessOwners[id]?.remove(owner)
         guard Self.accessOwners[id]?.isEmpty != false else { return }
         Self.accessOwners[id] = nil
         if BookmarkManager.hasBookmark(projectID: document.projectID) {
@@ -70,8 +81,16 @@ final class WorkspaceSession {
     func closeTab(_ path: String) async -> Bool {
         guard openTabs.contains(where: { $0.relativePath == path }) else { return true }
         let authority = saveAuthority
+#if DEBUG
+        let afterFlush = afterTabCloseFlush
+#endif
         if let target = sessions[path] {
-            guard await target.flushPendingSave(), saveAuthority == authority,
+            let flushed = await target.flushPendingSave()
+#if DEBUG
+            await afterFlush?(path, target)
+#endif
+            guard flushed, saveAuthority == authority,
+                  sessions[path] === target,
                   !target.isDirty, target.savesInFlight == 0 else { return false }
             target.saveTask?.cancel()
             target.saveTask = nil
@@ -87,6 +106,9 @@ final class WorkspaceSession {
     var sessions: [String: DocumentSession] = [:]
 #if DEBUG
     var beforeFinalClose: (@MainActor () async -> Void)?
+    // Snapshot at invocation so concurrent attempts can be gated independently.
+    var afterAccessAcquisition: (@MainActor () async -> Void)?
+    var afterTabCloseFlush: (@MainActor (String, DocumentSession) async -> Void)?
 #endif
     var attachmentID: UUID?
     var closeTask: Task<Void, Never>?
@@ -100,13 +122,25 @@ final class WorkspaceSession {
 
     /// Resolve access on the owner; cancellation after grant must return the lease.
     func acquireAccess(generation: UUID) async -> ProjectAccessLease? {
-        retainExternalAccess()
+#if DEBUG
+        let afterAcquisition = afterAccessAcquisition
+#endif
+        // Each suspended acquisition owns a distinct registration. Cancellation
+        // can release only this attempt, never a newer attempt or installed owner.
+        let attempt = UUID()
+        Self.accessOwners[document.stableProjectID, default: []].insert(attempt)
         let access = await ProjectWritableLeaseCoordinator.shared.open(projectID: document.stableProjectID)
+#if DEBUG
+        await afterAcquisition?()
+#endif
         guard !Task.isCancelled, projectLifecycleGeneration == generation else {
             if case .writable(let lease) = access { await lease.release() }
-            releaseExternalAccess()
+            releaseExternalAccess(owner: attempt)
             return nil
         }
+        retainExternalAccess()
+        installedAccessGeneration = generation
+        releaseExternalAccess(owner: attempt)
         return access
     }
 
