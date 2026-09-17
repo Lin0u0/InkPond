@@ -53,6 +53,7 @@ struct InkPondApp: App {
     @UIApplicationDelegateAdaptor(InkPondAppDelegate.self) private var appDelegate
     @State private var storageManager: StorageManager
     @State private var modelContainer: ModelContainer?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var snippetStore = SnippetStore()
 
     init() {
@@ -109,6 +110,11 @@ struct InkPondApp: App {
                 await Task.detached(priority: .utility) {
                     CoreTextFontMaterializer.prunePersistentCache()
                 }.value
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background {
+                    Task { await DocumentSessionRegistry.shared.flushForBackground() }
+                }
             }
             .onChange(of: currentStorageMode) { _, newMode in
                 ProjectFileManager.storageManager = storageManager

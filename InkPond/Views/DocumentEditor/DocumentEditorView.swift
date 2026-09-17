@@ -7,31 +7,6 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 
-actor BackgroundDocumentFileWriter {
-#if DEBUG
-    // Instance-scoped checkpoints surround the real registry, never a substitute writer.
-    var beforeRegistry: (@Sendable (ProjectReliabilityWriteRequest) async throws -> Void)?
-    var afterRegistry: (@Sendable (ProjectReliabilityWriteRequest) async -> Void)?
-
-    func setCheckpoints(
-        before: (@Sendable (ProjectReliabilityWriteRequest) async throws -> Void)? = nil,
-        after: (@Sendable (ProjectReliabilityWriteRequest) async -> Void)? = nil
-    ) {
-        beforeRegistry = before
-        afterRegistry = after
-    }
-#endif
-    func write(_ request: ProjectReliabilityWriteRequest) async throws {
-#if DEBUG
-        try await beforeRegistry?(request)
-#endif
-        try await ProjectReliabilityWriterRegistry.shared.write(request)
-#if DEBUG
-        await afterRegistry?(request)
-#endif
-    }
-}
-
 struct DocumentEditorView: View {
     enum ImageImportSource {
         case photoItem(PhotosPickerItem)
@@ -53,36 +28,105 @@ struct DocumentEditorView: View {
     @Environment(ThemeManager.self) var themeManager
     @Environment(EditorFontSettings.self) var editorFontSettings
 
+    @State var sessionAttachment: DocumentSessionAttachment
+    var documentSession: DocumentSession { sessionAttachment.session }
+    var hasSessionAttachment: Bool { sessionAttachment.isValid }
+
     @State var compiler = TypstCompiler()
 
-    @State var currentFileName: String = ""
-    @State var editorText: String = ""
+    var currentFileName: String {
+        get { documentSession.currentFileName }
+        nonmutating set {
+            guard hasSessionAttachment, currentFileName != newValue else { return }
+            let context = documentSession.context
+            let next = context.sessions[newValue] ?? DocumentSession(document: document, fileName: newValue, context: context)
+            sessionAttachment.session = next
+            context.retain(next)
+            if next.projectWritableLease != nil { DocumentSessionRegistry.shared.retain(next) }
+        }
+    }
+    var editorText: String {
+        get { documentSession.editorText }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.editorText = newValue }
+    }
     @State var entrySource: String = ""
     @State var compileToken: UUID = UUID()
     @State var linkedFolderRefreshCacheBypassToken: UUID?
-    @State var isLoadingFileContent = false
-    @State var lastPersistedText: String = ""
-    @State var saveTask: Task<Void, Never>?
-    @State var saveGeneration: UInt64 = 0
-    @State var savesInFlight = 0
+    var isLoadingFileContent: Bool {
+        get { documentSession.isLoadingFileContent }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.isLoadingFileContent = newValue }
+    }
+    var lastPersistedText: String {
+        get { documentSession.lastPersistedText }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.lastPersistedText = newValue }
+    }
+    var saveTask: Task<Void, Never>? {
+        get { documentSession.saveTask }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.saveTask = newValue }
+    }
+    var saveGeneration: UInt64 {
+        get { documentSession.saveGeneration }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.saveGeneration = newValue }
+    }
+    var savesInFlight: Int {
+        get { documentSession.savesInFlight }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.savesInFlight = newValue }
+    }
     // Only a write captured after this floor can discharge failed-close recovery.
-    @State var recoveryWriteSequenceFloor: UInt64?
-    @State var saveAuthority = UUID()
-    @State var reliabilityWriteAuthority = ProjectReliabilityWriteAuthority()
+    var recoveryWriteSequenceFloor: UInt64? {
+        get { documentSession.recoveryWriteSequenceFloor }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.recoveryWriteSequenceFloor = newValue }
+    }
+    var saveAuthority: UUID {
+        get { documentSession.saveAuthority }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.saveAuthority = newValue }
+    }
+    var reliabilityWriteAuthority: ProjectReliabilityWriteAuthority {
+        get { documentSession.reliabilityWriteAuthority }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.reliabilityWriteAuthority = newValue }
+    }
     @State var failedCloseSubscription: UUID?
-    @State var lastSaveReceipt: EditorSaveReceipt?
-    @State var activeSaveGeneration: UInt64?
-    @State var backgroundFileWriter = BackgroundDocumentFileWriter()
-    @State var projectWritableLease: ProjectWritableLease?
-    @State var projectAccessResolved = false
+    var lastSaveReceipt: EditorSaveReceipt? {
+        get { hasSessionAttachment ? documentSession.lastSaveReceipt : nil }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.lastSaveReceipt = newValue }
+    }
+    var activeSaveGeneration: UInt64? {
+        get { documentSession.activeSaveGeneration }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.activeSaveGeneration = newValue }
+    }
+    var backgroundFileWriter: BackgroundDocumentFileWriter {
+        get { documentSession.backgroundFileWriter }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.backgroundFileWriter = newValue }
+    }
+    var projectWritableLease: ProjectWritableLease? {
+        get { hasSessionAttachment ? documentSession.projectWritableLease : nil }
+        nonmutating set {
+            guard hasSessionAttachment else { return }
+            documentSession.projectWritableLease = newValue
+            if newValue != nil { DocumentSessionRegistry.shared.retain(documentSession) }
+        }
+    }
+    var projectAccessResolved: Bool {
+        get { documentSession.projectAccessResolved }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.projectAccessResolved = newValue }
+    }
     @State var projectLeaseTask: Task<Void, Never>?
-    @State var projectCloseTask: Task<Void, Never>?
-    @State var projectLifecycleGeneration = UUID()
+    var projectCloseTask: Task<Void, Never>? {
+        get { documentSession.closeTask }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.closeTask = newValue }
+    }
+    var projectLifecycleGeneration: UUID {
+        get { documentSession.projectLifecycleGeneration }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.projectLifecycleGeneration = newValue }
+    }
     @State var resolvedCompileFonts: ResolvedCompileFonts = .empty
     @State var availableFontFamilies: [String] = []
     @State var fontFamilyRefreshTask: Task<Void, Never>?
     @State var fontResolutionError: String?
-    @State var conflictMonitor = FileConflictMonitor()
+    var conflictMonitor: FileConflictMonitor {
+        get { documentSession.conflictMonitor }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.conflictMonitor = newValue }
+    }
 
     let editorTab:Int = 0
     let previewTab:Int = 1
@@ -93,14 +137,23 @@ struct DocumentEditorView: View {
     @State var showingPhotoPicker = false
     @State var showingFileBrowser = false
     @State var showingProjectSettings = false
-    @State var showingConflictWarning = false
-    @State var conflictFileName: String = ""
+    var showingConflictWarning: Bool {
+        get { documentSession.showingConflictWarning }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.showingConflictWarning = newValue }
+    }
+    var conflictFileName: String {
+        get { documentSession.conflictFileName }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.conflictFileName = newValue }
+    }
     @State var selectedPhotoItems: [PhotosPickerItem] = []
     @State var insertionRequest: EditorInsertionRequest?
     @State var findRequested = false
     @State var exporter = ExportController()
     @State var imageImportError: String?
-    @State var fileSaveError: String?
+    var fileSaveError: String? {
+        get { documentSession.fileSaveError }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.fileSaveError = newValue }
+    }
     @State var previewActionError: String?
     @State var isImageDropTarget = false
     @State var pendingInsertionQueue: [EditorInsertionRequest] = []
@@ -112,7 +165,10 @@ struct DocumentEditorView: View {
     @State var shouldRestoreEditorFocusAfterPreview = false
     @State var syncCoordinator = SyncCoordinator()
     @State var editorViewState = EditorViewState()
-    @State var fileLoadToken = UUID()
+    var fileLoadToken: UUID {
+        get { documentSession.fileLoadToken }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.fileLoadToken = newValue }
+    }
     @State var pendingCursorJump: Int?
     @State var pendingManualCompileFeedback = false
     @State var previewStatsWordCount = 0
@@ -211,6 +267,7 @@ struct DocumentEditorView: View {
         onInitialOpenFailure: ((String) -> Void)? = nil,
         onCloseProject: (() -> Void)? = nil
     ) {
+        self._sessionAttachment = State(initialValue: DocumentSessionAttachment(session: DocumentSession(document: document)))
         self.document = document
         self.isSidebarVisible = isSidebarVisible
         self.externalOpenRequest = externalOpenRequest
@@ -222,6 +279,8 @@ struct DocumentEditorView: View {
     // Mount @State without starting compilation, file loading, or unrelated UI effects.
     var saveTestProbe: ((DocumentEditorView) -> Void)?
     var saveTestUsesLifecycle = false
+    var saveTestUsesDisappearance = false
+    var saveTestDidDisappear: (() -> Void)?
     var saveTestDebounce: (@MainActor () async throws -> Void)?
 #endif
 
@@ -231,6 +290,10 @@ struct DocumentEditorView: View {
             Color.clear.onAppear {
                 if saveTestUsesLifecycle { openEditorOnAppear() }
                 saveTestProbe(self)
+            }
+            .onDisappear {
+                if saveTestUsesDisappearance { closeEditorOnDisappear() }
+                saveTestDidDisappear?()
             }
         } else {
             editorOverlaysAndAlerts

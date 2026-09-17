@@ -10,24 +10,63 @@ struct EditorSaveReceipt {
     let content: String
 }
 
-/// Narrow failure recovery for a disappearing editor. This is not a document-session
-/// registry: only failed closes are retained, until reopened or successfully retried.
-/// Like an unsaved editor buffer, this memory does not survive process termination.
+/// App-lifetime retention and exclusive failed-close handoff. Writable sessions
+/// remain alive until successful close, not merely until a view disappears.
 @MainActor
-final class EditorFailedCloseStore {
-    static let shared = EditorFailedCloseStore()
+final class DocumentSessionRegistry {
+    static let shared = DocumentSessionRegistry()
 
-    // Every retained draft requires a new write, even when text == persistedText.
-    struct Draft {
-        let lease: ProjectWritableLease
-        let fileName: String
-        let text: String
-        let persistedText: String
+    private var contexts: [ProjectID: ProjectSaveContext] = [:]
+    var retainedSessionCount: Int { contexts.values.reduce(0) { $0 + $1.sessions.count } }
+
+    func retain(_ session: DocumentSession) {
+        let id = session.document.stableProjectID
+        precondition(contexts[id] == nil || contexts[id] === session.context)
+        session.context.retain(session)
+        contexts[id] = session.context
+    }
+
+    func flushForBackground() async {
+        for context in Array(contexts.values) where context.projectWritableLease != nil {
+            if let draft = drafts[context.document.stableProjectID] {
+                context.close(session: draft.session, presentation: draft.presentation)
+                await context.closeTask?.value
+            } else {
+                for session in Array(context.sessions.values) { _ = await session.flushPendingSave() }
+            }
+        }
+    }
+
+    func release(_ session: DocumentSession) {
+        let id = session.document.stableProjectID
+        if contexts[id] === session.context {
+            contexts[id] = nil
+            drafts[id] = nil
+            session.context.sessions.removeAll()
+            let callbacks = subscribers[id].map { Array($0.values) } ?? []
+            for callback in callbacks { callback() }
+        }
+    }
+
+    func hasRetainedSession(for projectID: ProjectID) -> Bool { contexts[projectID] != nil }
+
+    struct Presentation {
         let entrySource: String
         let tabs: [ProjectFileTab]
         let activePath: String?
-        let error: String?
-        let relinquish: @MainActor () -> Void
+    }
+
+    struct Draft {
+        let session: DocumentSession
+        let lease: ProjectWritableLease
+        let presentation: Presentation
+        var entrySource: String { presentation.entrySource }
+        var tabs: [ProjectFileTab] { presentation.tabs }
+        var activePath: String? { presentation.activePath }
+        var fileName: String { session.currentFileName }
+        var text: String { session.editorText }
+        var persistedText: String { session.lastPersistedText }
+        var error: String? { session.fileSaveError }
     }
 
     private var drafts: [ProjectID: Draft] = [:]
@@ -52,7 +91,7 @@ final class EditorFailedCloseStore {
         guard let draft = drafts.removeValue(forKey: projectID) else { return nil }
         // Transfer the live lease without an arbitration gap. The origin may retry
         // until this point, but cannot acknowledge or close after this handoff.
-        draft.relinquish()
+        draft.session.context.transfer()
         return draft
     }
 
@@ -61,3 +100,6 @@ final class EditorFailedCloseStore {
         drafts.removeValue(forKey: projectID)
     }
 }
+
+// Compatibility for M2-A characterization clients and the presentation handoff.
+typealias EditorFailedCloseStore = DocumentSessionRegistry

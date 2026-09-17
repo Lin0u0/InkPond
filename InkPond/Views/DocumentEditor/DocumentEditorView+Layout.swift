@@ -284,8 +284,13 @@ extension DocumentEditorView {
     }
 
     func editorPane(topViewportInset: CGFloat = 0) -> some View {
-        EditorView(
-            text: $editorText,
+        let attachment = sessionAttachment
+        let session = documentSession
+        return EditorView(
+            text: Binding(get: { session.editorText }, set: {
+                guard attachment.isValid, attachment.session === session else { return }
+                session.editorText = $0
+            }),
             insertionRequest: $insertionRequest,
             findRequested: $findRequested,
             viewState: $editorViewState,
@@ -2104,6 +2109,9 @@ extension DocumentEditorView {
 
     // Shared appearance action: recovery and lease arbitration stay on the production path.
     func openEditorOnAppear() {
+        if !hasSessionAttachment {
+            sessionAttachment = DocumentSessionAttachment(session: DocumentSession(document: document))
+        }
         stopObservingFailedClose()
         let pendingClose = projectCloseTask
         let generation = UUID()
@@ -2174,6 +2182,12 @@ extension DocumentEditorView {
         editorPresentation
             .onAppear { openEditorOnAppear() }
             .onDisappear { closeEditorOnDisappear() }
+            .onChange(of: documentSession.commitVersion) { _, _ in
+                if isEditingEntryFile { entrySource = editorText }
+                compilationErrorLines = recomputeCompilationErrorLines()
+                _ = refreshResolvedFonts(includeAvailableFamilies: false)
+                compileToken = UUID()
+            }
             .onChange(of: editorText) { _, newText in
                 guard !isLoadingFileContent else { return }
                 handleEditorTextChange(newText)
@@ -2437,7 +2451,7 @@ extension DocumentEditorView {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .alert(L10n.tr("icloud.conflict.title"), isPresented: $showingConflictWarning) {
+            .alert(L10n.tr("icloud.conflict.title"), isPresented: Binding(get: { showingConflictWarning }, set: { showingConflictWarning = $0 })) {
                 Button(L10n.tr("icloud.conflict.keep_local")) {
                     Task { await resolveConflictKeepLocal() }
                 }

@@ -11,6 +11,339 @@ import UIKit
 @Suite(.serialized)
 @MainActor
 struct DocumentEditorSaveCharacterizationTests {
+    @Test func cleanSiblingAcknowledgementPreservesFailedProjectRecovery() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let a = editor.documentSession
+            #expect(await editor.openFileIfPossible(named: "B.typ"))
+            let b = editor.documentSession
+            #expect(await editor.openFileIfPossible(named: "main.typ"))
+            a.editorText = "failed A draft"
+            await a.backgroundFileWriter.setCheckpoints(before: { _ in
+                throw CocoaError(.fileWriteOutOfSpace)
+            })
+            editor.closeEditorOnDisappear()
+            await a.closeTask?.value
+            #expect(a.isDirty)
+
+            // A late successful sibling write must not erase the project handoff.
+            #expect(await b.persistCurrentFileImmediately(content: b.editorText, forceWrite: true))
+            #expect(!b.isDirty)
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount()
+            defer { fresh.unmount() }
+            let recovered = fresh.editor!
+            #expect(recovered.restoreFailedCloseIfAvailable())
+            #expect(recovered.documentSession === a)
+            #expect(recovered.editorText == "failed A draft")
+            #expect(recovered.documentSession.context.sessions["B.typ"] === b)
+            #expect(await recovered.flushPendingSave())
+            #expect(try h.disk() == "failed A draft")
+        }
+    }
+
+    @Test func pausedConflictCommitPreservesLoadIdentityAcrossTabRoundTrip() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let a = editor.documentSession
+            let token = a.fileLoadToken
+            let written = SaveCheckpoint()
+            let resume = SaveCheckpoint()
+            defer { Task { await resume.open() } }
+            await a.backgroundFileWriter.setCheckpoints(after: { _ in
+                await written.open()
+                await resume.wait()
+            })
+            a.editorText = "conflict local across tabs"
+            let resolution = Task { await a.resolveConflictKeepLocal() }
+            await written.wait()
+            #expect(a.savesInFlight == 1)
+            // Exercise the production retained-session activation without adding
+            // another write that would mask the pending conflict acknowledgement.
+            #expect(editor.loadFile(named: "B.typ"))
+            #expect(editor.loadFile(named: "main.typ"))
+            #expect(editor.documentSession === a)
+            #expect(a.fileLoadToken == token)
+            await resume.open()
+            await resolution.value
+            #expect(a.savesInFlight == 0)
+            #expect(a.lastSaveReceipt?.loadToken == token)
+            #expect(!a.isDirty)
+            #expect(a.fileSaveError == nil)
+            #expect(try h.disk() == a.editorText)
+        }
+    }
+
+    @Test func staleConflictContinuationCannotAcknowledgeAfterHandoff() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let old = h.editor!
+            let session = old.documentSession
+            let written = SaveCheckpoint()
+            let resume = SaveCheckpoint()
+            defer { Task { await resume.open() } }
+            await session.backgroundFileWriter.setCheckpoints(before: { request in
+                if request.data == Data("retained draft".utf8) {
+                    throw CocoaError(.fileWriteOutOfSpace)
+                }
+            }, after: { _ in
+                await written.open()
+                await resume.wait()
+            })
+            old.editorText = "conflict local"
+            let resolution = Task { await session.resolveConflictKeepLocal() }
+            await written.wait()
+            old.editorText = "retained draft"
+            old.closeEditorOnDisappear()
+            await old.projectCloseTask?.value
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount()
+            defer { fresh.unmount() }
+            let recovered = fresh.editor!
+            #expect(recovered.restoreFailedCloseIfAvailable())
+            let token = recovered.fileLoadToken
+            let error = recovered.fileSaveError
+            await resume.open()
+            await resolution.value
+            #expect(recovered.fileLoadToken == token)
+            #expect(recovered.editorText == "retained draft")
+            #expect(recovered.lastSaveReceipt == nil)
+            #expect(recovered.recoveryWriteSequenceFloor != nil)
+            #expect(recovered.fileSaveError == error)
+            #expect(await recovered.flushPendingSave())
+            #expect(try h.disk() == "retained draft")
+        }
+    }
+
+    @Test func terminalCloseRejectsLateAttachmentMutation() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let session = editor.documentSession
+            editor.editorText = "committed before close"
+            let entered = SaveCheckpoint()
+            let release = SaveCheckpoint()
+            session.context.beforeFinalClose = {
+                await entered.open()
+                await release.wait()
+            }
+            editor.closeEditorOnDisappear()
+            let close = session.closeTask
+            await entered.wait()
+            editor.editorText = "late callback must be rejected"
+            #expect(session.editorText == "committed before close")
+            #expect(!editor.hasSessionAttachment)
+            #expect(!(await editor.flushPendingSave()))
+            await release.open()
+            await close?.value
+            #expect(!session.isDirty)
+            #expect(try h.disk() == "committed before close")
+            #expect(!DocumentSessionRegistry.shared.hasRetainedSession(for: h.document.stableProjectID))
+        }
+    }
+
+    @Test func aToBToARetainsDurableTextAndNewLoadIdentity() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let firstToken = editor.fileLoadToken
+            editor.editorText = "A revision"
+            #expect(await editor.openFileIfPossible(named: "B.typ"))
+            editor.editorText = "B revision"
+            #expect(await editor.openFileIfPossible(named: "main.typ"))
+            #expect(editor.editorText == "A revision")
+            #expect(editor.fileLoadToken != firstToken)
+            #expect(!editor.documentSession.isDirty)
+            #expect(try h.disk() == "A revision")
+            #expect(try h.disk("B.typ") == "B revision")
+        }
+    }
+
+    @Test func textTabsRetainIndependentSessionIdentityAndRevision() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let a = editor.documentSession
+            editor.editorText = "A retained"
+            #expect(await editor.openFileIfPossible(named: "B.typ"))
+            let b = editor.documentSession
+            #expect(a !== b)
+            #expect(a.currentFileName == "main.typ")
+            #expect(b.currentFileName == "B.typ")
+            let revisionA = a.editRevision
+            let receiptA = a.lastSaveReceipt?.sequence
+            editor.editorText = "B retained"
+            #expect(a.editorText == "A retained")
+            #expect(a.editRevision == revisionA)
+            #expect(await editor.openFileIfPossible(named: "main.typ"))
+            #expect(editor.documentSession === a)
+            #expect(a.lastSaveReceipt?.sequence == receiptA)
+            #expect(b.editorText == "B retained")
+            #expect(await editor.openFileIfPossible(named: "B.typ"))
+            #expect(editor.documentSession === b)
+        }
+    }
+
+    @Test func failedCloseRecoveryRetainsBothTextTabSessions() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let old = h.editor!
+            let a = old.documentSession
+            old.editorText = "saved A"
+            #expect(await old.openFileIfPossible(named: "B.typ"))
+            let b = old.documentSession
+            old.editorText = "failed B"
+            await b.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            old.closeEditorOnDisappear()
+            await old.projectCloseTask?.value
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount()
+            defer { fresh.unmount() }
+            let recovered = fresh.editor!
+            #expect(recovered.restoreFailedCloseIfAvailable())
+            #expect(recovered.documentSession === b)
+            #expect(recovered.editorText == "failed B")
+            #expect(await recovered.openFileIfPossible(named: "main.typ"))
+            #expect(recovered.documentSession === a)
+            #expect(recovered.editorText == "saved A")
+            #expect(await recovered.openFileIfPossible(named: "B.typ"))
+            #expect(recovered.documentSession === b)
+            #expect(try h.disk("B.typ") == "failed B")
+        }
+    }
+
+    @Test func transferredAttachmentCannotMutateSaveOrCloseRecoveredSession() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let old = h.editor!
+            await old.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            old.editorText = "retained draft"
+            old.closeEditorOnDisappear()
+            await old.projectCloseTask?.value
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount()
+            defer { fresh.unmount() }
+            let recovered = fresh.editor!
+            #expect(recovered.restoreFailedCloseIfAvailable())
+            #expect(!old.hasSessionAttachment)
+            old.editorText = "stale mutation"
+            old.scheduleSave(content: "stale scheduled save", for: "main.typ")
+            #expect(await old.flushPendingSave() == false)
+            #expect(await old.persistCurrentFileImmediately(content: "stale immediate") == false)
+            old.closeEditorOnDisappear()
+            #expect(recovered.editorText == "retained draft")
+            #expect(recovered.projectWritableLease != nil)
+            #expect(recovered.projectCloseTask == nil)
+            #expect(await recovered.flushPendingSave())
+            #expect(try h.disk() == "retained draft")
+        }
+    }
+
+    @Test func backgroundRetriesFailedCloseWithoutMountedView() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            let session = editor.documentSession
+            await session.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            editor.editorText = "detached background retry"
+            editor.closeEditorOnDisappear()
+            await session.closeTask?.value
+            h.unmount()
+            await session.backgroundFileWriter.setCheckpoints()
+            await DocumentSessionRegistry.shared.flushForBackground()
+            #expect(try h.disk() == "detached background retry")
+            #expect(session.projectWritableLease == nil)
+            #expect(!DocumentSessionRegistry.shared.hasRetainedSession(for: h.document.stableProjectID))
+        }
+    }
+
+    @Test func backgroundFlushUsesRetainedSessionAndRealDisk() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let editor = h.editor!
+            editor.editorText = "background revision"
+            await DocumentSessionRegistry.shared.flushForBackground()
+            #expect(try h.disk() == "background revision")
+            #expect(!editor.documentSession.isDirty)
+            expectReceipt(editor, host: h, content: "background revision")
+        }
+    }
+
+    @Test func mountedDisappearanceFailureAndRemountRetainSession() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let original = h.editor!
+            // Transfer the already acquired lease into an appearance-enabled host.
+            await original.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            original.editorText = "lifecycle draft"
+            original.closeEditorOnDisappear()
+            await original.projectCloseTask?.value
+            let mounted = try SaveEditorHost(document: h.document, root: h.root)
+            await mounted.mount(usingLifecycle: true, usingDisappearance: true)
+            await mounted.finishAppearance()
+            let editor = mounted.editor!
+            let session = editor.documentSession
+            await editor.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            editor.editorText = "actual detached draft"
+            await mounted.detach()
+            await session.closeTask?.value
+            #expect(session.isDirty)
+            #expect(try h.disk() == "initial")
+            let reopened = try SaveEditorHost(document: h.document, root: h.root)
+            await reopened.mount(usingLifecycle: true, usingDisappearance: true)
+            await reopened.finishAppearance()
+            let recovered = reopened.editor!
+            #expect(recovered.documentSession === session)
+            #expect(recovered.editorText == "actual detached draft")
+            #expect(await recovered.flushPendingSave())
+            #expect(try h.disk() == "actual detached draft")
+            let count = DocumentSessionRegistry.shared.retainedSessionCount
+            await reopened.detach()
+            await session.closeTask?.value
+            #expect(DocumentSessionRegistry.shared.retainedSessionCount == count - 1)
+            // Reopen through production loading, never a draft or in-memory baseline.
+            let durable = try SaveEditorHost(document: h.document, root: h.root)
+            await durable.mount(usingLifecycle: true, usingDisappearance: true)
+            await durable.finishAppearance()
+            #expect(durable.editor!.editorText == "actual detached draft")
+            let durableSession = durable.editor!.documentSession
+            await durable.detach()
+            await durableSession.closeTask?.value
+            #expect(DocumentSessionRegistry.shared.retainedSessionCount == count - 1)
+            #expect(try h.disk() == "actual detached draft")
+        }
+    }
+
+    @Test func mountedPendingCloseHandsOffFailureWithoutSecondAppearance() async throws {
+        try await withEditor { (h: SaveEditorHost) async throws in
+            let initial = h.editor!
+            await initial.backgroundFileWriter.setCheckpoints(before: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+            initial.editorText = "seed draft"
+            initial.closeEditorOnDisappear()
+            await initial.projectCloseTask?.value
+            let old = try SaveEditorHost(document: h.document, root: h.root)
+            await old.mount(usingLifecycle: true, usingDisappearance: true)
+            await old.finishAppearance()
+            let session = old.editor!.documentSession
+            let entered = SaveCheckpoint()
+            let release = SaveCheckpoint()
+            defer { Task { await release.open() } }
+            await session.backgroundFileWriter.setCheckpoints(before: { _ in
+                await entered.open()
+                await release.wait()
+                throw CocoaError(.fileWriteOutOfSpace)
+            })
+            session.editorText = "pending detached draft"
+            await old.detach()
+            let closing = session.closeTask
+            await entered.wait()
+            let fresh = try SaveEditorHost(document: h.document, root: h.root)
+            await fresh.mount(usingLifecycle: true, usingDisappearance: true)
+            await fresh.finishAppearance()
+            #expect(fresh.editor!.projectWritableLease == nil)
+            await release.open()
+            await closing?.value
+            await fresh.finishAppearance()
+            #expect(fresh.editor!.documentSession === session)
+            #expect(fresh.editor!.editorText == "pending detached draft")
+            #expect(await fresh.editor!.flushPendingSave())
+            #expect(try h.disk() == "pending detached draft")
+            await fresh.detach()
+            await session.closeTask?.value
+        }
+    }
+
     @Test func delayedOldAutosaveCannotOverwriteFlush() async throws {
         try await withEditor { (h: SaveEditorHost) async throws in
             let editor = h.editor!
@@ -603,6 +936,7 @@ private final class SaveEditorHost {
     var editor: DocumentEditorView?
     var controller: UIViewController?
     var window: UIWindow?
+    var disappearance: CheckedContinuation<Void, Never>?
 
     init(document: InkPondDocument, root: URL) throws {
         self.document = document
@@ -611,10 +945,15 @@ private final class SaveEditorHost {
         fonts = AppFontLibrary(rootURL: root.appendingPathComponent("test-fonts"))
     }
 
-    func mount(usingLifecycle: Bool = false) async {
+    func mount(usingLifecycle: Bool = false, usingDisappearance: Bool = false) async {
         await withCheckedContinuation { (ready: CheckedContinuation<Void, Never>) in
             var view = DocumentEditorView(document: document)
             view.saveTestUsesLifecycle = usingLifecycle
+            view.saveTestUsesDisappearance = usingDisappearance
+            view.saveTestDidDisappear = { [weak self] in
+                self?.disappearance?.resume()
+                self?.disappearance = nil
+            }
             view.saveTestDebounce = {} // No wall-clock delay; writer gates control ordering.
             view.saveTestProbe = { [weak self] mounted in
                 guard let self, self.editor == nil else { return }
@@ -648,6 +987,20 @@ private final class SaveEditorHost {
 
     func disk(_ path: String = "main.typ") throws -> String {
         try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    /// UIKit appearance removal drives the same SwiftUI onDisappear action as production.
+    func detach() async {
+        await withCheckedContinuation { continuation in
+            disappearance = continuation
+            controller?.beginAppearanceTransition(false, animated: false)
+            controller?.endAppearanceTransition()
+            window?.isHidden = true
+            window?.rootViewController = nil
+        }
+        controller = nil
+        window = nil
+        editor = nil
     }
 
     func unmount() {
@@ -709,6 +1062,9 @@ private func withEditor(_ body: @MainActor (SaveEditorHost) async throws -> Void
     await ProjectReliabilityWriterRegistry.shared.close(projectID: document.stableProjectID, rootURL: root)
     EditorFailedCloseStore.shared.remove(for: document.stableProjectID, lease: lease)
     await lease.release()
+    if let session = host.editor?.documentSession {
+        DocumentSessionRegistry.shared.release(session)
+    }
     host.unmount()
     if let failure { throw failure }
 }
