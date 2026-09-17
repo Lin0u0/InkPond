@@ -40,6 +40,54 @@ enum JumpHighlightTimeline {
 }
 
 final class TypstTextView: UITextView {
+    // Native and custom view-target registrations are disabled by this manager.
+    // The coordinator records the resulting text transaction against the session instead.
+    var sessionUndoHistory: EditorUndoHistory?
+    var sessionUndoAttachmentID: UUID?
+    var usesSessionUndo = false
+    override var undoManager: UndoManager? {
+        guard usesSessionUndo else { return super.undoManager }
+        guard let history = sessionUndoHistory,
+              history.attachmentID == sessionUndoAttachmentID,
+              history.canReplay?() == true else { return nil }
+        return history
+    }
+
+    var rejectedSessionMutationDiagnostics: (() -> String)?
+
+    private var acceptsSessionEdits: Bool {
+        let accepted = !usesSessionUndo || undoManager != nil
+#if DEBUG
+        if !accepted {
+            NSLog("%@", "[EditorMutationRejected] editable=\(isEditable) firstResponder=\(isFirstResponder) window=\(window != nil) usesSessionUndo=\(usesSessionUndo) historyPresent=\(sessionUndoHistory != nil) historyAttachment=\(String(describing: sessionUndoHistory?.attachmentID)) viewAttachment=\(String(describing: sessionUndoAttachmentID)) replayAllowed=\(sessionUndoHistory?.canReplay?() == true) \(rejectedSessionMutationDiagnostics?() ?? "coordinatorDiagnostics=unavailable")")
+        }
+#endif
+        return accepted
+    }
+
+    var onMarkedTextWillBegin: (() -> Void)?
+    var onMarkedTextDidUpdate: (() -> Void)?
+    private(set) var isUpdatingMarkedText = false
+
+    override func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+        guard acceptsSessionEdits else { return }
+        onMarkedTextWillBegin?()
+        let wasUpdating = isUpdatingMarkedText
+        isUpdatingMarkedText = true
+        super.setMarkedText(markedText, selectedRange: selectedRange)
+        isUpdatingMarkedText = wasUpdating
+        if !wasUpdating { onMarkedTextDidUpdate?() }
+    }
+
+    override func unmarkText() {
+        let wasUpdating = isUpdatingMarkedText
+        isUpdatingMarkedText = true
+        super.unmarkText()
+        isUpdatingMarkedText = wasUpdating
+        // Committing a candidate need not emit textViewDidChange.
+        if !wasUpdating { onMarkedTextDidUpdate?() }
+    }
+
     enum PasteFragment {
         case text(String)
         case imageData(Data, suggestedFileName: String?)
@@ -475,24 +523,41 @@ final class TypstTextView: UITextView {
     // MARK: - Auto-pair Integration
 
     override func insertText(_ text: String) {
+        guard acceptsSessionEdits else { return }
+        let before = self.text
         if AutoPairEngine.handleInsert(text, in: self) {
             // applyHighlighting() is handled by Coordinator.textViewDidChange below
             delegate?.textViewDidChange?(self)
             return
         }
         super.insertText(text)
+        if usesSessionUndo, self.text != before { delegate?.textViewDidChange?(self) }
     }
 
     override func deleteBackward() {
+        guard acceptsSessionEdits else { return }
+        let before = text
         if AutoPairEngine.handleDelete(in: self) {
             // applyHighlighting() is handled by Coordinator.textViewDidChange below
             delegate?.textViewDidChange?(self)
             return
         }
         super.deleteBackward()
+        if usesSessionUndo, text != before { delegate?.textViewDidChange?(self) }
+    }
+
+    // UITextInput replacements (including find/replace and plain paste) are not
+    // guaranteed to send UITextViewDelegate notifications for programmatic calls.
+    // The coordinator deduplicates notifications against the committed buffer.
+    override func replace(_ range: UITextRange, withText text: String) {
+        guard acceptsSessionEdits else { return }
+        let before = self.text
+        super.replace(range, withText: text)
+        if usesSessionUndo, self.text != before { delegate?.textViewDidChange?(self) }
     }
 
     override func paste(_ sender: Any?) {
+        guard acceptsSessionEdits else { return }
         let fragments = pasteFragmentsFromPasteboard()
         guard !fragments.isEmpty else {
             super.paste(sender)
@@ -1150,7 +1215,16 @@ final class TypstTextView: UITextView {
     // MARK: - Find (programmatic trigger)
 
     func presentFind(showingReplace: Bool = false) {
-        findInteraction?.presentFindNavigator(showingReplace: showingReplace)
+        guard let interaction = findInteraction else { return }
+        // Presentation can seed the navigator from UIKit's previous search (or
+        // the selection). The attached buffer's values must win *after* that
+        // setup, including an explicit empty string for a new file. Snapshot
+        // before presenting; reading afterwards would preserve the stale seed.
+        let query = interaction.searchText ?? ""
+        let replacement = interaction.replacementText ?? ""
+        interaction.presentFindNavigator(showingReplace: showingReplace)
+        interaction.searchText = query
+        interaction.replacementText = replacement
         scheduleFindNavigatorChromeBackgroundUpdate()
     }
 
@@ -1227,6 +1301,7 @@ final class TypstTextView: UITextView {
     }
 
     func acceptCompletion(_ item: CompletionItem) {
+        guard acceptsSessionEdits else { return }
         guard let prefix = completionPrefix, let kind = activeCompletionKind else { return }
         guard let rawInsertText = item.insertText else { return }
         let prefixLen = (prefix as NSString).length

@@ -25,8 +25,7 @@ private enum ImageImportError: LocalizedError {
 extension DocumentEditorView {
     func handleImageDrop(providers: [NSItemProvider]) -> Bool {
         guard activeTabIsTextEditable, projectWritableLease != nil else { return false }
-        let anchorRange = currentInsertionRange()
-        let targetFileName = currentFileName
+        guard let destination = captureAssetDestination(at: currentInsertionRange(), for: currentFileName) else { return false }
         guard let provider = providers.first(where: {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) ||
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
@@ -38,14 +37,16 @@ extension DocumentEditorView {
             let suggestedName = provider.suggestedName
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                 guard let data else {
-                    Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
+                    Task { @MainActor in
+                    guard destination.isValid, documentSession === destination.session else { return }
+                    imageImportError = L10n.tr("error.image.load_data_failed")
+                }
                     return
                 }
                 Task { @MainActor in
                     importImage(
                         from: .rawData(data, suggestedFileName: suggestedName),
-                        anchorRange: anchorRange,
-                        targetFileName: targetFileName
+                        destination: destination
                     )
                 }
             }
@@ -65,39 +66,41 @@ extension DocumentEditorView {
             }
 
             guard let fileURL = url else {
-                Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
+                Task { @MainActor in
+                    guard destination.isValid, documentSession === destination.session else { return }
+                    imageImportError = L10n.tr("error.image.load_data_failed")
+                }
                 return
             }
             Task { @MainActor in
-                importImage(from: .fileURL(fileURL), anchorRange: anchorRange, targetFileName: targetFileName)
+                importImage(from: .fileURL(fileURL), destination: destination)
             }
         }
         return true
     }
 
     func handleImageSelection(_ items: [PhotosPickerItem]) {
-        guard activeTabIsTextEditable, projectWritableLease != nil else { return }
         guard let item = items.first else { return }
-        importImage(from: .photoItem(item), anchorRange: currentInsertionRange(), targetFileName: currentFileName)
+        let destination = photoPickerDestination
+        photoPickerDestination = nil
         selectedPhotoItems = []
+        guard let destination, destination.isValid else { return }
+        importImage(from: .photoItem(item), destination: destination)
+    }
+
+    func captureAssetDestination(at range: NSRange, for path: String) -> EditorAssetDestination? {
+        guard activeTabIsTextEditable, activeTabPath == path, hasSessionAttachment else { return nil }
+        return EditorAssetDestination(session: documentSession, attachmentID: sessionAttachment.id, selection: range)
     }
 
     func importImage(from source: ImageImportSource, anchorRange: NSRange, targetFileName: String) {
-        guard activeTabIsTextEditable, activeTabPath == targetFileName, projectWritableLease != nil else { return }
-        Task {
-            do {
-                let result = try await importImageAsset(from: source)
-                await MainActor.run {
-                    refreshImageFiles()
-                    enqueueInsertion(result.reference, at: anchorRange, for: targetFileName)
-                    showImageImportToast(L10n.imageInserted(path: result.relativePath))
-                }
-            } catch {
-                await MainActor.run {
-                    imageImportError = error.localizedDescription
-                }
-            }
-        }
+        guard let destination = captureAssetDestination(at: anchorRange, for: targetFileName) else { return }
+        importImage(from: source, destination: destination)
+    }
+
+    @discardableResult
+    func importImage(from source: ImageImportSource, destination: EditorAssetDestination) -> Task<Void, Never> {
+        Task { await performAssetImport(sources: [source], destination: destination) }
     }
 
     func handleRichPaste(
@@ -105,73 +108,74 @@ extension DocumentEditorView {
         anchorRange: NSRange,
         targetFileName: String
     ) {
-        Task {
-            var combinedInsertion = ""
-            var firstError: String?
-            var insertedImages: [String] = []
+        guard let destination = captureAssetDestination(at: anchorRange, for: targetFileName) else { return }
+        handleRichPaste(fragments, destination: destination)
+    }
 
-            for fragment in fragments {
-                switch fragment {
-                case .text(let text):
-                    combinedInsertion.append(text)
-                case .imageData(let data, let suggestedFileName):
-                    do {
-                        let result = try await importImageAsset(from: .rawData(data, suggestedFileName: suggestedFileName))
-                        combinedInsertion.append(result.reference)
-                        insertedImages.append(result.relativePath)
-                    } catch {
-                        if firstError == nil {
-                            firstError = error.localizedDescription
-                        }
-                    }
-                case .imageRemoteURL(let remoteURL, let suggestedFileName):
-                    do {
-                        let result = try await importImageAsset(from: .remoteURL(remoteURL, suggestedFileName: suggestedFileName))
-                        combinedInsertion.append(result.reference)
-                        insertedImages.append(result.relativePath)
-                    } catch {
-                        if firstError == nil {
-                            firstError = error.localizedDescription
-                        }
-                    }
-                }
-            }
+    @discardableResult
+    func handleRichPaste(_ fragments: [TypstTextView.PasteFragment], destination: EditorAssetDestination) -> Task<Void, Never> {
+        Task { await performRichPaste(fragments, destination: destination) }
+    }
 
-            await MainActor.run {
-                if !insertedImages.isEmpty {
-                    refreshImageFiles()
-                }
-                if !combinedInsertion.isEmpty {
-                    enqueueInsertion(combinedInsertion, at: anchorRange, for: targetFileName)
-                }
-                if let firstPath = insertedImages.first {
-                    if insertedImages.count == 1 {
-                        showImageImportToast(L10n.imageInserted(path: firstPath))
-                    } else {
-                        showImageImportToast(L10n.imagesInserted(count: insertedImages.count))
-                    }
-                }
-                if let firstError {
-                    imageImportError = firstError
-                }
-            }
+    func performAssetImport(sources: [ImageImportSource], destination: EditorAssetDestination) async {
+        let transaction = EditorAssetTransaction(destination: destination)
+        do {
+            for source in sources { try await stageImage(source, in: transaction) }
+            try transaction.commit()
+            assetImportDidCommit(transaction)
+        } catch is CancellationError {
+            // Stale/cancelled operations are not successful imports or user errors.
+        } catch {
+            if destination.isValid, !Task.isCancelled, documentSession === destination.session { imageImportError = error.localizedDescription }
         }
     }
 
-    func importImageAsset(from source: ImageImportSource) async throws -> (relativePath: String, reference: String) {
-        guard projectWritableLease != nil else {
-            throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
+    func performRichPaste(_ fragments: [TypstTextView.PasteFragment], destination: EditorAssetDestination) async {
+        let transaction = EditorAssetTransaction(destination: destination)
+        do {
+            for fragment in fragments {
+                switch fragment {
+                case .text(let text): transaction.append(text: text)
+                case .imageData(let data, let name):
+                    try await stageImage(.rawData(data, suggestedFileName: name), in: transaction)
+                case .imageRemoteURL(let url, let name):
+                    try await stageImage(.remoteURL(url, suggestedFileName: name), in: transaction)
+                }
+            }
+            try transaction.commit()
+            assetImportDidCommit(transaction)
+        } catch is CancellationError {
+        } catch {
+            if destination.isValid, !Task.isCancelled, documentSession === destination.session { imageImportError = error.localizedDescription }
         }
-        let rawData = try await loadImageData(from: source)
-        let normalized = try normalizeImageData(rawData)
+    }
+
+    func stageImage(_ source: ImageImportSource, in transaction: EditorAssetTransaction) async throws {
         try Task.checkCancellation()
-        guard projectWritableLease != nil else {
-            throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
+        guard transaction.destination.isValid else { throw CancellationError() }
+        let raw: Data
+#if DEBUG
+        if let load = transaction.destination.loadDataForTesting {
+            raw = try await load(source)
+        } else {
+            raw = try await loadImageData(from: source)
         }
-        let fileName = makeUniqueImageFileName(ext: normalized.fileExtension, source: source)
-        let relativePath = try ProjectFileManager.saveImage(data: normalized.data, fileName: fileName, for: document)
-        let reference = normalizeTypstQuotes(String(format: document.imageInsertionTemplate, relativePath))
-        return (relativePath, reference)
+#else
+        raw = try await loadImageData(from: source)
+#endif
+        try Task.checkCancellation()
+        guard transaction.destination.isValid else { throw CancellationError() }
+        let normalized = try normalizeImageData(raw)
+        let path = transaction.append(data: normalized.data, extension: normalized.fileExtension)
+        transaction.append(text: normalizeTypstQuotes(String(format: transaction.destination.template, path)))
+    }
+
+    func assetImportDidCommit(_ transaction: EditorAssetTransaction) {
+        guard hasSessionAttachment, documentSession === transaction.destination.session,
+              let first = transaction.paths.first else { return }
+        refreshImageFiles()
+        showImageImportToast(transaction.paths.count == 1
+            ? L10n.imageInserted(path: first) : L10n.imagesInserted(count: transaction.paths.count))
     }
 
     func normalizeTypstQuotes(_ text: String) -> String {

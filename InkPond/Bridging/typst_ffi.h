@@ -294,3 +294,49 @@ void typst_free_context_result(TypstContextResult result);
 
 /// Returns typst-ios crate version (static UTF-8 string).
 const char *typst_version(void);
+
+/// Additive sealed snapshot ABI. Inputs are borrowed for the synchronous call.
+/// Required nonzero limits; schema_version must be 1. Source is length-delimited UTF-8.
+typedef struct {
+    uint32_t struct_size;
+    uint32_t schema_version;
+    const TypstOptions *inputs;
+    const char *stage_dir;
+    int64_t frozen_unix_seconds;
+    uint64_t maximum_total_bytes;
+    uint64_t maximum_file_bytes;
+    uint32_t maximum_entries;
+    uint32_t maximum_packages;
+    uint64_t remaining_milliseconds;
+} TypstSnapshotPrepareOptionsV1;
+
+enum {
+    TypstSnapshotOK = 0,
+    TypstSnapshotInvalidArgument = 1,
+    TypstSnapshotInputChanged = 2,
+    TypstSnapshotDependencyMiss = 3,
+    TypstSnapshotStageInvalid = 4,
+    TypstSnapshotLimitExceeded = 5,
+    TypstSnapshotCompileError = 6,
+    TypstSnapshotIOOrPackageError = 7,
+    TypstSnapshotPanic = 8,
+};
+enum { TypstSnapshotPDF = 1, TypstSnapshotSVG = 2, TypstSnapshotBoth = 3 };
+
+typedef struct {
+    uint32_t status;
+    uint8_t *manifest_json;
+    size_t manifest_len;
+    char *error_message;
+} TypstSnapshotPrepareResultV1;
+typedef struct {
+    uint32_t status;
+    TypstPreviewResult artifact;
+} TypstSnapshotCompileResultV1;
+
+/// Success returns a nonempty manifest. Free each result exactly once with its matching free.
+TypstSnapshotPrepareResultV1 typst_prepare_snapshot_v1(const uint8_t *source_utf8, size_t source_len, const TypstSnapshotPrepareOptionsV1 *options);
+void typst_free_snapshot_prepare_result_v1(TypstSnapshotPrepareResultV1 result);
+/// Final compilation has no live roots or fallback. output_kind: 1 PDF, 2 SVG, 3 both.
+TypstSnapshotCompileResultV1 typst_compile_snapshot_v1(const char *stage_dir, const uint8_t *manifest_json, size_t manifest_len, uint32_t output_kind);
+void typst_free_snapshot_compile_result_v1(TypstSnapshotCompileResultV1 result);

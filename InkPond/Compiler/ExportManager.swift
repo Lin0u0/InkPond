@@ -29,35 +29,85 @@ enum ExportManager {
         }
     }
 
-    /// Compile document to PDF data on a background thread.
-    /// Reads source from the entry file on disk.
-    static func compilePDF(for document: InkPondDocument) async -> Result<Data, TypstBridgeError> {
+    /// Reads mutable document state synchronously. Editor callers should supply
+    /// all retained session overlays BEFORE their first await.
+    static func snapshotInput(
+        for document: InkPondDocument,
+        textOverlays: [String: String] = [:],
+        includeFonts: Bool = true,
+        sourceFileName: String? = nil
+    ) throws -> OperationSnapshotInput {
+        // A source export is a value capture, not a project/compiler capture.
+        // In particular, a single-file grant never authorizes its parent tree.
+        if let sourceFileName {
+            _ = try OperationSnapshot.safeURL(sourceFileName, under: FileManager.default.temporaryDirectory)
+            let source: String
+            if let overlay = textOverlays[sourceFileName] { source = overlay }
+            else { source = try ProjectFileManager.readTypFile(named: sourceFileName, for: document) }
+            return OperationSnapshotInput(
+                projectID: document.projectID, title: document.title, entryFileName: sourceFileName,
+                source: source, projectRoot: nil, fontPaths: [],
+                textOverlays: [sourceFileName: source], localPackagesRoot: nil, packageCacheRoot: nil)
+        }
+        guard ProjectFileManager.externalSingleFileURL(for: document) == nil else {
+            throw SnapshotCaptureError.unsupportedInput
+        }
+        let entry = document.entryFileName
         let source: String
-        do {
-            source = try ProjectFileManager.readTypFile(named: document.entryFileName, for: document)
-        } catch {
-            return .failure(.compilationFailed(error.localizedDescription))
-        }
-        let resolvedFonts: ResolvedCompileFonts
-        do {
-            resolvedFonts = try CompileFontResolver().resolveFonts(for: document)
-        } catch {
-            return .failure(.compilationFailed(error.localizedDescription))
-        }
-        let effectiveSource = CompileFontResolver.effectiveSource(for: source, resolvedFonts: resolvedFonts)
-        let rootDir = ProjectFileManager.projectDirectory(for: document).path
+        if let overlay = textOverlays[entry] { source = overlay }
+        else { source = try ProjectFileManager.readTypFile(named: entry, for: document) }
+        let fonts = includeFonts ? try CompileFontResolver().resolveFonts(for: document, entrySourceOverride: source) : nil
+        var overlays = textOverlays
+        overlays[entry] = source
+        return OperationSnapshotInput(
+            projectID: document.projectID, title: document.title, entryFileName: entry,
+            source: fonts.map { CompileFontResolver.effectiveSource(for: source, resolvedFonts: $0) } ?? source,
+            projectRoot: ProjectFileManager.projectDirectory(for: document), fontPaths: fonts?.fontPaths ?? [],
+            textOverlays: overlays,
+            settings: ["entryFileName": entry, "fontFileNames": document.fontFileNames.joined(separator: "\u{1F}")],
+            localPackagesRoot: includeFonts ? TypstBridge.localPackagesDirectoryURL : nil,
+            packageCacheRoot: includeFonts ? TypstBridge.packageCacheDirectoryURL : nil
+        )
+    }
 
-        return await Task.detached(priority: TypstCompiler.taskPriority(for: .immediate)) {
-            let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: resolvedFonts.fontPaths)
-            return TypstBridge.compile(source: effectiveSource, fontPaths: materializedFontPaths, rootDir: rootDir)
+    static func compilePDF(for document: InkPondDocument) async -> Result<Data, TypstBridgeError> {
+        do {
+            let input = try snapshotInput(for: document)
+            let snapshot = try await Task.detached { try OperationSnapshot.capture(input) }.value
+            return await compilePDF(snapshot: snapshot)
+        } catch { return .failure(.compilationFailed(error.localizedDescription)) }
+    }
+
+    nonisolated static func compilePDF(snapshot: OperationSnapshot) async -> Result<Data, TypstBridgeError> {
+        await Task.detached(priority: .userInitiated) {
+            do {
+                let sealed = try SealedCompileSnapshot.prepare(snapshot)
+                return pdfResult(TypstBridge.compile(snapshot: sealed, output: .pdf))
+            } catch let error as TypstBridgeError { return .failure(error) }
+            catch { return .failure(.compilationFailed(error.localizedDescription)) }
         }.value
+    }
+
+    nonisolated static func compilePDF(snapshot: SealedCompileSnapshot) async -> Result<Data, TypstBridgeError> {
+        await Task.detached(priority: .userInitiated) {
+            pdfResult(TypstBridge.compile(snapshot: snapshot, output: .pdf))
+        }.value
+    }
+
+    nonisolated private static func pdfResult(_ result: Result<TypstPreviewArtifact, TypstBridgeError>) -> Result<Data, TypstBridgeError> {
+        result.flatMap { artifact in
+            guard let data = artifact.pdfData else {
+                return .failure(.snapshotFailed(.stageInvalid, L10n.tr("error.typst.unknown_compilation")))
+            }
+            return .success(data)
+        }
     }
 
     /// Write PDF data to a temporary file and return its URL.
     nonisolated static func temporaryPDFURL(data: Data, title: String) throws -> URL {
         let sanitized = title.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(sanitized).pdf")
+            .appendingPathComponent("\(UUID().uuidString)-\(sanitized).pdf")
         try data.write(to: url)
         return url
     }
@@ -65,41 +115,45 @@ enum ExportManager {
     /// Write .typ source to a temporary file and return its URL.
     /// Uses `fileName` as the exported file name (e.g. "main.typ").
     static func temporaryTypURL(for document: InkPondDocument, fileName: String) throws -> URL {
-        let sanitized = fileName.replacingOccurrences(of: "/", with: "-")
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent(sanitized)
-        let source = try ProjectFileManager.readTypFile(named: fileName, for: document)
-        try source.write(to: url, atomically: true, encoding: .utf8)
-        return url
+        let snapshot = try OperationSnapshot.capture(snapshotInput(for: document, includeFonts: false, sourceFileName: fileName))
+        return try temporaryTypURL(snapshot: snapshot, fileName: fileName)
     }
 
-    /// Zip the entire project directory and return a temporary URL.
-    /// The zip file is named after the document title.
+    nonisolated static func temporaryTypURL(snapshot: OperationSnapshot, fileName: String) throws -> URL {
+        try withExtendedLifetime(snapshot) {
+            let source = try OperationSnapshot.safeURL(fileName, under: snapshot.projectRoot)
+            let destination = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "\(UUID().uuidString)-\(fileName.replacingOccurrences(of: "/", with: "-"))")
+            try Data(contentsOf: source).write(to: destination, options: .atomic)
+            return destination
+        }
+    }
+
     static func zipProject(for document: InkPondDocument) throws -> URL {
-        try zipProject(
-            sourceDir: ProjectFileManager.projectDirectory(for: document),
-            title: document.title
-        )
+        let snapshot = try OperationSnapshot.capture(snapshotInput(for: document, includeFonts: false))
+        return try zipProject(snapshot: snapshot)
     }
 
-    /// Zip a project directory from Sendable values that can safely cross into
-    /// detached export work.
+    nonisolated static func zipProject(snapshot: OperationSnapshot) throws -> URL {
+        try withExtendedLifetime(snapshot) {
+            try writeProjectZip(sourceDir: snapshot.projectRoot, title: snapshot.title)
+        }
+    }
+
+    /// Compatibility wrapper: freeze the directory rather than stream live files.
     nonisolated static func zipProject(sourceDir projectDir: URL, title: String) throws -> URL {
+        let snapshot = try OperationSnapshot.capture(OperationSnapshotInput(
+            projectID: "", title: title, entryFileName: "main.typ", source: "",
+            projectRoot: projectDir, fontPaths: [], localPackagesRoot: nil, packageCacheRoot: nil))
+        return try zipProject(snapshot: snapshot)
+    }
+
+    nonisolated private static func writeProjectZip(sourceDir projectDir: URL, title: String) throws -> URL {
         let sanitized = title.replacingOccurrences(of: "/", with: "-")
         let zipURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(sanitized).zip")
-
-        // Remove any previous export at this path
-        try? FileManager.default.removeItem(at: zipURL)
-
-        // Use NSFileCoordinatorWritingForMerging to create a zip via a Process is unavailable on iOS.
-        // Instead, use the built-in ZIP support via FileManager on iOS 16+ / coordinated copy.
-        // We rely on the ZipFoundation-free approach: iterate files and write a zip manually,
-        // or use the NSFileCoordinatorWritingOptions compress workaround.
-        // The simplest supported approach on iOS is to use a URLSession background download trick,
-        // but the most reliable approach is to use the system archiver via Process — unavailable on iOS.
-        // We use a pure-Swift streaming zip writer below.
-        try writeZip(sourceDir: projectDir, destinationURL: zipURL)
+            .appendingPathComponent("\(UUID().uuidString)-\(sanitized).zip")
+        do { try writeZip(sourceDir: projectDir, destinationURL: zipURL) }
+        catch { try? FileManager.default.removeItem(at: zipURL); throw error }
         return zipURL
     }
 
@@ -109,7 +163,7 @@ enum ExportManager {
         var entries: [(relativePath: String, url: URL)] = []
         let fm = FileManager.default
         if let enumerator = fm.enumerator(at: sourceDir, includingPropertiesForKeys: [.isDirectoryKey],
-                                          options: [.skipsHiddenFiles]) {
+                                          options: []) {
             for case let fileURL as URL in enumerator {
                 let isDir = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
                 if isDir { continue }

@@ -9,22 +9,134 @@ import os.log
 enum TypstBridgeError: Error, LocalizedError, Sendable {
     case compilerNotLinked
     case compilationFailed(String)
+    case snapshotFailed(TypstSnapshotStatus, String)
 
     var errorDescription: String? {
         switch self {
         case .compilerNotLinked:
             return L10n.tr("error.typst.compiler_not_linked")
+        case .snapshotFailed(_, let msg):
+            return msg
         case .compilationFailed(let msg):
             return msg
         }
     }
 }
 
+nonisolated enum TypstSnapshotStatus: UInt32, Sendable {
+    case invalidArgument = 1, inputChanged = 2, dependencyMiss = 3, stageInvalid = 4
+    case limitExceeded = 5, compileError = 6, ioOrPackageError = 7, panic = 8
+    case unknown = 4294967295
+}
+
+nonisolated enum TypstSnapshotOutput: UInt32, Sendable {
+    case pdf = 1, svg = 2, both = 3
+}
+
+nonisolated struct TypstPackageDirectories: Sendable {
+    let local: String
+    let cache: String
+}
+
 struct TypstBridge {
+    /// Borrow only captured source/project/fonts and explicit preparation-only roots.
+    /// Do not use withTypstOptions: its live defaults/materialization are legacy behavior.
+    nonisolated static func prepareSnapshot(_ snapshot: OperationSnapshot) -> Result<Data, TypstBridgeError> {
+        defer { withExtendedLifetime(snapshot) {} }
+#if TYPST_FFI_AVAILABLE
+        let limits = snapshot.limits
+        // Native charges only new sealed payload copies/observations. The capture
+        // already consumed physical space, not the native logical read allowance.
+        let bytes = limits.maximumPhysicalBytes - snapshot.capturedBytes
+        let entries = limits.maximumPhysicalEntries - snapshot.capturedEntries
+        let seconds = limits.maximumSeconds - snapshot.captureSeconds
+        guard bytes > 0, entries > 0, limits.maximumFileBytes > 0,
+              limits.maximumPackages > 0, seconds.isFinite, seconds > 0,
+              let entryLimit = UInt32(exactly: entries),
+              let packageLimit = UInt32(exactly: min(limits.maximumPackages, entries)),
+              let milliseconds = UInt64(exactly: (seconds * 1000).rounded(.down)), milliseconds > 0 else {
+            return .failure(.snapshotFailed(.limitExceeded, SnapshotCaptureError.limitExceeded.localizedDescription))
+        }
+        let fontPointers: [UnsafeMutablePointer<CChar>?] = snapshot.fontPaths.map { strdup($0) }
+        defer { fontPointers.forEach { free($0) } }
+        guard fontPointers.allSatisfy({ $0 != nil }) else {
+            return .failure(.snapshotFailed(.ioOrPackageError, CocoaError(.fileReadUnknown).localizedDescription))
+        }
+        // Sentinel guarantees a non-null pointer even for an empty source; length
+        // excludes it and preserves any embedded NUL in the original Swift value.
+        let source = Array(snapshot.source.utf8) + [UInt8(0)]
+        return fontPointers.withUnsafeBufferPointer { fonts in
+            let pointers = UnsafeRawBufferPointer(fonts).bindMemory(to: UnsafePointer<CChar>?.self)
+            return snapshot.projectRoot.path.withCString { root in
+                snapshot.rootURL.path.withCString { stage in
+                    (snapshot.preparation.localPackagesRoot?.path ?? "").withCString { local in
+                        (snapshot.preparation.packageCacheRoot?.path ?? "").withCString { cache in
+                            var inputs = TypstOptions(font_paths: pointers.baseAddress, font_path_count: fonts.count,
+                                cache_dir: snapshot.preparation.packageCacheRoot == nil ? nil : cache,
+                                root_dir: root,
+                                local_packages_dir: snapshot.preparation.localPackagesRoot == nil ? nil : local)
+                            return withUnsafePointer(to: &inputs) { inputPointer in
+                                var options = TypstSnapshotPrepareOptionsV1(
+                                    struct_size: UInt32(MemoryLayout<TypstSnapshotPrepareOptionsV1>.size),
+                                    schema_version: 1, inputs: inputPointer, stage_dir: stage,
+                                    frozen_unix_seconds: snapshot.frozenUnixSeconds,
+                                    maximum_total_bytes: UInt64(bytes), maximum_file_bytes: UInt64(limits.maximumFileBytes),
+                                    maximum_entries: entryLimit, maximum_packages: packageLimit,
+                                    remaining_milliseconds: milliseconds)
+                                return source.withUnsafeBufferPointer { buffer in
+                                    let result = typst_prepare_snapshot_v1(buffer.baseAddress, buffer.count - 1, &options)
+                                    defer { typst_free_snapshot_prepare_result_v1(result) }
+                                    guard result.status == 0 else {
+                                        return .failure(snapshotError(status: result.status, diagnostic: result.error_message))
+                                    }
+                                    guard let manifest = result.manifest_json, result.manifest_len > 0 else {
+                                        return .failure(snapshotError(status: 4, diagnostic: result.error_message))
+                                    }
+                                    return .success(Data(bytes: manifest, count: Int(result.manifest_len)))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+    /// Final execution has no live source, root, font, cache, package, or session arguments.
+    nonisolated static func compile(snapshot: SealedCompileSnapshot, output: TypstSnapshotOutput) -> Result<TypstPreviewArtifact, TypstBridgeError> {
+        defer { withExtendedLifetime(snapshot) {} }
+#if TYPST_FFI_AVAILABLE
+        return snapshot.rootURL.path.withCString { stage in
+            snapshot.manifest.withUnsafeBytes { bytes in
+                let manifest = bytes.bindMemory(to: UInt8.self)
+                let result = typst_compile_snapshot_v1(stage, manifest.baseAddress, manifest.count, output.rawValue)
+                defer { typst_free_snapshot_compile_result_v1(result) }
+                guard result.status == 0 else {
+                    return .failure(snapshotError(status: result.status, diagnostic: result.artifact.error_message))
+                }
+                return previewArtifact(from: result.artifact)
+            }
+        }
+#else
+        return .failure(.compilerNotLinked)
+#endif
+    }
+
+#if TYPST_FFI_AVAILABLE
+    nonisolated private static func snapshotError(status: UInt32, diagnostic: UnsafeMutablePointer<CChar>?) -> TypstBridgeError {
+        .snapshotFailed(TypstSnapshotStatus(rawValue: status) ?? .unknown,
+            diagnostic.map { String(cString: $0) } ?? L10n.tr("error.typst.unknown_compilation"))
+    }
+#endif
+
     nonisolated static var packageCacheDirectoryURL: URL? {
         FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask)
             .first?
+            .resolvingSymlinksInPath()
             .appendingPathComponent("typst-packages", isDirectory: true)
     }
 
@@ -63,7 +175,7 @@ struct TypstBridge {
                 to: localPackagesRootURL
             )
         }
-        return packagesDirectory(rootURL: rootURL)
+        return packagesDirectory(rootURL: rootURL.resolvingSymlinksInPath())
     }
 
     nonisolated static var runtimeVersion: String? {
@@ -114,9 +226,9 @@ struct TypstBridge {
     ///
     /// `nonisolated` so it can be called from `Task.detached` without
     /// crossing the MainActor boundary (SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor).
-    nonisolated static func compile(source: String, fontPaths: [String], rootDir: String? = nil) -> Result<Data, TypstBridgeError> {
+    nonisolated static func compile(source: String, fontPaths: [String], rootDir: String? = nil, packageDirectories: TypstPackageDirectories? = nil) -> Result<Data, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
-        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir, logsFontPaths: true) { cSource, opts in
+        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir, packageDirectories: packageDirectories, logsFontPaths: true) { cSource, opts in
             let result = typst_compile(cSource, &opts)
             defer { typst_free_result(result) }
 
@@ -185,7 +297,8 @@ struct TypstBridge {
         source: String,
         fontPaths: [String],
         rootDir: String? = nil,
-        sessionKey: String? = nil
+        sessionKey: String? = nil,
+        packageDirectories: TypstPackageDirectories? = nil
     ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
 #if TYPST_FFI_AVAILABLE
         compilePreviewArtifact(
@@ -193,7 +306,8 @@ struct TypstBridge {
             fontPaths: fontPaths,
             rootDir: rootDir,
             sessionKey: sessionKey,
-            includePDF: false
+            includePDF: false,
+            packageDirectories: packageDirectories
         )
 #else
         return .failure(.compilerNotLinked)
@@ -206,9 +320,10 @@ struct TypstBridge {
         fontPaths: [String],
         rootDir: String?,
         sessionKey: String?,
-        includePDF: Bool
+        includePDF: Bool,
+        packageDirectories: TypstPackageDirectories? = nil
     ) -> Result<TypstPreviewArtifact, TypstBridgeError> {
-        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir) { cSource, opts in
+        withTypstOptions(source: source, fontPaths: fontPaths, rootDir: rootDir, packageDirectories: packageDirectories) { cSource, opts in
             if let sessionKey, !sessionKey.isEmpty {
                 return sessionKey.withCString { cSessionKey in
                     let result = includePDF
@@ -472,6 +587,7 @@ struct TypstBridge {
         source: String,
         fontPaths: [String],
         rootDir: String?,
+        packageDirectories: TypstPackageDirectories? = nil,
         logsFontPaths: Bool = false,
         body: (UnsafePointer<CChar>, inout TypstOptions) -> Result
     ) -> Result {
@@ -484,13 +600,13 @@ struct TypstBridge {
         }
 
         // App caches directory for @preview package downloads.
-        let cacheDir = packageCacheDirectoryURL?.path
-        if let localPackagesDirectoryURL {
+        let cacheDir = packageDirectories?.cache ?? packageCacheDirectoryURL?.path
+        if packageDirectories == nil, let localPackagesDirectoryURL {
             let store = LocalPackageStore(rootURL: localPackagesDirectoryURL)
             try? store.ensureRootDirectory()
             _ = try? store.snapshot()
         }
-        let localPkgDir = localPackagesDirectoryURL?.path
+        let localPkgDir = packageDirectories?.local ?? localPackagesDirectoryURL?.path
 
         // Hold C strings alive for the duration of the FFI call.
         return source.withCString { cSource in

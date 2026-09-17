@@ -2610,26 +2610,26 @@ struct InkPondTests {
     }
 
     @MainActor
-    @Test func typstCompilerPrefetchFailurePreventsCompilation() async {
+    @Test func typstCompilerPreparationFailurePreventsCompilation() async {
         let cacheRoot = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: cacheRoot) }
 
         let compileCounter = LockedCounter()
-        let prefetchCounter = LockedCounter()
+        let preparationCounter = LockedCounter()
         let compiler = TypstCompiler(
             compileWorker: { _, _, _, _ in
                 compileCounter.increment()
                 return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
             },
+            snapshotPreparer: { _ in
+                preparationCounter.increment()
+                throw TypstBridgeError.snapshotFailed(.dependencyMiss, "preparation failed")
+            },
             documentBuilder: { _ in PDFDocument() },
-            sleep: { _ in },
-            packageCacheDirectory: cacheRoot,
-            previewPackagePrefetcher: { specs in
-                if specs == ["@preview/missing:2.0.0"] {
-                    prefetchCounter.increment()
-                }
-                return .failure(.compilationFailed("prefetch failed"))
-            }
+            sleep: { duration in
+                if duration != .milliseconds(350) { try await Task.sleep(for: duration) }
+            },
+            packageCacheDirectory: cacheRoot
         )
 
         compiler.compileNow(
@@ -2639,15 +2639,16 @@ struct InkPondTests {
         )
 
         await waitUntil {
-            compiler.errorMessage == "prefetch failed" && !compiler.isCompiling
+            compiler.errorMessage == "preparation failed" && !compiler.isCompiling
         }
 
-        #expect(prefetchCounter.value == 1)
+        #expect(preparationCounter.value == 1)
+        #expect(compiler.errorMessage == "preparation failed")
         #expect(compileCounter.value == 0)
     }
 
     @MainActor
-    @Test func typstCompilerUsesCompiledPreviewCacheWhenFingerprintMatches() async throws {
+    @Test func typstCompilerIntentionallyBypassesLegacyCompiledPreviewCacheWhenFingerprintMatches() async throws {
         let doc = makeDocument(projectID: "compiler-cache-hit")
         let cacheRoot = makeTempDirectory()
         let source = "= Cached"
@@ -2674,7 +2675,7 @@ struct InkPondTests {
         let compiler = TypstCompiler(
             compileWorker: { _, _, _, _ in
                 compileCounter.increment()
-                return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
+                return .success(makePreviewArtifact(pdfData: Data("new-pdf".utf8)))
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -2694,16 +2695,29 @@ struct InkPondTests {
             compiler.compiledOnce && !compiler.isCompiling
         }
 
-        #expect(compileCounter.value == 0)
-        #expect(compiler.pdfData == Data("cached-pdf".utf8))
+        #expect(compileCounter.value == 1)
+        #expect(compiler.pdfData == Data("new-pdf".utf8))
+        #expect(compiler.pdfData != Data("cached-pdf".utf8))
+        #expect(compiler.previewArtifact?.pdfData == Data("new-pdf".utf8))
     }
 
     @MainActor
-    @Test func typstCompilerUsesSVGOnlyCompiledPreviewCacheWhenSourceMapMatches() async throws {
+    @Test func typstCompilerIntentionallyBypassesLegacySVGOnlyCompiledPreviewCacheWhenSourceMapMatches() async throws {
         let doc = makeDocument(projectID: "compiler-svg-cache-hit")
         let cacheRoot = makeTempDirectory()
         let source = "= Cached SVG"
         let sourceMap = makeSourceMap()
+        let freshLocation = SourceMapLocation(
+            page: 0, yPoints: 72, xPoints: 18, line: 3, column: 1, sourceOffset: 10, sourceLength: 5
+        )
+        let freshSourceMap = SourceMap(byOffset: [freshLocation], byPosition: [freshLocation])
+        let freshArtifact = makePreviewArtifact(
+            pdfData: Data("new-pdf".utf8),
+            sourceMap: freshSourceMap,
+            svgPages: [
+                TypstPreviewPage(svg: "<svg><text>fresh</text></svg>", widthPoints: 140, heightPoints: 160)
+            ]
+        )
         let cachedArtifact = makePreviewArtifact(
             pdfData: nil,
             sourceMap: sourceMap,
@@ -2734,7 +2748,7 @@ struct InkPondTests {
         let compiler = TypstCompiler(
             compileWorker: { _, _, _, _ in
                 compileCounter.increment()
-                return .success(makePreviewArtifact(pdfData: Data("compiled".utf8)))
+                return .success(freshArtifact)
             },
             documentBuilder: { _ in PDFDocument() },
             sleep: { _ in },
@@ -2754,10 +2768,13 @@ struct InkPondTests {
             compiler.compiledOnce && !compiler.isCompiling && !compiler.isCompileQueued
         }
 
-        #expect(compileCounter.value == 0)
-        #expect(compiler.pdfData == nil)
-        #expect(compiler.previewArtifact?.svgPages == cachedArtifact.svgPages)
-        #expect(compiler.sourceMap == sourceMap)
+        #expect(compileCounter.value == 1)
+        #expect(compiler.pdfData == Data("new-pdf".utf8))
+        #expect(compiler.previewArtifact?.pdfData == freshArtifact.pdfData)
+        #expect(compiler.previewArtifact?.svgPages == freshArtifact.svgPages)
+        #expect(compiler.previewArtifact?.svgPages != cachedArtifact.svgPages)
+        #expect(compiler.sourceMap == freshSourceMap)
+        #expect(compiler.sourceMap != sourceMap)
     }
 
     @MainActor
@@ -2812,7 +2829,7 @@ struct InkPondTests {
     }
 
     @MainActor
-    @Test func typstCompilerCompileNowBypassesCacheAndOverwritesStoredPreview() async throws {
+    @Test func typstCompilerCompileNowIntentionallyBypassesCacheWithoutRewritingLegacyStoredPreview() async throws {
         let doc = makeDocument(projectID: "compiler-bypass")
         let cacheRoot = makeTempDirectory()
         let source = "= Fresh"
@@ -2861,8 +2878,10 @@ struct InkPondTests {
 
         #expect(compileCounter.value == 1)
         #expect(compiler.pdfData == Data(source.utf8))
+        #expect(compiler.previewArtifact?.pdfData == Data(source.utf8))
+        #expect(compiler.pdfData != Data("stale".utf8))
         let cachedData = try store.loadIfValid(for: makeCompiledPreviewCacheInput(for: doc, source: source))
-        #expect(cachedData == Data(source.utf8))
+        #expect(cachedData == Data("stale".utf8))
     }
 
     @MainActor

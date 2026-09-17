@@ -292,10 +292,19 @@ extension DocumentEditorView {
                 session.editorText = $0
             }),
             insertionRequest: $insertionRequest,
-            findRequested: $findRequested,
-            viewState: $editorViewState,
+            findRequested: Binding(get: { session.findRequested }, set: {
+                guard attachment.acceptsTextMutation(for: session) else { return }
+                session.findRequested = $0
+            }),
+            viewState: Binding(get: { session.editorViewState }, set: {
+                guard attachment.acceptsTextMutation(for: session) else { return }
+                session.editorViewState = $0
+            }),
             cursorJumpOffset: $pendingCursorJump,
             fileLoadToken: fileLoadToken,
+            session: session,
+            acceptsCallbacks: { attachment.acceptsTextMutation(for: session) },
+            attachmentIsValid: { attachment.isValid },
             focusCoordinator: focusCoordinator,
             topViewportInset: topViewportInset,
             sourceMap: isSyncEnabled && isEditingEntryFile ? compiler.sourceMap : nil,
@@ -305,9 +314,14 @@ extension DocumentEditorView {
             editorFont: editorFontSettings.uiFont,
             errorLines: compilationErrorLines,
             isEditable: projectWritableLease != nil,
-            onPhotoTapped: { showingPhotoPicker = true },
+            onPhotoTapped: {
+                guard attachment.acceptsTextMutation(for: session) else { return }
+                photoPickerDestination = captureAssetDestination(at: currentInsertionRange(), for: session.currentFileName)
+                showingPhotoPicker = photoPickerDestination != nil
+            },
             onSnippetTapped: { showingSnippetBrowser = true },
             onImagePasted: { pastedImageData, selectedRange in
+                guard attachment.acceptsTextMutation(for: session) else { return }
                 importImage(
                     from: .rawData(pastedImageData, suggestedFileName: nil),
                     anchorRange: selectedRange,
@@ -315,6 +329,7 @@ extension DocumentEditorView {
                 )
             },
             onRichPaste: { fragments, selectedRange in
+                guard attachment.acceptsTextMutation(for: session) else { return }
                 handleRichPaste(
                     fragments,
                     anchorRange: selectedRange,
@@ -362,6 +377,7 @@ extension DocumentEditorView {
             compileToken: compileToken,
             refreshCacheBypassToken: linkedFolderRefreshCacheBypassToken,
             requiresExternalFolderLink: previewRequiresExternalFolderLink,
+            textOverlays: retainedTextOverlays,
             drivesCompilation: sizeClass == .regular,
             cancelsCompilerOnDisappear: sizeClass == .regular,
             focusCoordinator: focusCoordinator,
@@ -1352,7 +1368,8 @@ extension DocumentEditorView {
                         previewCacheDescriptor: compiledPreviewCacheDescriptor,
                         compileToken: compileToken,
                         refreshCacheBypassToken: linkedFolderRefreshCacheBypassToken,
-                        requiresExternalFolderLink: previewRequiresExternalFolderLink
+                        requiresExternalFolderLink: previewRequiresExternalFolderLink,
+                        textOverlays: retainedTextOverlays
                     )
                     workspaceEditorPane(topViewportInset: topViewportInset)
                         .ignoresSafeArea(edges: .top)
@@ -1361,7 +1378,7 @@ extension DocumentEditorView {
                         .allowsHitTesting(selectedTab == editorTab)
                         .accessibilityHidden(selectedTab != editorTab)
                     previewPane(
-                        topViewportInset: 0,
+                        topViewportInset: topViewportInset,
                         overlayTopInset: overlayTopInset,
                         overlayBottomInset: overlayBottomInset
                     )
@@ -1565,32 +1582,49 @@ extension DocumentEditorView {
     }
 
     var shareButtonAction: () -> Void {
-        if previewRequiresExternalFolderLink {
-            return {
-                Task {
-                    guard await flushPendingSave() else { return }
-                    exporter.exportTypSource(for: document, fileName: currentFileName)
-                }
-            }
-        }
-        if sizeClass == .regular || selectedTab == previewTab {
-            return {
-                Task {
-                    guard await flushPendingSave() else { return }
-                    if let fontResolutionError {
-                        exporter.exportError = fontResolutionError
-                        return
+        let exportsPDF = !previewRequiresExternalFolderLink && (sizeClass == .regular || selectedTab == previewTab)
+        return { exportEditorOperation(exportsPDF: exportsPDF) }
+    }
+
+    private func exportEditorOperation(exportsPDF: Bool, exportsZIP: Bool = false) {
+        guard !exporter.isExporting, exporter.exportButtonPhase == .idle else { return }
+        // Freeze document values and retained buffers before the save suspension.
+        let attachment = sessionAttachment
+        let fileName = currentFileName
+        do {
+            let input = try captureEditorOperationInput(
+                includeFonts: exportsPDF, sourceFileName: (exportsPDF || exportsZIP) ? nil : fileName)
+            exporter.exportError = nil
+            exporter.isExporting = true
+            exporter.exportButtonPhase = .exporting
+            Task { @MainActor in
+                var handedOff = false
+                defer {
+                    if !handedOff {
+                        exporter.isExporting = false
+                        exporter.exportButtonPhase = .idle
                     }
-                    exporter.exportPDF(for: document)
+                }
+                guard await flushPendingSave(), attachment.isValid, !Task.isCancelled else { return }
+                do {
+                    let snapshot = try await Task.detached(priority: .userInitiated) {
+                        try OperationSnapshot.capture(input)
+                    }.value
+                    guard attachment.isValid, !Task.isCancelled else { return }
+                    // Snapshot entry points begin their own export. Release the staging
+                    // busy state synchronously so that beginExport is entered only once.
+                    exporter.isExporting = false
+                    exporter.exportButtonPhase = .idle
+                    if exportsZIP { exporter.exportZip(snapshot: snapshot) }
+                    else if exportsPDF { exporter.exportPDF(snapshot: snapshot) }
+                    else { exporter.exportTypSource(snapshot: snapshot, fileName: fileName) }
+                    handedOff = true
+                } catch {
+                    guard attachment.isValid, !Task.isCancelled else { return }
+                    exporter.exportError = error.localizedDescription
                 }
             }
-        }
-        return {
-            Task {
-                guard await flushPendingSave() else { return }
-                exporter.exportTypSource(for: document, fileName: currentFileName)
-            }
-        }
+        } catch { exporter.exportError = error.localizedDescription }
     }
 
     var shareButtonLabel: String {
@@ -1764,10 +1798,7 @@ extension DocumentEditorView {
             }
 
             Button {
-                Task {
-                    guard await flushPendingSave() else { return }
-                    exporter.exportTypSource(for: document, fileName: currentFileName)
-                }
+                exportEditorOperation(exportsPDF: false)
             } label: {
                 Label(L10n.tr("Export .typ"), systemImage: "square.and.arrow.up.on.square")
             }
@@ -2203,7 +2234,6 @@ extension DocumentEditorView {
             .onAppear { openEditorOnAppear() }
             .onDisappear { closeEditorOnDisappear() }
             .onChange(of: activeTabPath) { _, _ in
-                findRequested = false
                 showingOutline = false
                 showingSnippetBrowser = false
                 insertionRequest = nil
@@ -2440,10 +2470,7 @@ extension DocumentEditorView {
             .alert(L10n.appFontsExportWarningTitle, isPresented: $showingZipExportWarning) {
                 Button(L10n.tr("Cancel"), role: .cancel) {}
                 Button(L10n.tr("Continue")) {
-                    Task {
-                        guard await flushPendingSave() else { return }
-                        exporter.exportZip(for: document)
-                    }
+                    exportEditorOperation(exportsPDF: false, exportsZIP: true)
                 }
             } message: {
                 Text(L10n.appFontsExportWarningMessage)

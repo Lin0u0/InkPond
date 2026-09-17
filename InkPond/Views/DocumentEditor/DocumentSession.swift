@@ -31,6 +31,12 @@ actor BackgroundDocumentFileWriter {
 @Observable
 @MainActor
 final class DocumentSession {
+    @ObservationIgnored var hasEditorSnapshot = false
+    var editorViewState = EditorViewState()
+    var findRequested = false
+    @ObservationIgnored var findState = EditorFindState()
+    @ObservationIgnored lazy var editorUndoHistory = EditorUndoHistory(session: self)
+
     let document: InkPondDocument
     var commitVersion: UInt64 = 0
     var closeTask: Task<Void, Never>? {
@@ -327,6 +333,7 @@ final class DocumentSession {
         guard diskText != editorText else { return }
 
         isLoadingFileContent = true
+        editorUndoHistory.resetHistory()
         editorText = diskText
         fileLoadToken = UUID()
         isLoadingFileContent = false
@@ -422,7 +429,10 @@ final class DocumentSession {
         guard fileLoadToken == originalToken, currentFileName == originalFile else { return }
         do {
             let remoteText = try ProjectFileManager.readTypFile(named: originalFile, for: document)
-            if editorText == originalText { editorText = remoteText }
+            if editorText == originalText {
+                editorUndoHistory.resetHistory()
+                editorText = remoteText
+            }
             lastPersistedText = remoteText
             fileLoadToken = UUID()
             lastSaveReceipt = nil

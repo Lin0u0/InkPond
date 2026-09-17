@@ -149,6 +149,7 @@ struct DocumentEditorView: View {
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
     @State var showingPhotoPicker = false
+    @State var photoPickerDestination: EditorAssetDestination?
     @State var showingFileBrowser = false
     @State var showingProjectSettings = false
     var showingConflictWarning: Bool {
@@ -161,7 +162,10 @@ struct DocumentEditorView: View {
     }
     @State var selectedPhotoItems: [PhotosPickerItem] = []
     @State var insertionRequest: EditorInsertionRequest?
-    @State var findRequested = false
+    var findRequested: Bool {
+        get { documentSession.findRequested }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.findRequested = newValue }
+    }
     @State var exporter = ExportController()
     @State var imageImportError: String?
     var fileSaveError: String? {
@@ -178,7 +182,10 @@ struct DocumentEditorView: View {
     @State var focusCoordinator = EditorFocusCoordinator()
     @State var shouldRestoreEditorFocusAfterPreview = false
     @State var syncCoordinator = SyncCoordinator()
-    @State var editorViewState = EditorViewState()
+    var editorViewState: EditorViewState {
+        get { documentSession.editorViewState }
+        nonmutating set { guard hasSessionAttachment else { return }; documentSession.editorViewState = newValue }
+    }
     var fileLoadToken: UUID {
         get { documentSession.fileLoadToken }
         nonmutating set { guard hasSessionAttachment else { return }; documentSession.fileLoadToken = newValue }

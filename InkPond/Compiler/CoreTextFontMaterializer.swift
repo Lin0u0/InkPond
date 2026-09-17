@@ -170,6 +170,19 @@ enum CoreTextFontMaterializer {
         }
     }
 
+    /// Snapshot capture must never silently substitute a live original on failure.
+    nonisolated static func materializeSnapshotFont(at path: String) throws -> String {
+        guard let request = request(forPlannedPath: path) else { return path }
+        guard let result = materializedPath(
+            forPostScriptName: request.postScriptName,
+            familyName: request.familyName,
+            styleName: request.styleName,
+            originalPath: request.originalPath,
+            requiredCodepoints: request.requiredCodepoints
+        ) else { throw CocoaError(.fileReadUnknown) }
+        return result
+    }
+
     nonisolated static func persistentCacheSnapshot() throws -> MaterializedFontCacheSnapshot {
         prunePersistentCache()
 

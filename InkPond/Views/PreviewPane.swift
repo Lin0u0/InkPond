@@ -31,6 +31,7 @@ struct PreviewCompileInputSignature: Equatable {
     let compileToken: UUID
     let refreshCacheBypassToken: UUID?
     let requiresExternalFolderLink: Bool
+    var textOverlays: [String: String] = [:]
 }
 
 struct PreviewCompileRequestTracker {
@@ -459,6 +460,7 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func updateScrollInsetsIfNeeded() {
+        let wasPinnedToTop = abs(scrollView.contentOffset.y + scrollView.adjustedContentInset.top) < 2
         let horizontalInset = centeredHorizontalContentInset()
         var insets = scrollView.contentInset
         if abs(insets.top - topViewportInset) > 0.5
@@ -470,6 +472,11 @@ final class SVGPreviewContainerView: UIView {
             insets.left = horizontalInset
             insets.right = horizontalInset
             scrollView.contentInset = insets
+            if wasPinnedToTop {
+                scrollView.setContentOffset(
+                    CGPoint(x: scrollView.contentOffset.x, y: -scrollView.adjustedContentInset.top),
+                    animated: false)
+            }
         }
         scrollView.verticalScrollIndicatorInsets.top = topViewportInset
         scrollView.verticalScrollIndicatorInsets.bottom = bottomViewportInset
@@ -692,7 +699,23 @@ final class SVGPreviewContainerView: UIView {
     }
 
     static func makePageHTML(forPage page: TypstPreviewPage) -> String {
+        #if DEBUG
+        let svg: String
+        do {
+            svg = try page.loadSVG()
+        } catch {
+            NSLog("[SVGPreview] loadSVG failed: %@", String(describing: error))
+            svg = ""
+        }
+        let range = NSRange(svg.startIndex..<svg.endIndex, in: svg)
+        let pathCount = (try? NSRegularExpression(pattern: "<path\\b"))?
+            .numberOfMatches(in: svg, range: range) ?? 0
+        let useCount = (try? NSRegularExpression(pattern: "<use\\b"))?
+            .numberOfMatches(in: svg, range: range) ?? 0
+        NSLog("[SVGPreview] HTML SVG bytes=%d paths=%d uses=%d", svg.utf8.count, pathCount, useCount)
+        #else
         let svg = (try? page.loadSVG()) ?? ""
+        #endif
         return """
         <!doctype html>
         <html>
@@ -735,6 +758,9 @@ final class SVGPreviewContainerView: UIView {
     private static func makePageWebView() -> WKWebView {
         let configuration = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
+        webView.navigationDelegate = SVGPreviewDiagnostics.shared
+        #endif
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
@@ -744,6 +770,51 @@ final class SVGPreviewContainerView: UIView {
     }
 
 }
+
+#if DEBUG
+/// Retained because WKWebView holds its navigation delegate weakly.
+private final class SVGPreviewDiagnostics: NSObject, WKNavigationDelegate {
+    static let shared = SVGPreviewDiagnostics()
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let identifier = String(describing: ObjectIdentifier(webView))
+        NSLog("[SVGPreview] finished %@ bounds=%@", identifier, NSCoder.string(for: webView.bounds))
+        webView.evaluateJavaScript("""
+        (() => {
+          const svg = document.querySelector('svg');
+          const rect = svg ? svg.getBoundingClientRect() : null;
+          return JSON.stringify({
+            readyState: document.readyState,
+            svgs: document.querySelectorAll('svg').length,
+            paths: document.querySelectorAll('svg path').length,
+            uses: document.querySelectorAll('svg use').length,
+            bounds: rect ? {x: rect.x, y: rect.y, width: rect.width, height: rect.height} : null,
+            viewBox: svg ? svg.getAttribute('viewBox') : null,
+            viewport: {width: innerWidth, height: innerHeight}
+          });
+        })()
+        """) { result, error in
+            if let error {
+                NSLog("[SVGPreview] DOM %@ failed: %@", identifier, String(describing: error))
+            } else {
+                NSLog("[SVGPreview] DOM %@ %@", identifier, String(describing: result ?? "nil"))
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        NSLog("[SVGPreview] navigation failed %@: %@", String(describing: ObjectIdentifier(webView)), String(describing: error))
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        NSLog("[SVGPreview] provisional navigation failed %@: %@", String(describing: ObjectIdentifier(webView)), String(describing: error))
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("[SVGPreview] web content process terminated %@", String(describing: ObjectIdentifier(webView)))
+    }
+}
+#endif
 
 extension SVGPreviewContainerView: UIGestureRecognizerDelegate {
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -889,6 +960,8 @@ struct PreviewPane: View {
     var compileToken: UUID = UUID()
     var refreshCacheBypassToken: UUID? = nil
     var requiresExternalFolderLink: Bool = false
+    /// Authoritative retained session text, value-captured by the editor.
+    var textOverlays: [String: String] = [:]
     var drivesCompilation: Bool = true
     var cancelsCompilerOnDisappear: Bool = true
     var focusCoordinator: EditorFocusCoordinator? = nil
@@ -1008,6 +1081,9 @@ struct PreviewPane: View {
                     compileIfNeeded()
                 }
                 recomputeTextStatistics()
+            }
+            .onChange(of: textOverlays) { _, _ in
+                if drivesCompilation { compileIfNeeded() }
             }
             .onChange(of: compileSource) { _, _ in
                 guard drivesCompilation else { return }
@@ -1189,7 +1265,8 @@ struct PreviewPane: View {
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
             refreshCacheBypassToken: refreshCacheBypassToken,
-            requiresExternalFolderLink: requiresExternalFolderLink
+            requiresExternalFolderLink: requiresExternalFolderLink,
+            textOverlays: textOverlays
         )
         let canDispatch = !requiresExternalFolderLink
             && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1197,16 +1274,18 @@ struct PreviewPane: View {
         compileRequestTracker.dispatchIfNeeded(
             for: signature,
             canDispatch: canDispatch
-        ) { cachePolicy in
+        ) { _ in
             let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-            compiler.compile(
-                source: effectiveCompileSource,
-                fontPaths: fontPaths,
-                rootDir: rootDir,
-                mode: mode,
-                previewCachePolicy: cachePolicy,
-                previewCacheDescriptor: previewCacheDescriptor
-            )
+            let entry = previewCacheDescriptor?.entryFileName ?? "main.typ"
+            var overlays = textOverlays
+            if overlays[entry] == nil { overlays[entry] = source }
+            compiler.compile(input: OperationSnapshotInput(
+                projectID: previewCacheDescriptor?.projectID ?? "",
+                title: previewCacheDescriptor?.documentTitle ?? "",
+                entryFileName: entry, source: effectiveCompileSource,
+                projectRoot: rootDir.map { URL(fileURLWithPath: $0) },
+                fontPaths: fontPaths, textOverlays: overlays
+            ), mode: mode)
         }
 
         if requiresExternalFolderLink {
@@ -1622,12 +1701,17 @@ struct PreviewCompileDriver: View {
     var compileToken: UUID
     var refreshCacheBypassToken: UUID?
     var requiresExternalFolderLink: Bool = false
+    /// Authoritative retained session text, value-captured by the editor.
+    var textOverlays: [String: String] = [:]
     @State private var compileRequestTracker = PreviewCompileRequestTracker()
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .onChange(of: source, initial: true) { _, _ in
+                compileIfNeeded()
+            }
+            .onChange(of: textOverlays) { _, _ in
                 compileIfNeeded()
             }
             .onChange(of: compileSource) { _, _ in
@@ -1668,7 +1752,8 @@ struct PreviewCompileDriver: View {
             previewCacheDescriptor: previewCacheDescriptor,
             compileToken: compileToken,
             refreshCacheBypassToken: refreshCacheBypassToken,
-            requiresExternalFolderLink: requiresExternalFolderLink
+            requiresExternalFolderLink: requiresExternalFolderLink,
+            textOverlays: textOverlays
         )
         let canDispatch = !requiresExternalFolderLink
             && !effectiveCompileSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1676,16 +1761,18 @@ struct PreviewCompileDriver: View {
         compileRequestTracker.dispatchIfNeeded(
             for: signature,
             canDispatch: canDispatch
-        ) { cachePolicy in
+        ) { _ in
             let mode: TypstCompileMode = compiler.compiledOnce || compiler.isPreviewUpdating ? .debounced : .immediate
-            compiler.compile(
-                source: effectiveCompileSource,
-                fontPaths: fontPaths,
-                rootDir: rootDir,
-                mode: mode,
-                previewCachePolicy: cachePolicy,
-                previewCacheDescriptor: previewCacheDescriptor
-            )
+            let entry = previewCacheDescriptor?.entryFileName ?? "main.typ"
+            var overlays = textOverlays
+            if overlays[entry] == nil { overlays[entry] = source }
+            compiler.compile(input: OperationSnapshotInput(
+                projectID: previewCacheDescriptor?.projectID ?? "",
+                title: previewCacheDescriptor?.documentTitle ?? "",
+                entryFileName: entry, source: effectiveCompileSource,
+                projectRoot: rootDir.map { URL(fileURLWithPath: $0) },
+                fontPaths: fontPaths, textOverlays: overlays
+            ), mode: mode)
         }
 
         if requiresExternalFolderLink {

@@ -1,10 +1,28 @@
 import Foundation
+import UIKit
 import Testing
 @testable import InkPond
 
 @Suite(.serialized)
 @MainActor
 struct PreviewPaneTests {
+    @Test func previewTopInsetKeepsFirstPageBelowChromeWithoutResettingScrolledPosition() throws {
+        let preview = SVGPreviewContainerView(frame: CGRect(x: 0, y: 0, width: 420, height: 912))
+        preview.layoutIfNeeded()
+        let scroll = try #require(preview.subviews.compactMap { $0 as? UIScrollView }.first)
+        preview.topViewportInset = 170
+        preview.reloadPages(Array(repeating: TypstPreviewPage(
+            svg: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 595 842\"><rect width=\"595\" height=\"842\" fill=\"white\"/></svg>",
+            widthPoints: 595, heightPoints: 842), count: 3))
+        preview.layoutIfNeeded()
+        #expect(abs(scroll.contentOffset.y + scroll.adjustedContentInset.top) < 1)
+        #expect(scroll.adjustedContentInset.top >= 170)
+        scroll.contentOffset.y = 80
+        preview.topViewportInset = 190
+        preview.layoutIfNeeded()
+        #expect(abs(scroll.contentOffset.y - 80) < 1)
+    }
+
     @Test func previewPageHTMLDoesNotRetainPriorFileContents() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

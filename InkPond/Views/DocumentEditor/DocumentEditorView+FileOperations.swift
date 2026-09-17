@@ -149,7 +149,6 @@ extension DocumentEditorView {
             }
             insertionRequest = nil
             pendingCursorJump = nil
-            editorViewState = EditorViewState()
             activateTab(relativePath: name, kind: ProjectFileManager.fileKind(for: name, imageDirectoryName: document.imageDirectoryName))
             if name == document.entryFileName {
                 entrySource = retained.editorText
@@ -218,7 +217,6 @@ extension DocumentEditorView {
 
         insertionRequest = nil
         pendingCursorJump = nil
-        editorViewState = EditorViewState()
         currentFileName = name
         activateTab(relativePath: name, kind: ProjectFileManager.fileKind(for: name, imageDirectoryName: document.imageDirectoryName))
         isLoadingFileContent = true
@@ -226,6 +224,9 @@ extension DocumentEditorView {
         fileLoadToken = UUID()
         isLoadingFileContent = false
         lastPersistedText = text
+        if document.lastEditedFileName == name {
+            documentSession.editorViewState.selectedLocation = max(0, min(document.lastCursorLocation, text.utf16.count))
+        }
         context.retain(documentSession)
         if projectWritableLease != nil { DocumentSessionRegistry.shared.retain(documentSession) }
         if name == document.entryFileName {
@@ -700,6 +701,7 @@ extension DocumentEditorView {
     }
 
     func restoreSavedPosition() async {
+        // Explicit resume-banner action; normal tab activation restores session state.
         let savedFileName = document.lastEditedFileName
         if !savedFileName.isEmpty, savedFileName != currentFileName {
             guard await openFileIfPossible(named: savedFileName) else { return }
@@ -803,66 +805,54 @@ extension DocumentEditorView {
         Task { _ = await openFileIfPossible(named: name) }
     }
 
+    var retainedTextOverlays: [String: String] {
+        Dictionary(uniqueKeysWithValues: workspace.sessions.values.map { ($0.currentFileName, $0.editorText) })
+    }
+
+    func captureEditorOperationInput(
+        includeFonts: Bool = true,
+        sourceFileName: String? = nil
+    ) throws -> OperationSnapshotInput {
+        try ExportManager.snapshotInput(
+            for: document, textOverlays: retainedTextOverlays,
+            includeFonts: includeFonts, sourceFileName: sourceFileName)
+    }
+
     func compilePreviewNow() async {
-        guard await flushPendingSave() else { return }
         guard !previewRequiresExternalFolderLink else {
             compiler.clearPreview()
             return
         }
-        _ = refreshResolvedFonts(includeAvailableFamilies: false)
-        if let fontResolutionError {
-            compiler.presentPreflightError(fontResolutionError)
-            return
-        }
-        pendingManualCompileFeedback = true
-        compiler.compileNow(
-            source: CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts),
-            fontPaths: resolvedCompileFonts.fontPaths,
-            rootDir: rootDir,
-            previewCachePolicy: .bypassCache,
-            previewCacheDescriptor: compiledPreviewCacheDescriptor
-        )
+        let attachment = sessionAttachment
+        do {
+            let input = try captureEditorOperationInput()
+            guard await flushPendingSave(), attachment.isValid, !Task.isCancelled else { return }
+            pendingManualCompileFeedback = true
+            compiler.compile(input: input, mode: .immediate)
+        } catch { compiler.presentPreflightError(error.localizedDescription) }
     }
 
     func clearCachesAndRecompile() async {
-        guard await flushPendingSave() else { return }
         guard !previewRequiresExternalFolderLink else {
             compiler.clearPreview()
             return
         }
-        _ = refreshResolvedFonts(includeAvailableFamilies: false)
-        if let fontResolutionError {
-            compiler.presentPreflightError(fontResolutionError)
-            return
-        }
-        pendingManualCompileFeedback = true
-        InteractionFeedback.notify(.warning)
-        AccessibilitySupport.announce(L10n.a11yCacheRefreshStarted)
-        let source = CompileFontResolver.effectiveSource(for: entrySource, resolvedFonts: resolvedCompileFonts)
-        let fontPaths = resolvedCompileFonts.fontPaths
-        let rootDirectory = rootDir
-
-        compiler.clearPreview()
-
-        Task {
-            do {
-                try await Task.detached(priority: .userInitiated) {
-                    try PreviewPackageCacheStore().clearAll()
-                }.value
-                await MainActor.run {
-                    compiler.compileNow(
-                        source: source,
-                        fontPaths: fontPaths,
-                        rootDir: rootDirectory,
-                        previewCachePolicy: .bypassCache,
-                        previewCacheDescriptor: compiledPreviewCacheDescriptor
-                    )
-                }
-            } catch {
-                await MainActor.run {
-                    previewActionError = error.localizedDescription
-                }
-            }
+        let attachment = sessionAttachment
+        do {
+            let input = try captureEditorOperationInput()
+            guard await flushPendingSave(), attachment.isValid, !Task.isCancelled else { return }
+            pendingManualCompileFeedback = true
+            InteractionFeedback.notify(.warning)
+            AccessibilitySupport.announce(L10n.a11yCacheRefreshStarted)
+            compiler.clearPreview()
+            try await Task.detached(priority: .userInitiated) {
+                try PreviewPackageCacheStore().clearAll()
+            }.value
+            guard attachment.isValid, !Task.isCancelled else { return }
+            compiler.compile(input: input, mode: .immediate)
+        } catch {
+            guard attachment.isValid, !Task.isCancelled else { return }
+            previewActionError = error.localizedDescription
         }
     }
 

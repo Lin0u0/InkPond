@@ -1,3 +1,7 @@
+mod snapshot;
+#[cfg(test)]
+mod snapshot_tests;
+
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::io::Read;
@@ -100,6 +104,7 @@ pub struct TypstOptions {
 // ---------------------------------------------------------------------------
 
 struct SimpleWorld {
+    snapshot: Option<snapshot::Policy>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
     fonts: Vec<Font>,
@@ -222,6 +227,7 @@ impl SimpleWorld {
         let source = Source::new(main_id, source_text.to_string());
 
         Self {
+            snapshot: None,
             library: LazyHash::new(Library::default()),
             book: LazyHash::new(book),
             fonts,
@@ -262,7 +268,18 @@ impl SimpleWorld {
                 .join(spec.name.as_str())
                 .join(spec.version.to_string());
             if local_dir.exists() {
-                let result = validate_local_package_dir(local_root, &local_dir);
+                let result = if self.snapshot.is_some() {
+                    // Keep the original path for every subsequent no-follow read.
+                    // Canonicalization here would erase a symlink changed between
+                    // preparation checks and dependency reads.
+                    if snapshot::valid_legacy_package(&local_dir) {
+                        Ok(local_dir.clone())
+                    } else {
+                        Err(PackageError::Other(Some("invalid snapshot local package".into())))
+                    }
+                } else {
+                    validate_local_package_dir(local_root, &local_dir)
+                };
                 if result.is_ok() {
                     debug_log!("[typst-ffi] resolved local package: {}", key);
                 }
@@ -286,7 +303,7 @@ impl SimpleWorld {
         let _guard = package_lock.lock().unwrap();
 
         let result = if pkg_dir.exists() {
-            Ok(pkg_dir.clone())
+            if snapshot::valid_legacy_package(&pkg_dir) { Ok(pkg_dir.clone()) } else { Err(PackageError::Other(Some("invalid cached package".into()))) }
         } else {
             let url = format!(
                 "https://packages.typst.org/{}/{}-{}.tar.gz",
@@ -458,8 +475,16 @@ fn extra_font_faces(paths: &[String]) -> Arc<Vec<Font>> {
     faces
 }
 
-/// Download a `.tar.gz` from `url` and extract it into `dest`.
-fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError> {
+#[cfg(test)]
+static TEST_DOWNLOADS: std::sync::LazyLock<Mutex<HashMap<String, (Vec<u8>, usize, bool)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn package_archive_bytes(url: &str) -> Result<Vec<u8>, PackageError> {
+    #[cfg(test)]
+    if let Some((bytes, count, enabled)) = TEST_DOWNLOADS.lock().unwrap().get_mut(url) {
+        *count += 1;
+        return if *enabled { Ok(bytes.clone()) } else { Err(PackageError::NetworkFailed(Some("test downloader offline".into()))) };
+    }
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(
             PACKAGE_DOWNLOAD_TIMEOUT_SECS,
@@ -483,6 +508,13 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError>
         )));
     }
 
+    Ok(buf)
+}
+
+/// Download a `.tar.gz` from `url` and extract it into `dest`.
+fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError> {
+    let buf = package_archive_bytes(url)?;
+
     let staging_dir =
         make_staging_directory(dest).map_err(|e| PackageError::Other(Some(e.into())))?;
     if let Err(error) = extract_tar_gz_bytes(&buf, &staging_dir) {
@@ -490,9 +522,13 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<PathBuf, PackageError>
         return Err(PackageError::MalformedArchive(Some(error.into())));
     }
 
+    if let Err(error) = snapshot::mark_published_package(&staging_dir) {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err(PackageError::Other(Some(error.into())));
+    }
     match std::fs::rename(&staging_dir, dest) {
         Ok(()) => {}
-        Err(_) if dest.exists() => {
+        Err(_) if snapshot::valid_published_package(dest) => {
             let _ = std::fs::remove_dir_all(&staging_dir);
         }
         Err(error) => {
@@ -512,21 +548,20 @@ fn make_staging_directory(dest: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("invalid destination path: {}", dest.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| format!("mkdir failed: {e}"))?;
 
-    let suffix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| format!("clock error: {e}"))?
-        .as_nanos();
-    let file_name = dest
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("package");
-    let staging_dir = parent.join(format!(".{file_name}.extracting-{suffix}"));
-
-    if staging_dir.exists() {
-        std::fs::remove_dir_all(&staging_dir).map_err(|e| format!("cleanup failed: {e}"))?;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let file_name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("package");
+    for _ in 0..64 {
+        let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let suffix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?.as_nanos();
+        let staging = parent.join(format!(".{file_name}.extracting-{}-{suffix}-{serial}", std::process::id()));
+        match std::fs::create_dir(&staging) {
+            Ok(()) => return Ok(staging),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("mkdir failed: {e}")),
+        }
     }
-    std::fs::create_dir_all(&staging_dir).map_err(|e| format!("mkdir failed: {e}"))?;
-    Ok(staging_dir)
+    Err("staging name collision limit exceeded".into())
 }
 
 fn extract_tar_gz_bytes(bytes: &[u8], dest: &Path) -> Result<(), String> {
@@ -632,6 +667,12 @@ impl World for SimpleWorld {
             return Ok(self.main_source());
         }
 
+        if let Some(policy) = &self.snapshot {
+            let bytes = policy.read(self, id)?;
+            let text = std::str::from_utf8(bytes.as_slice()).map_err(|_| FileError::InvalidUtf8)?;
+            return Ok(Source::new(id, text.to_owned()));
+        }
+
         // Resolve the file path
         let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
@@ -663,6 +704,7 @@ impl World for SimpleWorld {
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
+        if let Some(policy) = &self.snapshot { return policy.read(self, id); }
         // Resolve the file path
         let path = if let VirtualRoot::Package(spec) = id.root() {
             let pkg_dir = self.package_dir(spec)?;
@@ -698,6 +740,7 @@ impl World for SimpleWorld {
     }
 
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
+        if let Some(policy) = &self.snapshot { return policy.today(offset); }
         use std::time::{SystemTime, UNIX_EPOCH};
         let secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1351,7 +1394,7 @@ fn preview_result_from_document(
         (std::ptr::null_mut(), 0)
     };
 
-    let svg_pages = svg_pages_for_document(&document);
+    let svg_pages = if world.snapshot.as_ref().is_some_and(|p| p.output_kind == 1) { Vec::new() } else { svg_pages_for_document(&document) };
     let svg_page_len = svg_pages.len();
     let (svg_pages, svg_page_len) = if svg_page_len > 0 {
         let mut boxed = svg_pages.into_boxed_slice();

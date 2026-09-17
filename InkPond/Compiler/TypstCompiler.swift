@@ -22,10 +22,24 @@ enum TypstPreviewCachePolicy: Sendable {
 
 typealias TypstCompileWorker = @Sendable (String, [String], String?, String?) -> Result<TypstPreviewArtifact, TypstBridgeError>
 typealias TypstDocumentBuilder = @Sendable (Data) -> PDFDocument?
+typealias TypstSnapshotPreparer = @Sendable (OperationSnapshot) throws -> SealedCompileSnapshot
+typealias TypstSnapshotStager = @Sendable (OperationSnapshotInput) throws -> OperationSnapshot
 typealias TypstCompilerSleep = @Sendable (Duration) async throws -> Void
-typealias PreviewPackagePrefetcher = @Sendable ([String]) -> Result<Void, TypstBridgeError>
+
+// Injected workers are explicitly unsealed test execution, never a forged native seal.
+private enum TypstPreparedInput: Sendable {
+    case sealed(SealedCompileSnapshot)
+    case injectedWorker(OperationSnapshot)
+    var capture: OperationSnapshot {
+        switch self {
+        case .sealed(let snapshot): return snapshot.capture
+        case .injectedWorker(let snapshot): return snapshot
+        }
+    }
+}
 
 private struct TypstCompileRequest: Sendable {
+    let snapshot: TypstPreparedInput
     let source: String
     let fontPaths: [String]
     let rootDir: String?
@@ -77,12 +91,21 @@ final class TypstCompiler {
     }
 
     private let compileWorker: TypstCompileWorker
+    private let usesDefaultCompileWorker: Bool
     private let documentBuilder: TypstDocumentBuilder
     private let sleep: TypstCompilerSleep
     private let previewCacheStore: CompiledPreviewCacheStore
     private let typstVersionProvider: @Sendable () -> String?
     private let packageCacheDirectory: URL?
-    private let previewPackagePrefetcher: PreviewPackagePrefetcher
+
+    private let snapshotStager: TypstSnapshotStager
+    private let snapshotPreparer: TypstSnapshotPreparer?
+    // One physical capture at a time, even if cancellation is still unwinding.
+    private var stagingTask: Task<Result<TypstPreparedInput, Error>, Never>?
+    private var stagingTimeoutTask: Task<Void, Never>?
+    private var stagingGeneration: UInt64?
+    private var stagingInput: (input: OperationSnapshotInput?, snapshot: OperationSnapshot?, mode: TypstCompileMode, generation: UInt64)?
+    private var stagingReady = false
 
     private var debounceTask: Task<Void, Never>?
     private var activeTask: Task<Void, Never>?
@@ -92,38 +115,29 @@ final class TypstCompiler {
     private var compileGeneration: UInt64 = 0
 
     init(
-        compileWorker: @escaping TypstCompileWorker = { source, fontPaths, rootDir, sessionKey in
-            TypstBridge.compilePreviewSVG(
-                source: source,
-                fontPaths: fontPaths,
-                rootDir: rootDir,
-                sessionKey: sessionKey
-            )
-        },
+        compileWorker: TypstCompileWorker? = nil,
+        snapshotStager: @escaping TypstSnapshotStager = { try OperationSnapshot.capture($0) },
+        snapshotPreparer: TypstSnapshotPreparer? = nil,
         documentBuilder: @escaping TypstDocumentBuilder = { PDFDocument(data: $0) },
         sleep: @escaping TypstCompilerSleep = { try await Task.sleep(for: $0) },
         previewCacheStore: CompiledPreviewCacheStore = CompiledPreviewCacheStore(),
         typstVersionProvider: @escaping @Sendable () -> String? = { TypstBridge.runtimeVersion },
-        packageCacheDirectory: URL? = TypstBridge.packageCacheDirectoryURL,
-        previewPackagePrefetcher: @escaping PreviewPackagePrefetcher = { specs in
-            for spec in specs {
-                switch TypstBridge.prefetchPreviewPackage(spec: spec) {
-                case .success:
-                    continue
-                case .failure(let error):
-                    return .failure(error)
-                }
-            }
-            return .success(())
-        }
+        packageCacheDirectory: URL? = TypstBridge.packageCacheDirectoryURL
     ) {
-        self.compileWorker = compileWorker
+        self.snapshotStager = snapshotStager
+        // Worker injection is an explicit test pipeline. Production always seals.
+        if let snapshotPreparer { self.snapshotPreparer = snapshotPreparer }
+        else if compileWorker == nil { self.snapshotPreparer = { try SealedCompileSnapshot.prepare($0) } }
+        else { self.snapshotPreparer = nil }
+        self.usesDefaultCompileWorker = compileWorker == nil
+        self.compileWorker = compileWorker ?? { _, _, _, _ in
+            .failure(.snapshotFailed(.stageInvalid, SnapshotCaptureError.unsupportedInput.localizedDescription))
+        }
         self.documentBuilder = documentBuilder
         self.sleep = sleep
         self.previewCacheStore = previewCacheStore
         self.typstVersionProvider = typstVersionProvider
         self.packageCacheDirectory = packageCacheDirectory
-        self.previewPackagePrefetcher = previewPackagePrefetcher
     }
 
     nonisolated static func taskPriority(for mode: TypstCompileMode) -> TaskPriority {
@@ -145,24 +159,160 @@ final class TypstCompiler {
         previewCachePolicy: TypstPreviewCachePolicy = .bypassCache,
         previewCacheDescriptor: CompiledPreviewCacheDescriptor? = nil
     ) {
-        compileGeneration &+= 1
-        // Invalidate the source map immediately so stale mappings are not used
-        // while the new compilation is in flight.
-        sourceMap = nil
-        if mode == .debounced {
-            cancelDelayedError()
-            errorMessage = nil
+        let entry = previewCacheDescriptor?.entryFileName ?? "main.typ"
+        let input = OperationSnapshotInput(
+            projectID: previewCacheDescriptor?.projectID ?? "",
+            title: previewCacheDescriptor?.documentTitle ?? "",
+            entryFileName: entry, source: source,
+            projectRoot: rootDir.map { URL(fileURLWithPath: $0) }, fontPaths: fontPaths,
+            textOverlays: [entry: source]
+        )
+        compile(input: input, mode: mode)
+    }
+
+    /// Capture session buffers/settings before any await, then submit this value.
+    /// Successful native sealing is acceptance; cached provenance is intentionally bypassed.
+    func compile(input: OperationSnapshotInput, mode: TypstCompileMode = .debounced) {
+        beginRequest(mode: mode)
+        stagingInput = (input, nil, mode, compileGeneration)
+        stagingReady = mode == .immediate
+        refreshCompileQueuedState()
+        if stagingReady {
+            startStagingIfNeeded()
+        } else {
+            let generation = compileGeneration
+            let sleep = self.sleep
+            debounceTask = Task { [weak self] in
+                do { try await sleep(Self.compileDelay) } catch { return }
+                guard !Task.isCancelled, let self,
+                      self.stagingInput?.generation == generation else { return }
+                self.debounceTask = nil
+                self.stagingReady = true
+                self.startStagingIfNeeded()
+            }
         }
+    }
+
+    private func beginRequest(mode: TypstCompileMode) {
+        compileGeneration &+= 1
+        debounceTask?.cancel()
+        debounceTask = nil
+        stagingTimeoutTask?.cancel()
+        stagingTimeoutTask = nil
+        stagingTask?.cancel()
+        stagingInput = nil
+        stagingReady = false
+        scheduledRequest = nil
+        pendingRequest = nil
+        sourceMap = nil
+        cancelDelayedError()
+        if mode == .debounced { errorMessage = nil }
+    }
+
+    private func startStagingIfNeeded() {
+        guard stagingTask == nil, stagingReady, let intent = stagingInput else { return }
+        stagingInput = nil
+        stagingReady = false
+        stagingGeneration = intent.generation
+        let stager = snapshotStager
+        let preparer = snapshotPreparer
+        let task = Task.detached(priority: Self.taskPriority(for: intent.mode)) {
+            do {
+                try Task.checkCancellation()
+                let snapshot: OperationSnapshot
+                if let captured = intent.snapshot { snapshot = captured }
+                else if let input = intent.input { snapshot = try stager(input) }
+                else { throw SnapshotCaptureError.unsupportedInput }
+                defer { withExtendedLifetime(snapshot) {} }
+                try Task.checkCancellation()
+                let prepared: TypstPreparedInput
+                if let preparer { prepared = .sealed(try preparer(snapshot)) }
+                else { prepared = .injectedWorker(snapshot) }
+                try Task.checkCancellation()
+                return Result<TypstPreparedInput, Error>.success(prepared)
+            } catch {
+                return Result<TypstPreparedInput, Error>.failure(error)
+            }
+        }
+        stagingTask = task
+        // This is a UI deadline, not a join with synchronous native work. Only
+        // the completion observer below may release the physical staging slot.
+        if preparer != nil {
+            let sleep = self.sleep
+            let timeout = Self.timeout(
+                forSource: intent.snapshot?.source ?? intent.input?.source ?? "",
+                packageCacheDirectory: packageCacheDirectory
+            )
+            stagingTimeoutTask = Task { [weak self] in
+                do { try await sleep(timeout) } catch { return }
+                guard !Task.isCancelled, let self,
+                      self.stagingGeneration == intent.generation,
+                      self.compileGeneration == intent.generation else { return }
+                // Invalidates acceptance and cancels cooperatively, while the
+                // detached preparer retains its capture until native returns.
+                self.presentPreflightError(L10n.tr("error.typst.compilation_timeout"))
+            }
+        }
+        refreshCompileQueuedState()
+        Task { [weak self] in
+            let result = await task.value
+            guard let self else { return }
+            self.stagingTimeoutTask?.cancel()
+            self.stagingTimeoutTask = nil
+            self.stagingTask = nil
+            self.stagingGeneration = nil
+            if intent.generation == self.compileGeneration {
+                switch result {
+                case .success(let snapshot):
+                    // The input's debounce has already elapsed; do not debounce twice.
+                    self.enqueue(self.request(snapshot: snapshot, mode: intent.mode), mode: .immediate)
+                case .failure(let error):
+                    if !(error is CancellationError) {
+                        self.presentPreflightError(error.localizedDescription)
+                    }
+                }
+            }
+            self.startStagingIfNeeded()
+            self.refreshCompileQueuedState()
+        }
+    }
+
+    func compile(snapshot: OperationSnapshot, mode: TypstCompileMode = .debounced) {
+        beginRequest(mode: mode)
+        stagingInput = (nil, snapshot, mode, compileGeneration)
+        stagingReady = mode == .immediate
+        refreshCompileQueuedState()
+        if stagingReady { startStagingIfNeeded() }
+        else {
+            let generation = compileGeneration
+            let sleep = self.sleep
+            debounceTask = Task { [weak self] in
+                do { try await sleep(Self.compileDelay) } catch { return }
+                guard !Task.isCancelled, let self, self.stagingInput?.generation == generation else { return }
+                self.debounceTask = nil
+                self.stagingReady = true
+                self.startStagingIfNeeded()
+            }
+        }
+    }
+
+    func compile(snapshot: SealedCompileSnapshot, mode: TypstCompileMode = .debounced) {
+        beginRequest(mode: mode)
+        enqueue(request(snapshot: .sealed(snapshot), mode: mode), mode: mode)
+    }
+
+    private func request(snapshot: TypstPreparedInput, mode: TypstCompileMode) -> TypstCompileRequest {
         let request = TypstCompileRequest(
-            source: source,
-            fontPaths: fontPaths,
-            rootDir: rootDir,
+            snapshot: snapshot,
+            source: snapshot.capture.source,
+            fontPaths: snapshot.capture.fontPaths,
+            rootDir: snapshot.capture.projectRoot.path,
             mode: mode,
-            previewCachePolicy: previewCachePolicy,
-            previewCacheDescriptor: previewCacheDescriptor,
+            previewCachePolicy: .bypassCache,
+            previewCacheDescriptor: nil,
             generation: compileGeneration
         )
-        enqueue(request, mode: mode)
+        return request
     }
 
     func compileNow(
@@ -218,6 +368,11 @@ final class TypstCompiler {
     }
 
     private func cancelAllWork() {
+        stagingTimeoutTask?.cancel()
+        stagingTimeoutTask = nil
+        stagingTask?.cancel()
+        stagingInput = nil
+        stagingReady = false
         debounceTask?.cancel()
         debounceTask = nil
         activeTask?.cancel()
@@ -274,91 +429,25 @@ final class TypstCompiler {
         refreshCompileQueuedState()
         isCompiling = true
 
-        let compileWorker = self.compileWorker
+        let compileWorker: TypstCompileWorker
+        if usesDefaultCompileWorker {
+            let prepared = request.snapshot
+            compileWorker = { _, _, _, _ in
+                guard case .sealed(let snapshot) = prepared else {
+                    return .failure(.snapshotFailed(.stageInvalid, SnapshotCaptureError.unsupportedInput.localizedDescription))
+                }
+                return TypstBridge.compile(snapshot: snapshot, output: .svg)
+            }
+        } else {
+            compileWorker = self.compileWorker
+        }
         let documentBuilder = self.documentBuilder
         let previewCacheStore = self.previewCacheStore
         let typstVersionProvider = self.typstVersionProvider
         let packageCacheDirectory = self.packageCacheDirectory
-        let previewPackagePrefetcher = self.previewPackagePrefetcher
         let priority = Self.taskPriority(for: request.mode)
-        let packageSpecs = Self.uncachedPreviewPackageSpecs(
-            forSource: request.source,
-            packageCacheDirectory: packageCacheDirectory
-        )
         let timeout = Self.timeout(forSource: request.source, packageCacheDirectory: packageCacheDirectory)
         activeTask = Task { [weak self] in
-            if !packageSpecs.isEmpty {
-                Diagnostics.record(
-                    .compiler,
-                    "preview_package.prefetch.start",
-                    metadata: [
-                        "packageCount": String(packageSpecs.count),
-                        "timeout": String(describing: timeout)
-                    ]
-                )
-                let preflightTask = Task.detached(priority: priority) {
-                    previewPackagePrefetcher(packageSpecs)
-                }
-                let preflightResult: Result<Void, TypstBridgeError>
-                do {
-                    preflightResult = try await Self.awaitPreviewPackagePrefetch(preflightTask, timeout: timeout)
-                } catch is TypstCompileTimeoutError {
-                    preflightTask.cancel()
-                    Diagnostics.record(
-                        .compiler,
-                        "preview_package.prefetch.timeout",
-                        level: .error,
-                        metadata: ["packageCount": String(packageSpecs.count)]
-                    )
-                    self?.finishCompilation(
-                        .failure(.compilationFailed(L10n.tr("error.typst.compilation_timeout"))),
-                        generation: request.generation,
-                        request: request
-                    )
-                    return
-                } catch is CancellationError {
-                    preflightTask.cancel()
-                    Diagnostics.record(
-                        .compiler,
-                        "preview_package.prefetch.cancelled",
-                        level: .warning,
-                        metadata: ["packageCount": String(packageSpecs.count)]
-                    )
-                    return
-                } catch {
-                    preflightTask.cancel()
-                    Diagnostics.record(
-                        .compiler,
-                        "preview_package.prefetch.failure",
-                        level: .error,
-                        metadata: Diagnostics.errorMetadata(error)
-                    )
-                    self?.finishCompilation(
-                        .failure(.compilationFailed(error.localizedDescription)),
-                        generation: request.generation,
-                        request: request
-                    )
-                    return
-                }
-                guard !Task.isCancelled else { return }
-
-                if case .failure(let error) = preflightResult {
-                    Diagnostics.record(
-                        .compiler,
-                        "preview_package.prefetch.failure",
-                        level: .error,
-                        metadata: ["errorKind": String(describing: type(of: error))]
-                    )
-                    self?.finishCompilation(.failure(error), generation: request.generation, request: request)
-                    return
-                }
-                Diagnostics.record(
-                    .compiler,
-                    "preview_package.prefetch.success",
-                    metadata: ["packageCount": String(packageSpecs.count)]
-                )
-            }
-
             let compilationTask = Task.detached(priority: priority) {
                 Self.runCompilation(
                     request: request,
@@ -458,6 +547,7 @@ final class TypstCompiler {
 
     private func refreshCompileQueuedState() {
         isCompileQueued = scheduledRequest != nil || pendingRequest != nil
+            || stagingInput != nil || stagingGeneration == compileGeneration
     }
 
     private func scheduleDelayedError(_ message: String, generation: UInt64) {
@@ -566,7 +656,9 @@ final class TypstCompiler {
         previewCacheStore: CompiledPreviewCacheStore,
         typstVersionProvider: @escaping @Sendable () -> String?
     ) -> TypstWorkerResult {
-        let materializedFontPaths = CoreTextFontMaterializer.materializePlannedFonts(in: request.fontPaths)
+        // Keep the lease alive until the synchronous worker/FFI has actually returned.
+        defer { withExtendedLifetime(request.snapshot) {} }
+        let materializedFontPaths = request.fontPaths
         let typstVersion = typstVersionProvider()
         let cacheInput = request.previewCacheDescriptor.map {
             CompiledPreviewCacheInput(
@@ -688,26 +780,6 @@ final class TypstCompiler {
             )
             return .failure(error)
         }
-    }
-
-    nonisolated private static func awaitPreviewPackagePrefetch(
-        _ preflightTask: Task<Result<Void, TypstBridgeError>, Never>,
-        timeout: Duration
-    ) async throws -> Result<Void, TypstBridgeError> {
-        try await withTaskCancellationHandler(operation: {
-            try await withThrowingTaskGroup(of: Result<Void, TypstBridgeError>.self) { group in
-                group.addTask { await preflightTask.value }
-                group.addTask {
-                    try await Task.sleep(for: timeout)
-                    throw TypstCompileTimeoutError()
-                }
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
-            }
-        }, onCancel: {
-            preflightTask.cancel()
-        })
     }
 
     nonisolated private static func loadCachedPreview(

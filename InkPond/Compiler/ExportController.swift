@@ -23,98 +23,105 @@ final class ExportController {
     var exportURL: URL?
     private var exportCompletionTask: Task<Void, Never>?
 
-    /// Export using already-compiled PDF bytes from the live preview.
-    /// Falls back to a fresh compile if no cached data is provided.
+    /// Compatibility entry point. Cached bytes/PDFDocument lack snapshot
+    /// provenance, so they are deliberately not reused.
     func exportPDF(
         for document: InkPondDocument,
         cachedPDFData: Data? = nil,
         cachedPDF: PDFDocument? = nil
     ) {
         guard beginExport() else { return }
+        do { stage(try ExportManager.snapshotInput(for: document), kind: .pdf) }
+        catch { failExport(error) }
+    }
 
-        if let cachedPDFData {
-            let title = document.title
-            Task { @MainActor [weak self] in
-                await Task.yield()
-                guard let self else { return }
-                do {
-                    let url = try await Self.temporaryPDFURL(data: cachedPDFData, title: title)
-                    finishExport(with: url)
-                } catch {
-                    failExport(error)
-                }
-            }
-            return
-        }
+    func exportPDF(snapshot: OperationSnapshot) {
+        guard beginExport() else { return }
+        performPDF(snapshot: snapshot)
+    }
 
-        // Keep PDFDocument compatibility for older call sites and fallback flows.
-        if let pdf = cachedPDF {
-            let title = document.title
-            Task { @MainActor [weak self] in
-                await Task.yield()
-                guard let self else { return }
-                guard let data = pdf.dataRepresentation() else {
-                    failExport(CocoaError(.fileWriteUnknown))
-                    return
-                }
-                do {
-                    let url = try await Self.temporaryPDFURL(data: data, title: title)
-                    finishExport(with: url)
-                } catch {
-                    failExport(error)
-                }
-            }
-            return
-        }
-
+    private func performPDF(snapshot: OperationSnapshot) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            await Task.yield()
-            let result = await ExportManager.compilePDF(for: document)
+            let result = await ExportManager.compilePDF(snapshot: snapshot)
+            guard let self, !Task.isCancelled else { return }
             switch result {
             case .success(let data):
-                let title = document.title
                 do {
-                    let url = try await Self.temporaryPDFURL(data: data, title: title)
+                    let url = try await Self.temporaryPDFURL(data: data, title: snapshot.title)
                     finishExport(with: url)
-                } catch {
-                    failExport(error)
-                }
-            case .failure(let error):
-                failExport(error)
+                } catch { failExport(error) }
+            case .failure(let error): failExport(error)
             }
         }
     }
 
     func exportTypSource(for document: InkPondDocument, fileName: String) {
         guard beginExport() else { return }
+        do {
+            stage(try ExportManager.snapshotInput(for: document, includeFonts: false,
+                sourceFileName: fileName), kind: .source(fileName))
+        } catch { failExport(error) }
+    }
+
+    func exportTypSource(snapshot: OperationSnapshot, fileName: String) {
+        guard beginExport() else { return }
+        performTypSource(snapshot: snapshot, fileName: fileName)
+    }
+
+    private func performTypSource(snapshot: OperationSnapshot, fileName: String) {
         Task { @MainActor [weak self] in
-            await Task.yield()
-            guard let self else { return }
             do {
-                let url = try ExportManager.temporaryTypURL(for: document, fileName: fileName)
+                let url = try await Task.detached {
+                    try withExtendedLifetime(snapshot) {
+                        try ExportManager.temporaryTypURL(snapshot: snapshot, fileName: fileName)
+                    }
+                }.value
+                guard let self, !Task.isCancelled else { return }
                 finishExport(with: url)
-            } catch {
-                failExport(error)
-            }
+            } catch { self?.failExport(error) }
         }
     }
 
     func exportZip(for document: InkPondDocument) {
         guard beginExport() else { return }
+        do { stage(try ExportManager.snapshotInput(for: document, includeFonts: false), kind: .zip) }
+        catch { failExport(error) }
+    }
+
+    func exportZip(snapshot: OperationSnapshot) {
+        guard beginExport() else { return }
+        performZip(snapshot: snapshot)
+    }
+
+    private func performZip(snapshot: OperationSnapshot) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            await Task.yield()
-            let projectDir = ProjectFileManager.projectDirectory(for: document)
-            let title = document.title
             do {
-                let url = try await Task.detached {
-                    try ExportManager.zipProject(sourceDir: projectDir, title: title)
-                }.value
+                let url = try await Task.detached { try ExportManager.zipProject(snapshot: snapshot) }.value
+                guard let self, !Task.isCancelled else { return }
                 finishExport(with: url)
-            } catch {
-                failExport(error)
-            }
+            } catch { self?.failExport(error) }
+        }
+    }
+
+    private enum ExportKind {
+        case pdf, source(String), zip
+    }
+
+    /// Input contains only copied values; no document is retained across await.
+    /// The private performers do not re-enter beginExport after staging.
+    private func stage(_ input: OperationSnapshotInput, kind: ExportKind) {
+        Task { @MainActor [weak self] in
+            do {
+                let snapshot = try await Task.detached(priority: .userInitiated) {
+                    try OperationSnapshot.capture(input)
+                }.value
+                guard let self, !Task.isCancelled else { return }
+                switch kind {
+                case .pdf: performPDF(snapshot: snapshot)
+                case .source(let fileName): performTypSource(snapshot: snapshot, fileName: fileName)
+                case .zip: performZip(snapshot: snapshot)
+                }
+            } catch { self?.failExport(error) }
         }
     }
 
