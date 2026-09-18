@@ -45,6 +45,72 @@ struct OperationSnapshotTests {
         #expect(try String(contentsOf: b, encoding: .utf8) == "new chapter")
     }
 
+    @Test(.timeLimit(.minutes(1))) func actualSaveDuringCompilerCaptureRecoversWithoutResubmission() async throws {
+        let f = try Fixture()
+        defer { f.remove() }
+        let project = f.root.appendingPathComponent("project")
+        let document = InkPondDocument(title: "Automatic capture recovery")
+        let registry = ProjectReliabilityWriterRegistry()
+        let projectID = document.stableProjectID
+        let metadata = try ProjectReliabilityPaths.privateMetadataRoot(projectID: projectID)
+        defer { try? FileManager.default.removeItem(at: metadata) }
+        func request(_ text: String) -> ProjectReliabilityWriteRequest {
+            .init(rootURL: project, backendKind: .local, projectID: projectID,
+                  displayName: document.title, entryRelativePath: "main.typ",
+                  relativePath: "main.typ", data: Data(text.utf8))
+        }
+        try await registry.write(request("old entry on disk"))
+        var value = f.input
+        value.source = "frozen editor with image"
+        value.textOverlays = ["main.typ": value.source]
+        let reached = AsyncStream<Void>.makeStream()
+        let completed = AsyncStream<String>.makeStream()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let observations = RecoveryCaptureObservations()
+        let staging = f.staging
+        let compiler = TypstCompiler(compileWorker: { source, _, _, _ in
+            completed.continuation.yield(source)
+            completed.continuation.finish()
+            return .failure(.compilerNotLinked) // worker reach, not a fake native result
+        }, snapshotStager: { input in
+            let attempt = observations.beginAttempt()
+            do {
+                var limits = SnapshotCaptureLimits()
+                limits.maximumSeconds = 60
+                let snapshot = try OperationSnapshot.capture(input, limits: limits, stagingParent: staging) { point in
+                    guard attempt == 1, case .projectCopied = point else { return }
+                    reached.continuation.yield(())
+                    reached.continuation.finish()
+                    guard release.wait(timeout: .now() + 30) == .success else {
+                        throw SnapshotCaptureError.limitExceeded
+                    }
+                }
+                #expect(snapshot.source == "frozen editor with image")
+                #expect(try String(contentsOf: snapshot.projectRoot.appendingPathComponent("main.typ"), encoding: .utf8) == snapshot.source)
+                return snapshot
+            } catch {
+                if case SnapshotCaptureError.inputChanged = error {
+                    observations.recordInputChanged()
+                    print("[M2CaptureRecovery] actual entry save caused capture/inputChanged; automatic recovery follows")
+                }
+                throw error
+            }
+        })
+        compiler.compile(input: value, mode: .immediate)
+        var starts = reached.stream.makeAsyncIterator()
+        #expect(await starts.next() != nil)
+        do { try await registry.write(request("completed autosave on disk")) }
+        catch { release.signal(); compiler.cancel(); await registry.close(projectID: projectID, rootURL: project); throw error }
+        release.signal()
+        var results = completed.stream.makeAsyncIterator()
+        #expect(await results.next() == "frozen editor with image")
+        #expect(observations.counts == [2, 1])
+        print("[M2CaptureRecovery] two capture attempts, one classified rejection, worker reached without another compile submission")
+        compiler.cancel()
+        await registry.close(projectID: projectID, rootURL: project)
+    }
+
     enum AppMutation: Sendable, CaseIterable {
         case editorSave, replaceImage, addImage
     }
@@ -319,4 +385,13 @@ struct OperationSnapshotTests {
         }
         func remove() { try? FileManager.default.removeItem(at: root) }
     }
+}
+
+nonisolated private final class RecoveryCaptureObservations: @unchecked Sendable {
+    private let lock = NSLock()
+    private var attempts = 0
+    private var changed = 0
+    func beginAttempt() -> Int { lock.withLock { attempts += 1; return attempts } }
+    func recordInputChanged() { lock.withLock { changed += 1 } }
+    var counts: [Int] { lock.withLock { [attempts, changed] } }
 }

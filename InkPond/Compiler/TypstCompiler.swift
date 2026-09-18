@@ -62,6 +62,8 @@ private typealias PreviewPackageReference = (name: String, version: String, spec
 @Observable
 final class TypstCompiler {
     nonisolated private static let compileDelay = Duration.milliseconds(350)
+    nonisolated private static let captureRetryDelay = Duration.milliseconds(150)
+    nonisolated private static let maximumCaptureRetries = 2
     nonisolated private static let errorVisibilityDelay = Duration.seconds(1)
     nonisolated private static let compileTimeout = Duration.seconds(30)
     nonisolated private static let uncachedPreviewPackageCompileTimeout = Duration.seconds(120)
@@ -216,17 +218,26 @@ final class TypstCompiler {
         stagingGeneration = intent.generation
         let stager = snapshotStager
         let preparer = snapshotPreparer
+        let sleep = self.sleep
         let task = Task.detached(priority: Self.taskPriority(for: intent.mode)) {
             do {
                 try Task.checkCancellation()
                 let snapshot: OperationSnapshot
                 if let captured = intent.snapshot { snapshot = captured }
-                else if let input = intent.input { snapshot = try stager(input) }
+                else if let input = intent.input {
+                    snapshot = try await Self.captureWithRecovery(input, stager: stager, sleep: sleep)
+                }
                 else { throw SnapshotCaptureError.unsupportedInput }
                 defer { withExtendedLifetime(snapshot) {} }
                 try Task.checkCancellation()
                 let prepared: TypstPreparedInput
-                if let preparer { prepared = .sealed(try preparer(snapshot)) }
+                if let preparer {
+                    do { prepared = .sealed(try preparer(snapshot)) }
+                    catch {
+                        Self.recordStagingFailure(error, phase: "preparation", attempt: 1, retry: false)
+                        throw error
+                    }
+                }
                 else { prepared = .injectedWorker(snapshot) }
                 try Task.checkCancellation()
                 return Result<TypstPreparedInput, Error>.success(prepared)
@@ -275,6 +286,50 @@ final class TypstCompiler {
             self.startStagingIfNeeded()
             self.refreshCompileQueuedState()
         }
+    }
+
+    /// Retry only a rejected live capture, never preparation or an accepted seal.
+    /// The detached task keeps the physical slot throughout the delay; every
+    /// attempt uses this same value (including overlays, settings and time).
+    nonisolated private static func captureWithRecovery(
+        _ input: OperationSnapshotInput, stager: TypstSnapshotStager, sleep: TypstCompilerSleep
+    ) async throws -> OperationSnapshot {
+        var attempt = 1
+        while true {
+            try Task.checkCancellation()
+            do { return try stager(input) }
+            catch {
+                let changed: Bool
+                if case SnapshotCaptureError.inputChanged = error { changed = true }
+                else { changed = false }
+                let retry = changed && attempt <= maximumCaptureRetries && !Task.isCancelled
+                recordStagingFailure(error, phase: "capture", attempt: attempt, retry: retry)
+                guard retry else { throw error }
+                try await sleep(captureRetryDelay)
+                // Also check after clocks which do not cooperate with cancellation.
+                try Task.checkCancellation()
+                attempt += 1
+            }
+        }
+    }
+
+    nonisolated private static func recordStagingFailure(
+        _ error: Error, phase: String, attempt: Int, retry: Bool
+    ) {
+        let kind: String
+        switch error {
+        case SnapshotCaptureError.inputChanged: kind = "inputChanged"
+        case SnapshotCaptureError.limitExceeded: kind = "limitExceeded"
+        case SnapshotCaptureError.unsupportedInput: kind = "unsupportedInput"
+        case is CancellationError: kind = "cancelled"
+        case TypstBridgeError.snapshotFailed(let status, _): kind = "nativeStatus.\(status.rawValue)"
+        case is CocoaError: kind = "fileIO"
+        default: kind = "other"
+        }
+        // Do not log source, paths, localized errors or native messages.
+        Diagnostics.record(.compiler, "snapshot.\(phase).failure", metadata: [
+            "errorKind": kind, "attempt": String(attempt), "retry": String(retry)
+        ])
     }
 
     func compile(snapshot: OperationSnapshot, mode: TypstCompileMode = .debounced) {
