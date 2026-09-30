@@ -2192,6 +2192,47 @@ struct InkPondTests {
     }
 
     @MainActor
+    @Test func readOnlyAccessoryAndInsertionRequestCannotMutateEditor() {
+        let (window, textView) = makeHostedTextView()
+        defer { window.isHidden = true }
+        textView.text = "original"
+        textView.isEditable = false
+        let accessory = KeyboardAccessoryView(textView: textView)
+        var snippetOpened = false
+        accessory.onSnippetButtonTapped = { snippetOpened = true }
+        func buttons(in view: UIView) -> [UIButton] {
+            ([view as? UIButton].compactMap { $0 }) + view.subviews.flatMap { buttons(in: $0) }
+        }
+        let controls = buttons(in: accessory)
+        let symbol = controls.first { $0.accessibilityLabel == L10n.keyboardSymbolAccessibilityLabel(for: "*") }
+        let snippet = controls.first { $0.accessibilityLabel == L10n.a11yKeyboardSnippetLabel }
+        #expect(symbol != nil && snippet != nil)
+        symbol?.sendActions(for: .primaryActionTriggered)
+        snippet?.sendActions(for: .primaryActionTriggered)
+        #expect(textView.text == "original")
+        #expect(!snippetOpened)
+
+        var text = "original"
+        var insertionRequest: EditorInsertionRequest?
+        var findRequested = false
+        var viewState = EditorViewState()
+        var cursorJumpOffset: Int?
+        let editor = EditorView(
+            text: Binding(get: { text }, set: { text = $0 }),
+            insertionRequest: Binding(get: { insertionRequest }, set: { insertionRequest = $0 }),
+            findRequested: Binding(get: { findRequested }, set: { findRequested = $0 }),
+            viewState: Binding(get: { viewState }, set: { viewState = $0 }),
+            cursorJumpOffset: Binding(get: { cursorJumpOffset }, set: { cursorJumpOffset = $0 }),
+            isEditable: false
+        )
+        let coordinator = EditorView.Coordinator(editor)
+        coordinator.textView = textView
+        coordinator.insertText(EditorInsertionRequest(text: "snippet", targetRange: NSRange(location: 0, length: 0), targetFileName: "main.typ"))
+        #expect(text == "original")
+        #expect(textView.text == "original")
+    }
+
+    @MainActor
     @Test func editorCoordinatorIgnoresSelectionChangesDuringProgrammaticTextUpdate() {
         var text = "First line\nSecond line"
         var insertionRequest: EditorInsertionRequest?

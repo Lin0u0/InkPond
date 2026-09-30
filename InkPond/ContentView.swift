@@ -204,7 +204,7 @@ struct ContentView: View {
                             }
                         }
                     )
-                    .id(document.persistentModelID)
+                    .id(document.stableProjectID)
                     .transition(projectContentTransition)
                 } else {
                     ProjectHomeView(selectedDocument: documentListSelection, searchText: $searchText)

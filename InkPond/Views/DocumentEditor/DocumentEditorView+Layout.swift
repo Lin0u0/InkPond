@@ -2401,6 +2401,7 @@ extension DocumentEditorView {
             }
             .sheet(isPresented: $showingSnippetBrowser) {
                 SnippetBrowserSheet { snippet in
+                    guard projectWritableLease != nil else { return }
                     let (text, cursorOffset) = snippet.bodyWithCursorOffset()
                     let targetRange = NSRange(
                         location: editorViewState.selectedLocation,

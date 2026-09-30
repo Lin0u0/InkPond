@@ -29,6 +29,7 @@ final class KeyboardAccessoryView: UIView {
     var onSnippetButtonTapped: (() -> Void)?
     private let separator = UIView()
     private lazy var snippetButton = makeButton(systemImage: "text.badge.plus") { [weak self] in
+        guard self?.textView?.isEditable == true else { return }
         InteractionFeedback.impact(.light)
         self?.onSnippetButtonTapped?()
     }
@@ -258,8 +259,9 @@ final class KeyboardAccessoryView: UIView {
 
         for symbol in symbols {
             let button = makeButton(title: symbol.label) { [weak self] in
+                guard let textView = self?.textView, textView.isEditable else { return }
                 InteractionFeedback.selection()
-                self?.textView?.insertText(symbol.insert)
+                textView.insertText(symbol.insert)
             }
             button.accessibilityLabel = L10n.keyboardSymbolAccessibilityLabel(for: symbol.label)
             button.accessibilityHint = L10n.a11yKeyboardInsertHint

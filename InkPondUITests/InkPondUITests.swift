@@ -13,6 +13,7 @@ final class InkPondUITests: XCTestCase {
 
     private func launchApp(
         seedDocument: Bool = false,
+        inMemoryStore: Bool = true,
         environment: [String: String] = [:]
     ) -> XCUIApplication {
         app?.terminate()
@@ -20,10 +21,12 @@ final class InkPondUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [
             "UITEST_SKIP_ONBOARDING",
-            "UITEST_IN_MEMORY_STORE",
             "-ApplePersistenceIgnoreState",
             "YES"
         ]
+        if inMemoryStore {
+            app.launchArguments.append("UITEST_IN_MEMORY_STORE")
+        }
         if seedDocument {
             app.launchArguments.append("UITEST_SEED_SAMPLE_DOCUMENT")
         }
@@ -73,6 +76,67 @@ final class InkPondUITests: XCTestCase {
         XCTAssertTrue(app.buttons["document-list.settings"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["document-list.sort"].exists)
         XCTAssertTrue(app.buttons["document-list.add"].exists)
+    }
+
+    @MainActor
+    func testFirstCreatedDocumentAcceptsTypingSymbolsAndSnippetAfterReopen() throws {
+        // Exercise the real on-disk store: iOS 17's in-memory Core Data store can
+        // throw "No eligible connection available" during first insertion/save.
+        let app = launchApp(inMemoryStore: false)
+        let add = app.buttons["document-list.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+
+        let editor = app.textViews["editor.text-view"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.isEnabled, "New project must acquire the writable lease")
+        // Tap well inside the text area, away from the top close control.
+        let insertionPoint = editor.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.65))
+        let close = app.buttons["editor.close-project"]
+        XCTAssertFalse(close.frame.contains(insertionPoint.screenPoint), "Editor tap overlaps close button")
+        insertionPoint.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 4) else {
+            XCTFail("First-created editor did not expose a keyboard. UI: \(app.debugDescription)")
+            return
+        }
+        for key in ["a", "b", "c"] {
+            let button = app.keyboards.keys[key]
+            XCTAssertTrue(button.waitForExistence(timeout: 3), "Keyboard key \(key) is missing")
+            button.tap()
+        }
+        XCTAssertTrue(waitForEditor(editor, containing: "abc"))
+
+        let symbol = app.buttons["Insert asterisk"]
+        XCTAssertTrue(symbol.waitForExistence(timeout: 5))
+        symbol.tap()
+        XCTAssertTrue(waitForEditor(editor, containing: "abc*"))
+
+        let snippet = app.buttons["Insert snippet"]
+        XCTAssertTrue(snippet.waitForExistence(timeout: 5))
+        snippet.tap()
+        let basic = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Basic Document")).firstMatch
+        XCTAssertTrue(basic.waitForExistence(timeout: 5))
+        basic.tap()
+        XCTAssertTrue(waitForEditor(editor, containing: "#set page(paper: \"a4\")"))
+
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        let card = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "project-home.card.")
+        ).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        card.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForEditor(editor, containing: "abc*"))
+        XCTAssertTrue(waitForEditor(editor, containing: "#set page(paper: \"a4\")"))
+    }
+
+    private func waitForEditor(_ editor: XCUIElement, containing text: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@", text),
+            object: editor
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: 10) == .completed
     }
 
     @MainActor

@@ -98,12 +98,12 @@ struct EditorView: UIViewRepresentable {
         }
 
         // Apply insertions before cursor jumps so post-insert jumps run against the new buffer.
-        if let request = insertionRequest {
+        if let request = insertionRequest, textView.isEditable {
             let coordinator = context.coordinator
             Task { @MainActor in
-                guard self.insertionRequest?.id == request.id else { return }
-                self.insertionRequest = nil
+                guard self.insertionRequest?.id == request.id, textView.isEditable else { return }
                 coordinator.insertText(request)
+                self.insertionRequest = nil
             }
             return
         }
@@ -187,7 +187,7 @@ struct EditorView: UIViewRepresentable {
         }
 
         func insertText(_ request: EditorInsertionRequest) {
-            guard let textView else { return }
+            guard let textView, textView.isEditable else { return }
             let nsString = textView.text as NSString
             let safeLocation = min(max(0, request.targetRange.location), nsString.length)
             let safeLength = min(max(0, request.targetRange.length), nsString.length - safeLocation)

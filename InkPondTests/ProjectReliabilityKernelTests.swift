@@ -58,6 +58,22 @@ struct ProjectReliabilityKernelTests {
         #expect(document.stableProjectID == stableID)
     }
 
+    @Test func lateReleaseCannotStealTransferredWritableLease() async throws {
+        let coordinator = ProjectWritableLeaseCoordinator()
+        let projectID = ProjectID()
+        let first = try await coordinator.acquire(projectID: projectID)
+        let second = try await coordinator.transfer(first)
+        await first.release() // A disappearing old editor must not release its successor.
+        if case .readOnly = await coordinator.open(projectID: projectID) {
+            // The replacement still holds the writer lease.
+        } else {
+            Issue.record("Late release allowed a second writer")
+        }
+        await second.release()
+        let third = try await coordinator.acquire(projectID: projectID)
+        await third.release()
+    }
+
     @Test func pathPolicyRejectsTraversalAndSymlinkAncestors() throws {
         let fixture = try ReliabilityFixture()
         defer { fixture.remove() }
