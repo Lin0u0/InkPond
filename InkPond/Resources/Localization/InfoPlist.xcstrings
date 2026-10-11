@@ -4,6 +4,12 @@
     "CFBundleDisplayName" : {
       "comment" : "Bundle display name",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -33,6 +39,12 @@
     "CFBundleName" : {
       "comment" : "Bundle name",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -61,6 +73,12 @@
     },
     "Typst document" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst-Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
