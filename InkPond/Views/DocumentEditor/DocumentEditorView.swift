@@ -31,6 +31,7 @@ struct DocumentEditorView: View {
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.modelContext) var modelContext
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(ThemeManager.self) var themeManager
     @Environment(EditorFontSettings.self) var editorFontSettings
 
@@ -61,11 +62,31 @@ struct DocumentEditorView: View {
     let editorTab:Int = 0
     let previewTab:Int = 1
     @State var selectedTab:Int = ProcessInfo.processInfo.environment["UITEST_START_IN_PREVIEW"] == "1" ? 1 : 0
+    @State var lastInteractedWorkspacePane: WorkspacePane?
     @State var pendingCompactSwipeFeedback = false
     @State var showingSlideshow = false
     @State var editorFraction: CGFloat = 0.5
+    @State var workspaceContainerWidth: CGFloat = 0
     @State var showingPhotoPicker = false
+    @State var commandTarget = EditorCommandTarget()
+    @State var sourceAccessoryUnderlap: CGFloat = 0
+    @State var commandGeometry: EditorCommandGeometry?
+    @State var commandGeometryDiagnosticSamples: [String] = []
+    @State var commandKeyboardDiagnosticPhase = "idle"
+    @State var commandKeyboardDiagnosticFrame: CGRect = .zero
+    @State var commandMoreShareAction: (() -> Void)?
+    @State var commandMoreShareLabel: String?
+    @State var commandPanel: EditorCommandPanel?
+    @State var commandAnchor: EditorCommandAnchor?
+    @State var commandPendingOpen: EditorCommandPendingOpen?
+    @State var commandKeyboardTransitionInFlight = false
+    @State var commandSearchDismissRequest = UUID()
+    @State var commandSearchFocused = false
+    @State var commandSessionSafety = EditorCommandSessionSafety()
+    @State var photoCommandAnchor: EditorCommandAnchor?
+    @State var showingEditorNames = false
     @State var showingFileBrowser = false
+    @State var projectTabRevealRequest = UUID()
     @State var showingProjectSettings = false
     @State var showingConflictWarning = false
     @State var conflictFileName: String = ""
@@ -108,7 +129,6 @@ struct DocumentEditorView: View {
     @State var compilationErrorLines: Set<Int> = []
     @State var showingKeyboardShortcuts = false
     @State var showingOutline = false
-    @State var showingSnippetBrowser = false
     @State var showingExternalFolderLinkImporter = false
     @State var showingProjectFileImporter = false
     @State var showingNewProjectFileAlert = false

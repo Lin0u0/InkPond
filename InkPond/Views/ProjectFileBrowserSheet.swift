@@ -56,10 +56,15 @@ struct ProjectFileBrowserSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("Done")) { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label(L10n.tr("Done"), systemImage: "checkmark")
+                    }
+                    .accessibilityIdentifier("project-files.done")
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 }

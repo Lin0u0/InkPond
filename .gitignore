@@ -32,7 +32,8 @@ target/
 # build-ios.sh keeps this Cargo cache for faster Typst FFI rebuilds.
 rust-ffi/target/
 Cargo.lock
-!Cargo.lock  # Keep Cargo.lock for binary crates, remove this line if it's a library
+# Keep the native wrapper's dependency lockfile in cloud build uploads.
+!rust-ffi/Cargo.lock
 *.rs.bk
 
 # Generated Rust FFI output

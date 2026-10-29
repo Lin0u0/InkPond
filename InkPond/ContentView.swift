@@ -160,7 +160,16 @@ struct ContentView: View {
         .environment(appAppearanceManager)
     }
 
+    private var isWorkspaceFixturePreviewBuild: Bool {
+#if DEBUG && WORKSPACE_FIXTURE_PREVIEW
+        true
+#else
+        false
+#endif
+    }
+
     private var shouldSkipOnboardingForUITests: Bool {
+        if isWorkspaceFixturePreviewBuild { return true }
         let processInfo = ProcessInfo.processInfo
         return processInfo.arguments.contains("UITEST_SKIP_ONBOARDING")
             || processInfo.environment["UITEST_SKIP_ONBOARDING"] == "1"
@@ -380,6 +389,7 @@ struct ContentView: View {
     }
 
     private var shouldSeedUITestDocument: Bool {
+        if isWorkspaceFixturePreviewBuild { return true }
         let processInfo = ProcessInfo.processInfo
         return processInfo.arguments.contains("UITEST_SEED_SAMPLE_DOCUMENT")
             || processInfo.environment["UITEST_SEED_SAMPLE_DOCUMENT"] == "1"
@@ -505,22 +515,57 @@ struct ContentView: View {
         )
         let existingDocuments = (try? modelContext.fetch(descriptor)) ?? []
 
-        if let existingSeed = existingDocuments.first(where: { $0.title == L10n.uiTestSampleDocumentTitle }) {
+        let resetsWorkspaceFixture = ProcessInfo.processInfo.environment["UITEST_WORKSPACE_FIXTURE"] == "1"
+        let workspaceFixture = resetsWorkspaceFixture || isWorkspaceFixturePreviewBuild
+        let seedTitle = workspaceFixture ? "UI Workspace Multipage Fixture" : L10n.uiTestSampleDocumentTitle
+        if workspaceFixture, !resetsWorkspaceFixture,
+           let existingFixture = existingDocuments.first(where: { $0.title == seedTitle }) {
+            // Opt-in simulator preview builds seed once. Preserve disk edits and
+            // project identity across relaunch, pose changes and binary upgrades.
+            selectedDocument = existingFixture
+            return
+        }
+        if resetsWorkspaceFixture {
+            // Reset only this fixture, never ordinary user projects. Relaunch without
+            // seeding to inspect saved edits rather than replacing them.
+            for old in existingDocuments where old.title == seedTitle {
+                try? ProjectFileManager.deleteProjectDirectory(for: old)
+                modelContext.delete(old)
+            }
+            // Commit deletion before insertion and do not select a deleted
+            // object from the pre-reset fetch snapshot below.
+            do { try modelContext.save() } catch { return }
+        }
+        if !workspaceFixture,
+           let existingSeed = existingDocuments.first(where: { $0.title == seedTitle }) {
             selectedDocument = existingSeed
             return
         }
 
-        let document = InkPondDocument(title: L10n.uiTestSampleDocumentTitle, content: "")
-        document.projectID = ProjectFileManager.uniqueFolderName(for: document.title)
+        let document = InkPondDocument(title: seedTitle, content: "")
+        if workspaceFixture {
+            document.entryFileName = UITestWorkspaceFixture.fileNames[0]
+        }
+        document.projectID = workspaceFixture
+            ? "ui-workspace-fixture-\(UUID().uuidString)"
+            : ProjectFileManager.uniqueFolderName(for: document.title)
 
         do {
             try ProjectFileManager.createInitialProject(for: document)
             try ProjectFileManager.writeTypFile(
                 named: document.entryFileName,
-                content: uiTestSampleDocumentContent,
+                content: workspaceFixture ? UITestWorkspaceFixture.content(fileIndex: 1) : uiTestSampleDocumentContent,
                 for: document
             )
+            if workspaceFixture {
+                for (index, name) in UITestWorkspaceFixture.fileNames.enumerated().dropFirst() {
+                    try ProjectFileManager.writeTypFile(
+                        named: name, content: UITestWorkspaceFixture.content(fileIndex: index + 1), for: document
+                    )
+                }
+            }
             modelContext.insert(document)
+            try modelContext.save()
             selectedDocument = document
         } catch {
             try? ProjectFileManager.deleteProjectDirectory(for: document)
