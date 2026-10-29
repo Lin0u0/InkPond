@@ -15,7 +15,9 @@ final class GermanLocalizationFormatTests: XCTestCase {
 
     func testProductionSplitAccessibilityPercentFormattingInCurrentLocale() {
         let value = L10n.a11yEditorSplitValue(editorPercent: 35, previewPercent: 65)
-        XCTAssertTrue(value.contains("35%"), value)
-        XCTAssertTrue(value.contains("65%"), value)
+        // English intentionally spells out "percent"; other supported locales use "%".
+        XCTAssertTrue(value.contains("35"), value)
+        XCTAssertTrue(value.contains("65"), value)
+        XCTAssertTrue(value.contains("%") || value.contains("percent"), value)
     }
 }
