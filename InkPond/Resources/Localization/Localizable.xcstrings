@@ -4,6 +4,12 @@
     "a11y.cache_refresh.started" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paket-Caches löschen und erneut kompilieren."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -33,6 +39,12 @@
     "a11y.compile.failed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilierung fehlgeschlagen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -62,6 +74,12 @@
     "a11y.compile.success" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilierung erfolgreich."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -91,6 +109,12 @@
     "a11y.document_list.add.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt ein neues Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -120,6 +144,12 @@
     "a11y.document_list.add.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokument erstellen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -149,6 +179,12 @@
     "a11y.document_list.settings.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet App Einstellungen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -178,6 +214,12 @@
     "a11y.document_list.settings.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen öffnen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -207,6 +249,12 @@
     "a11y.document_row.action.delete" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -236,6 +284,12 @@
     "a11y.document_row.action.export_source" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelldateien exportieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -265,6 +319,12 @@
     "a11y.document_row.action.rename" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -294,6 +354,12 @@
     "a11y.document_row.action.share_pdf" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF teilen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -323,6 +389,12 @@
     "a11y.document_row.action.unlink" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlinkung aufheben"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -352,6 +424,12 @@
     "a11y.document_row.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet ein Dokument. Weitere Aktionen sind verfügbar."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -381,6 +459,12 @@
     "a11y.document_row.label_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Erstellt %2$@. Geändert %3$@."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -410,6 +494,12 @@
     "a11y.document.created" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erstellt."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -439,6 +529,12 @@
     "a11y.document.imported" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ importiert."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -468,6 +564,12 @@
     "a11y.editor.menu.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt Aktionen für Projekt, Kompilierung und Folienpräsentation an."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -497,6 +599,12 @@
     "a11y.editor.menu.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Aktionen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -526,6 +634,12 @@
     "a11y.editor.share.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportiert das aktuelle Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -555,6 +669,12 @@
     "a11y.editor.share.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -584,6 +704,12 @@
     "a11y.editor.split.action.reset" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung zurücksetzen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -613,6 +739,12 @@
     "a11y.editor.split.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passt die Aufteilung zwischen Editor und Vorschau an."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -642,6 +774,12 @@
     "a11y.editor.split.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trennlinie zwischen Editor und Vorschau"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -671,6 +809,12 @@
     "a11y.editor.split.value_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editor %1$d%, Vorschau %2$d%"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -700,6 +844,12 @@
     "a11y.editor.text.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editiert die aktuelle Typst Datei."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -729,6 +879,12 @@
     "a11y.editor.text.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst-Editor"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -758,6 +914,12 @@
     "a11y.export.ready" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export ist bereit."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -787,6 +949,12 @@
     "a11y.keyboard.insert.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügt dieses Symbol in den Editor ein."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -816,6 +984,12 @@
     "a11y.keyboard.photo.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Bild zum einfügen aus."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -845,6 +1019,12 @@
     "a11y.keyboard.photo.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -874,6 +1054,12 @@
     "a11y.keyboard.redo.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederhole die letzte rückgängig gemachte Änderung."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -903,6 +1089,12 @@
     "a11y.keyboard.redo.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederholen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -932,6 +1124,12 @@
     "a11y.keyboard.snippet.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippets durchsuchen und einfügen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -961,6 +1159,12 @@
     "a11y.keyboard.snippet.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippet einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -990,6 +1194,12 @@
     "a11y.keyboard.symbol.asterisk" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sternchen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1019,6 +1229,12 @@
     "a11y.keyboard.symbol.at_sign" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At-Zeichen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1048,6 +1264,12 @@
     "a11y.keyboard.symbol.dollar" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dollarzeichen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1077,6 +1299,12 @@
     "a11y.keyboard.symbol.equals" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gleichheitszeichen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1106,6 +1334,12 @@
     "a11y.keyboard.symbol.hash" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raute einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1135,6 +1369,12 @@
     "a11y.keyboard.symbol.left_angle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleiner-Zeichen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1164,6 +1404,12 @@
     "a11y.keyboard.symbol.left_brace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linke geschweifte Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1193,6 +1439,12 @@
     "a11y.keyboard.symbol.left_bracket" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linke eckige Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1222,6 +1474,12 @@
     "a11y.keyboard.symbol.left_parenthesis" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linke Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1251,6 +1509,12 @@
     "a11y.keyboard.symbol.right_angle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größer-Zeichen einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1280,6 +1544,12 @@
     "a11y.keyboard.symbol.right_brace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechte geschweifte Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1309,6 +1579,12 @@
     "a11y.keyboard.symbol.right_bracket" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechte eckige Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1338,6 +1614,12 @@
     "a11y.keyboard.symbol.right_parenthesis" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechte Klammer einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1367,6 +1649,12 @@
     "a11y.keyboard.symbol.slash" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slash einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1396,6 +1684,12 @@
     "a11y.keyboard.symbol.tab" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrückung einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1425,6 +1719,12 @@
     "a11y.keyboard.symbol.underscore" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterstrich einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1454,6 +1754,12 @@
     "a11y.keyboard.undo.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Änderung rückgängig machen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1483,6 +1789,12 @@
     "a11y.keyboard.undo.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängig"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1512,6 +1824,12 @@
     "a11y.preview.close" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau schließen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1541,6 +1859,12 @@
     "a11y.preview.error.label_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1570,6 +1894,12 @@
     "a11y.preview.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die kompilierte Dokumentenvorschau an."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1599,6 +1929,12 @@
     "a11y.preview.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1628,6 +1964,12 @@
     "a11y.preview.placeholder.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beginne zu tippen, um eine Vorschau zu generieren."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1657,6 +1999,12 @@
     "a11y.preview.placeholder.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau-Platzhalter"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1686,6 +2034,12 @@
     "a11y.preview.value.empty" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Vorschau"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1715,6 +2069,12 @@
     "a11y.preview.value.error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau enthält einen Kompilier-Fehler"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1744,6 +2104,12 @@
     "a11y.preview.value.ready" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau verfügbar"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1773,6 +2139,12 @@
     "a11y.project_files.add_menu.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt eine neue Typst-Datei oder importiert Dateien."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1802,6 +2174,12 @@
     "a11y.project_files.add_menu.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdatei hinzufügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1831,6 +2209,12 @@
     "a11y.project_files.kind.file" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1860,6 +2244,12 @@
     "a11y.project_files.kind.folder" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1889,6 +2279,12 @@
     "a11y.project_files.kind.font" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftart"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1918,6 +2314,12 @@
     "a11y.project_files.kind.image" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1947,6 +2349,12 @@
     "a11y.project_files.kind.reference" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei referenzieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1976,6 +2384,12 @@
     "a11y.project_files.kind.typ" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst-Datei"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2005,6 +2419,12 @@
     "a11y.project_files.refresh_linked_folder.hint" : {
       "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überprüft den verknüpften Ordner auf geänderte Dateien und aktualisiert die Vorschau."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2034,6 +2454,12 @@
     "a11y.project_files.row.file.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2063,6 +2489,12 @@
     "a11y.project_files.row.folder.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner, %@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2092,6 +2524,12 @@
     "a11y.project_files.row.hint.expand" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelt tippen, um diesen Ordner zu erweitern oder zu reduzieren."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2121,6 +2559,12 @@
     "a11y.project_files.row.hint.open" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelt tippen, um diese Datei zu öffnen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2150,6 +2594,12 @@
     "a11y.project_files.row.hint.preview" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelt tippen, um eine Vorschau dieser Datei anzuzeigen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2179,6 +2629,12 @@
     "a11y.project_files.settings.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt Einstellungen für das aktuelle Projekt an"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2208,6 +2664,12 @@
     "a11y.project_files.settings.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekteinstellungen öffnen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2237,6 +2699,12 @@
     "a11y.project_files.sidebar.hide.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdateien ausblenden"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2266,6 +2734,12 @@
     "a11y.project_files.sidebar.show.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdateien anzeigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2295,6 +2769,12 @@
     "a11y.settings.header.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond App-Informationen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2324,6 +2804,12 @@
     "a11y.settings.header.value" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2353,6 +2839,12 @@
     "a11y.settings.header.value_with_typst" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2382,6 +2874,12 @@
     "a11y.sort.changed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortierung auf %@ aktualisiert."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2411,6 +2909,12 @@
     "a11y.sort.value_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2440,6 +2944,12 @@
     "a11y.state.collapsed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reduziert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2469,6 +2979,12 @@
     "a11y.state.expanded" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweitert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2498,6 +3014,12 @@
     "a11y.state.selected" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewählt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2527,6 +3049,12 @@
     "Acknowledgements" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Danksagung"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2550,6 +3078,12 @@
     "action.delete" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2579,6 +3113,12 @@
     "action.find_replace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen & Ersetzen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2608,6 +3148,12 @@
     "action.insert_image" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2637,6 +3183,12 @@
     "action.insert_snippet" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippet einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2666,6 +3218,12 @@
     "action.typing" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2695,6 +3253,12 @@
     "action.unlink" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlinkung aufheben"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2724,6 +3288,12 @@
     "Add Font…" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftart hinzufügen…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2747,6 +3317,12 @@
     "alert.delete_document.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird dauerhaft gelöscht"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2776,6 +3352,12 @@
     "alert.unlink_document.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Verknüpfung zu „%@“ wird aufgehoben. Die Originaldateien werden nicht gelöscht."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2805,6 +3387,12 @@
     "App Appearance" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2828,6 +3416,12 @@
     "app_fonts.alert.error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftartenfehler"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2857,6 +3451,12 @@
     "app_fonts.export_warning.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt-Zip exportiert nur das Projektverzeichnis. App-, System- und installierte Schriftarten sind nicht enthalten und müssen auf dem Zielsystem vorhanden sein."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2886,6 +3486,12 @@
     "app_fonts.export_warning.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Externe Schriftarten nicht enthalten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2915,6 +3521,12 @@
     "app_fonts.overview.detail" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importierte App-Schriftarten stehen für jedes Projekt zur Verfügung. System- und installierte Schriftarten können verwendet werden, wenn ein Dokument auf sie verweist. Beim ZIP-Export werden App-, System- oder installierte Schriftarten nicht in das Archiv eingebunden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2944,6 +3556,12 @@
     "app_fonts.overview.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Schriftarten stehen für jedes Projekt zur Verfügung."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2973,6 +3591,12 @@
     "app_fonts.summary.built_in_only" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur enthaltene"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3002,6 +3626,12 @@
     "app_fonts.summary.imported" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d importiert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3031,6 +3661,12 @@
     "app_fonts.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Schriftarten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3060,6 +3696,12 @@
     "app.name" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3089,6 +3731,12 @@
     "Appearance" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3112,6 +3760,12 @@
     "Auto" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3135,6 +3789,12 @@
     "beta_diagnostics.available_storage" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbarer Speicher"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3164,6 +3824,12 @@
     "beta_diagnostics.copied" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung kopiert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3193,6 +3859,12 @@
     "beta_diagnostics.copy_summary" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostik-Informationen kopieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3222,6 +3894,12 @@
     "beta_diagnostics.distribution" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verteilung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3251,6 +3929,12 @@
     "beta_diagnostics.footer" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge diese Zusammenfassung beim Melden von Stillstand, Fehler beim iCloud-Download oder einen Absturz in das TestFlight-Feedback ein. Sie enthält nur Metadaten, keine Dokumentinhalte."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3280,6 +3964,12 @@
     "beta_diagnostics.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt TestFlight-Diagnosedaten an, die bei der Untersuchung von Systemstillständen, iCloud-Downloads, Abstürzen und Speicherplatzengpässen helfen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3309,6 +3999,12 @@
     "beta_diagnostics.icloud" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3338,6 +4034,12 @@
     "beta_diagnostics.icloud.local" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokaler Speichermodus"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3367,6 +4069,12 @@
     "beta_diagnostics.icloud.no_items" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine überwachten iCloud-Objekte"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3396,6 +4104,12 @@
     "beta_diagnostics.icloud.summary_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d aktuell, %d herunterladen, %d hochladen, %d nicht heruntergeladen, %d Fehler"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3425,6 +4139,12 @@
     "beta_diagnostics.last_open_session" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Sitzung öffnen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3454,6 +4174,12 @@
     "beta_diagnostics.metrickit" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MetricKit-Diagnose"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3483,6 +4209,12 @@
     "beta_diagnostics.metrickit.empty" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine MetricKit-Diagnosedaten empfangen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3512,6 +4244,12 @@
     "beta_diagnostics.none" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3541,6 +4279,12 @@
     "beta_diagnostics.overview" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersicht"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3570,6 +4314,12 @@
     "beta_diagnostics.recent_events" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kürzliche Events"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3599,6 +4349,12 @@
     "beta_diagnostics.recent_events.empty" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bisher wurden keine Diagnoseereignisse aufgezeichnet."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3628,6 +4384,12 @@
     "beta_diagnostics.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta-Diagnostik"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3657,6 +4419,12 @@
     "beta_diagnostics.version" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3686,6 +4454,12 @@
     "built-in" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthalten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3709,6 +4483,12 @@
     "Bundled CJK fonts used as default fallbacks in InkPond." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gebündelte CJK-Schriftarten, die in InkPond als Standard-Fallback dienen."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3732,6 +4512,12 @@
     "Bundled fonts are always available in Typst by their listed names." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitgelieferte Schriftarten sind in Typst jederzeit unter ihren aufgeführten Namen verfügbar."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3755,6 +4541,12 @@
     "Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3778,6 +4570,12 @@
     "Cache Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache-Fehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3801,6 +4599,12 @@
     "Cached Documents" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischengespeicherte Dokumente"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3824,6 +4628,12 @@
     "Cached Fonts" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischengespeicherte Schriftarten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3847,6 +4657,12 @@
     "Cached Packages" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischengespeicherte Pakete"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3870,6 +4686,12 @@
     "Cancel" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3893,6 +4715,12 @@
     "Changes apply to the editor only. Typst document output still follows the fonts declared in your source." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Änderungen betreffen nur den Editor. Die Ausgabe des Typst-Dokuments richtet sich weiterhin nach den im Quelltext definierten Schriftarten."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3916,6 +4744,12 @@
     "Choose Entry File" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstiegsdatei auswählen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3939,6 +4773,12 @@
     "Clear All" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles löschen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3962,6 +4802,12 @@
     "Clear All Compile Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten Kompilier-Cache löschen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3985,6 +4831,12 @@
     "Clear All Compile Cache?" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten Kompilier-Cache löschen?"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4008,6 +4860,12 @@
     "Clear All Package Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten Pakete-Cache löschen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4031,6 +4889,12 @@
     "Clear All Package Cache?" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten Pakete-Cache löschen?"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4054,6 +4918,12 @@
     "Clear System Font Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten System-Schriftarten-Cache leeren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4077,6 +4947,12 @@
     "Clear System Font Cache?" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamten System-Schriftarten-Cache leeren?"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4100,6 +4976,12 @@
     "Close" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4123,6 +5005,12 @@
     "Compilation Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilierfehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4146,6 +5034,12 @@
     "Compile Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilier-Cache"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4169,6 +5063,12 @@
     "Compile Now" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt kompilieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4192,6 +5092,12 @@
     "Compiling…" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilieren..."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4215,6 +5121,12 @@
     "Continue" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsetzen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4238,6 +5150,12 @@
     "Contributor" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitwirkende/r"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4261,6 +5179,12 @@
     "Contributors" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitwirkende"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4284,6 +5208,12 @@
     "Create" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4307,6 +5237,12 @@
     "Dark" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dunkel"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4330,6 +5266,12 @@
     "Delete" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4353,6 +5295,12 @@
     "Delete Document" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokument löschen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4376,6 +5324,12 @@
     "doc.list.action.link_external" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Externen Ordner verlinken"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4405,6 +5359,12 @@
     "doc.list.action.new" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4434,6 +5394,12 @@
     "doc.list.empty.action" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4463,6 +5429,12 @@
     "doc.list.empty.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelle ein neues Dokument, um mit dem Schreiben zu beginnen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4492,6 +5464,12 @@
     "doc.list.empty.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Dokumente"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4521,6 +5499,12 @@
     "doc.time.created" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4550,6 +5534,12 @@
     "doc.time.created_value" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt: %@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4579,6 +5569,12 @@
     "doc.time.modified" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geändert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4608,6 +5604,12 @@
     "doc.time.modified_value" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geändert: %@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4637,6 +5639,12 @@
     "doc.untitled.base" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbenannt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4666,6 +5674,12 @@
     "doc.untitled.numbered" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbenannt %d"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4695,6 +5709,12 @@
     "Documents" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumente"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4718,6 +5738,12 @@
     "Done" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4741,6 +5767,12 @@
     "Editing" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geöffnet"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4764,6 +5796,12 @@
     "Editor" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editor"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4787,6 +5825,12 @@
     "Editor Font" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editor-Schriftart"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4810,6 +5854,12 @@
     "Editor Theme" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editor-Design"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4833,6 +5883,12 @@
     "editor_font.preview_text" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#let title = \"InkPond\"\n= Hallo Typst\n#text(size: 12pt)[Vorschau]"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4862,6 +5918,12 @@
     "editor_font.size_value" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d pt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4891,6 +5953,12 @@
     "editor_font.styles_count" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Stile"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4920,6 +5988,12 @@
     "Enter a name for the new .typ file." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib einen Namen für die neue .typ-Datei ein."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4943,6 +6017,12 @@
     "Entry" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstieg"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4966,6 +6046,12 @@
     "Entry File" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstiegsdatei"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4989,6 +6075,12 @@
     "Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5012,6 +6104,12 @@
     "error.cache.unsafe_path" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Cache-Dateipfad ist ungültig"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5041,6 +6139,12 @@
     "error.datastore.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond konnte den Datenspeicher nicht öffnen. Versuche, die App neu zu starten. Sollte das Problem weiterhin bestehen, kann eine Neuinstallation helfen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5070,6 +6174,12 @@
     "error.datastore.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenspeicher konnte nicht geöffnet werden"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5099,6 +6209,12 @@
     "error.file.already_exists" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Datei mit dem Namen „%@“ existiert bereits."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5128,6 +6244,12 @@
     "error.file.cannot_delete_entry" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstiegsdatei kann nicht gelöscht werden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5157,6 +6279,12 @@
     "error.file.invalid_name" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültiger Dateiname: „%@“"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5186,6 +6314,12 @@
     "error.file.not_found" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei „%@“ konnte nicht gefunden werden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5215,6 +6349,12 @@
     "error.file.unsafe_path" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsicherer Pfad: „%@“"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5244,6 +6384,12 @@
     "error.font_resolution.missing_families" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlende Schriftarten: %@. Installiere sie systemweit, importiere sie als App-Schriftart oder füge sie dem Projekt hinzu."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5273,6 +6419,12 @@
     "error.font_resolution.unresolved_expression" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond kann derzeit nur wörtliche Typst-Schriftnamen auflösen. Ersetze in %1$@ den Platzhalter %2$@ durch einen in Anführungszeichen gesetzten Schriftfamiliennamen wie „PingFang SC“ oder durch ein Tupel solcher Namen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5302,6 +6454,12 @@
     "error.image.load_data_failed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Laden der Bilddaten ist fehlgeschlagen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5331,6 +6489,12 @@
     "error.image.process_failed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild konnte nicht verarbeitet werden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5360,6 +6524,12 @@
     "error.local_package.invalid_archive" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Paketarchiv konnte nicht entpackt werden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5389,6 +6559,12 @@
     "error.local_package.invalid_manifest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige typst.toml: %@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5418,6 +6594,12 @@
     "error.local_package.invalid_namespace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Namespace ist ungültig. Vermeide leere Werte und Pfadtrennzeichen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5447,6 +6629,12 @@
     "error.local_package.missing_manifest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Ordner enthält kein typst.toml-Manifest."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5476,6 +6664,12 @@
     "error.local_package.multiple_package_roots" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Archiv enthält mehr als ein Paketmanifest."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5505,6 +6699,12 @@
     "error.local_package.no_importable_items" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im ausgewählten Ordner wurden keine importierbaren Pakete gefunden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5534,6 +6734,12 @@
     "error.local_package.package_exists" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Paket existiert bereits unter %@."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5563,6 +6769,12 @@
     "error.local_package.storage_unavailable" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Verzeichnis für die Speicherung lokaler Pakete ist nicht verfügbar."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5592,6 +6804,12 @@
     "error.local_package.unsupported_archive" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht unterstützter Paketimport. Wähle einen Ordner oder ein Archiv im Format .zip, .tar, .tar.gz oder .tgz aus."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5621,6 +6839,12 @@
     "error.typst.compilation_timeout" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeitüberschreitung bei der Kompilierung."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5650,6 +6874,12 @@
     "error.typst.compiler_not_linked" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst-Compiler-Bibliothek nicht verlinkt. Führe rust-ffi/build-ios.sh aus."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5679,6 +6909,12 @@
     "error.typst.unknown_compilation" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannter Kompilierungsfehler"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5708,6 +6944,12 @@
     "error.zip.decompression_failed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dekompression fehlgeschlagen (zlib-Fehler %d)."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5737,6 +6979,12 @@
     "error.zip.invalid_data" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ZIP-Datei ist ungültig oder beschädigt."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5766,6 +7014,12 @@
     "error.zip.unsafe_path" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ZIP-Datei enthält einen unsicheren Pfad: „%@“."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5795,6 +7049,12 @@
     "error.zip.unsupported_method" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht unterstützte Komprimierungsmethode %d."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5824,6 +7084,12 @@
     "Export .typ" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ".typ exportieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5847,6 +7113,12 @@
     "Export Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportfehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5870,6 +7142,12 @@
     "Export Project as Zip" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt als Zip exportieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5893,6 +7171,12 @@
     "File Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dateifehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5916,6 +7200,12 @@
     "filename.typ" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dateiname.typ"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5939,6 +7229,12 @@
     "Follow System" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie System"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5962,6 +7258,12 @@
     "Font" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftart"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5985,6 +7287,12 @@
     "Font Directory" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftartenverzeichnis"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6008,6 +7316,12 @@
     "Font family" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftart"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6031,6 +7345,12 @@
     "Font Family" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftart"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6054,6 +7374,12 @@
     "Font Size" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftgröße"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6077,6 +7403,12 @@
     "font.copyName" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftnamen kopieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6106,6 +7438,12 @@
     "font.faces_count" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Schriftstile"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6135,6 +7473,12 @@
     "font.scope.app" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6164,6 +7508,12 @@
     "font.scope.built_in" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthalten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6193,6 +7543,12 @@
     "font.scope.project" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6222,6 +7578,12 @@
     "Fonts" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftarten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6245,6 +7607,12 @@
     "Format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6268,6 +7636,12 @@
     "Generated system font files stay local to this device and are excluded from iCloud Backup." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generierte Systemschriftartendateien verbleiben lokal auf diesem Gerät und sind vom iCloud-Backup ausgeschlossen."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6291,6 +7665,12 @@
     "Hide Details" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details ausblenden"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6314,6 +7694,12 @@
     "Hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6337,6 +7723,12 @@
     "icloud.additional_content_footer" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Einstellungen steuern, ob App-Schriftarten, lokale Pakete und Snippets in iCloud gespeichert werden, wenn die Projektsynchronisierung aktiviert ist."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6366,6 +7758,12 @@
     "icloud.additional_content_section" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusätzliche Inhalte"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6395,6 +7793,12 @@
     "icloud.conflict.keep_local" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behalte meine Änderungen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6424,6 +7828,12 @@
     "icloud.conflict.keep_remote" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze Version des anderen Gerätes"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6453,6 +7863,12 @@
     "icloud.conflict.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wurde auf einem anderen Gerät geändert, während es hier bearbeitet wurde. Wähle aus, welche Version beibehalten werden soll."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6482,6 +7898,12 @@
     "icloud.conflict.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei auf anderem Gerät geändert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6511,6 +7933,12 @@
     "icloud.download_all" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Dateien herunterladen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6540,6 +7968,12 @@
     "icloud.error.and_more" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "und %d weitere..."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6569,6 +8003,12 @@
     "icloud.error.document_downloading" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Dokument wird noch aus iCloud geladen. Versuche es in einem Moment erneut zu öffnen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6598,6 +8038,12 @@
     "icloud.error.download_timeout" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Dateien konnten nicht rechtzeitig aus der iCloud geladen werden. Bitte überprüfe deine Netzwerkverbindung und versuche es erneut."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6627,6 +8073,12 @@
     "icloud.error.no_network" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Netzwerkverbindung. Bitte überprüfe deine Internetverbindung und versuche es erneut."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6656,6 +8108,12 @@
     "icloud.error.partial_migration" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Projekte konnten nicht migriert werden. Du kannst es über die Einstellungen erneut versuchen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6685,6 +8143,12 @@
     "icloud.error.sync_issues_body" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Dateien konnten nicht mit iCloud synchronisiert werden. Dies kann an unzureichendem iCloud-Speicher, Netzwerkproblemen oder vorübergehenden Serverproblemen liegen. Überprüfe deinen iCloud-Speicher in den iOS-Einstellungen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6714,6 +8178,12 @@
     "icloud.error.sync_issues_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierungsprobleme erkannt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6743,6 +8213,12 @@
     "icloud.error.unavailable" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud ist nicht verfügbar. Bitte melde dich unter Einstellungen bei iCloud an."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6772,6 +8248,12 @@
     "icloud.error.verification_failed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Überprüfung der Migration für das Projekt „%@“ ist fehlgeschlagen. Die Kopie ist möglicherweise unvollständig."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6801,6 +8283,12 @@
     "icloud.keep_downloaded_tip" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für ein optimales Erlebnis öffne die Dateien-App, navigiere zum iCloud Drive, halte den Ordner „InkPond“ gedrückt und wähle „Laden und behalten“, um sicherzustellen, dass die Dateien jederzeit offline verfügbar sind."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6830,6 +8318,12 @@
     "icloud.migrating" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migriere Dateien…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6859,6 +8353,12 @@
     "icloud.restart_action" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond beenden"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6888,6 +8388,12 @@
     "icloud.restart_message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Änderung der iCloud-Synchronisierung erfordert einen Neustart von InkPond, damit die Änderung vollständig wirksam wird."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6917,6 +8423,12 @@
     "icloud.restart_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neustart erforderlich"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6946,6 +8458,12 @@
     "icloud.retry_migration" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migration erneut versuchen (%d fehlgeschlagen)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6975,6 +8493,12 @@
     "icloud.status_section" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierungsstatus"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7004,6 +8528,12 @@
     "icloud.status.checked" : {
       "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Dateien geprüft"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7033,6 +8563,12 @@
     "icloud.status.checking" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfe Synchronisierungsstatus…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7062,6 +8598,12 @@
     "icloud.status.downloading" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade %d Dateien…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7091,6 +8633,12 @@
     "icloud.status.error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Dateien mit Synchronisierungsfehlern"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7120,6 +8668,12 @@
     "icloud.status.no_files" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Dateien in iCloud"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7149,6 +8703,12 @@
     "icloud.status.not_downloaded" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Dateien nicht heruntergeladen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7178,6 +8738,12 @@
     "icloud.status.synced" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle %d Dateien synchronisiert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7207,6 +8773,12 @@
     "icloud.status.syncing" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisiere %d Dateien…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7236,6 +8808,12 @@
     "icloud.status.uploading" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade %d Dateien hoch…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7265,6 +8843,12 @@
     "icloud.summary.off" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7294,6 +8878,12 @@
     "icloud.summary.on" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7323,6 +8913,12 @@
     "icloud.sync_fonts_toggle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftarten synchronisieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7352,6 +8948,12 @@
     "icloud.sync_footer.off" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdateien verbleiben auf diesem Gerät. Aktiviere diese Option, um lokale Projekte in die iCloud zu verschieben und iCloud-Projekte anzuzeigen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7381,6 +8983,12 @@
     "icloud.sync_footer.on" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdateien werden im iCloud Drive gespeichert und über iCloud synchronisiert."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7410,6 +9018,12 @@
     "icloud.sync_packages_toggle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete synchronisieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7439,6 +9053,12 @@
     "icloud.sync_snippets_toggle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippets synchronisieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7468,6 +9088,12 @@
     "icloud.sync_toggle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekte synchronisieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7497,6 +9123,12 @@
     "icloud.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7526,6 +9158,12 @@
     "Image" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7549,6 +9187,12 @@
     "Image Directory" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildverzeichnis"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7572,6 +9216,12 @@
     "Image Import Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler beim Bildimport"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7595,6 +9245,12 @@
     "Image Insertion" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild einfügen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7618,6 +9274,12 @@
     "Images" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilder"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7641,6 +9303,12 @@
     "Import Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import-Fehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7664,6 +9332,12 @@
     "Import File" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei importieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7687,6 +9361,12 @@
     "Import Project" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt importieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7710,6 +9390,12 @@
     "Import ZIP" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ZIP importieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7733,6 +9419,12 @@
     "InkPond could not find any .typ files in this project." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond konnte in diesem Projekt keine .typ-Dateien finden."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7756,6 +9448,12 @@
     "Latte · Light" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latte · Hell"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7779,6 +9477,12 @@
     "Light" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hell"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7802,6 +9506,12 @@
     "local_packages.actions" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paketaktionen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7831,6 +9541,12 @@
     "local_packages.change_namespace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namensraum ändern"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7860,6 +9576,12 @@
     "local_packages.change_namespace_body" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschiebe dieses Paket in einen anderen Namespace, damit es über einen neuen Pfad der Form @namespace/name importieren werden kann."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7889,6 +9611,12 @@
     "local_packages.change_namespace_placeholder" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namensraum"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7918,6 +9646,12 @@
     "local_packages.change_namespace_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paket-Namensraum ändern"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7947,6 +9681,12 @@
     "local_packages.clear_all_button" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle entfernen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7976,6 +9716,12 @@
     "local_packages.clear_all_message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiermit werden alle installierten lokalen Pakete entfernt. Dokumente, die diese verwenden, lassen sich erst wieder kompilieren, nachdem die Pakete erneut importiert wurden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8005,6 +9751,12 @@
     "local_packages.clear_all_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle lokalen Pakete löschen?"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8034,6 +9786,12 @@
     "local_packages.empty" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine lokalen Pakete installiert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8063,6 +9821,12 @@
     "local_packages.import" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete importieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8092,6 +9856,12 @@
     "local_packages.import_detail" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein oder mehrere Paketarchive für den Import aus."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8121,6 +9891,12 @@
     "local_packages.import_folder" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordnerinhalt importieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8150,6 +9926,12 @@
     "local_packages.import_folder_detail" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle einen Ordner und importiere alle darin enthaltenen Pakete."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8179,6 +9961,12 @@
     "local_packages.import_tips.footer" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle mehrere Archive (.zip, .tar, .tar.gz) gleichzeitig für den Stapelimport aus oder wähle einen einzelnen Ordner. Jedes Paket muss eine `typst.toml`-Manifestdatei enthalten.\n\nEntpackte Paketordner können auch über die Dateien-App direkt in das Verzeichnis `LocalPackages` kopiert werden – sie werden automatisch erkannt."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8208,6 +9996,12 @@
     "local_packages.imported" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete importiert"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8237,6 +10031,12 @@
     "local_packages.imported_archive_note" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Archiv-Importe entpackt."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8266,6 +10066,12 @@
     "local_packages.imported_downloaded_note" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d iCloud-Objekte vor dem Import geladen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8295,6 +10101,12 @@
     "local_packages.imported_message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde erfolgreich importiert. Du kannst es jetzt in deinen Dokumenten verwenden."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8324,6 +10136,12 @@
     "local_packages.info_body" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importiere Paketordner oder .zip-, .tar-, .tar.gz- sowie .tgz-Archive, die ein typst.toml-Manifest enthalten. Verwende diese in Dokumenten mit #import \"@namespace/name:version\". Lege den Namespace unten fest oder füge ein namespace-Feld in der typst.toml hinzu, um die Einstellung für das jeweilige Paket zu überschreiben."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8353,6 +10171,12 @@
     "local_packages.info_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über lokale Pakete"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8382,6 +10206,12 @@
     "local_packages.namespace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard-Namensraum"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8411,6 +10241,12 @@
     "local_packages.namespace_hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird verwendet, wenn ein importiertes Paket keinen Namespace in der typst.toml deklariert."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8440,6 +10276,12 @@
     "local_packages.namespace_updated_message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ nach %2$@ verschoben"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8469,6 +10311,12 @@
     "local_packages.section_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installierte Pakete"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8498,6 +10346,12 @@
     "local_packages.status.changing_namespace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändere Namensraum für %@…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8527,6 +10381,12 @@
     "local_packages.status.importing" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importiere %@…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8556,6 +10416,12 @@
     "local_packages.status.scanning" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanne %@…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8585,6 +10451,12 @@
     "local_packages.success_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Pakete"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8614,6 +10486,12 @@
     "local_packages.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Pakete"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8643,6 +10521,12 @@
     "Manage Compile Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompilier-Cache verwalten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8666,6 +10550,12 @@
     "Manage Package Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete-Cache verwalten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8689,6 +10579,12 @@
     "Manage System Font Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System-Schriftarten-Cache verwalten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8712,6 +10608,12 @@
     "Mocha · Dark" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mocha · Dunkel"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8735,6 +10637,12 @@
     "Mode" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modus"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8758,6 +10666,12 @@
     "network.status.connected" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8787,6 +10701,12 @@
     "network.status.constrained" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden (limitiert)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8816,6 +10736,12 @@
     "network.status.disconnected" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Netzwerkverbindung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8845,6 +10771,12 @@
     "network.status.expensive" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden (Mobilfunk)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8874,6 +10806,12 @@
     "New .typ File" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue .typ-Datei"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8897,6 +10835,12 @@
     "New Source File" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Quelldatei"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8920,6 +10864,12 @@
     "No .typ files" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine .typ-Dateien"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8943,6 +10893,12 @@
     "No .typ Files Found" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine .typ-Dateien gefunden"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8966,6 +10922,12 @@
     "No cached @preview packages" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine zwischengespeicherten @preview Pakete"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8989,6 +10951,12 @@
     "No cached document previews" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine zwischengespeicherten Dokumentenvorschauen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9012,6 +10980,12 @@
     "No cached system fonts" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine zwischengespeicherten Systemschriften"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9035,6 +11009,12 @@
     "No Document Selected" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Dokument ausgewählt"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9058,6 +11038,12 @@
     "No files" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Dateien"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9081,6 +11067,12 @@
     "No fonts" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Schriftarten"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9104,6 +11096,12 @@
     "No images" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Bilder"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9127,6 +11125,12 @@
     "OK" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ok"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9150,6 +11154,12 @@
     "onboarding.action.get_started" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los geht's"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9179,6 +11189,12 @@
     "onboarding.action.get_started.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne die Dokumentbibliothek."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9208,6 +11224,12 @@
     "onboarding.continue.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächste Einführungsseite anzeigen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9237,6 +11259,12 @@
     "onboarding.editor.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syntax-Hervorhebung, Vervollständigungen, Snippets und eine Typst-Tastatur direkt am Text."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9266,6 +11294,12 @@
     "onboarding.editor.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schreib mit Typst"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9295,6 +11329,12 @@
     "onboarding.preview.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das kompilierte PDF und der Quellcode werden nebeneinander angezeigt, mit Synchronisierung per „Tap-to-Jump“."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9324,6 +11364,12 @@
     "onboarding.preview.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau während der Bearbeitung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9353,6 +11399,12 @@
     "onboarding.projects.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelldateien, Bilder, Schriftarten und ZIP-Exporte werden pro Dokument gemeinsam verwaltet."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9382,6 +11434,12 @@
     "onboarding.projects.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekte als Ganzes"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9411,6 +11469,12 @@
     "onboarding.welcome.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein fokussierter Typst-Arbeitsbereich zum Schreiben, Kompilieren und Verwalten ausgefeilter Dokumente auf iPad und iPhone."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9440,6 +11504,12 @@
     "onboarding.welcome.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InkPond"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9469,6 +11539,12 @@
     "Open" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9492,6 +11568,12 @@
     "outline.empty.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge im Typst-Dokument Überschriften mit = hinzu, um eine Gliederung zu sehen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9521,6 +11603,12 @@
     "outline.empty.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Überschriften"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9550,6 +11638,12 @@
     "outline.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gliederung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9579,6 +11673,12 @@
     "Overview" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersicht"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9602,6 +11702,12 @@
     "Package" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paket"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9625,6 +11731,12 @@
     "Package Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete-Zwischenspeicher"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9648,6 +11760,12 @@
     "Packages" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pakete"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9671,6 +11789,12 @@
     "Preview" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9694,6 +11818,12 @@
     "preview.external_link_required.button" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner verlinken"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9723,6 +11853,12 @@
     "preview.external_link_required.folder_mismatch" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der ausgewählte Ordner muss die geöffnete .typ-Datei enthalten."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9752,6 +11888,12 @@
     "preview.external_link_required.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Datei wurde als einzelne .typ-Datei geöffnet. Verknüpfe den zugehörigen Ordner, um Vorlagen, Bilder, Schriftarten und andere lokale Abhängigkeiten zu kompilieren."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9781,6 +11923,12 @@
     "preview.external_link_required.missing_source" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die geöffnete externe .typ-Datei ist nicht mehr verfügbar."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9810,6 +11958,12 @@
     "preview.external_link_required.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Externen Ordner mit der Vorschau verknüpfen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9839,6 +11993,12 @@
     "preview.stats.a11y.hint.collapsed" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelt tippen, um die Wort- und Zeichenanzahl anzuzeigen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9868,6 +12028,12 @@
     "preview.stats.a11y.hint.expanded" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelt tippen, um die zusätzlichen Statistiken einzuklappen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9897,6 +12063,12 @@
     "preview.stats.a11y.value.expanded" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9926,6 +12098,12 @@
     "preview.stats.characters" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Zeichen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9955,6 +12133,12 @@
     "preview.stats.characters.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeichen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9984,6 +12168,12 @@
     "preview.stats.loading" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechne Statistiken"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10013,6 +12203,12 @@
     "preview.stats.pages" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Seite/n"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10042,6 +12238,12 @@
     "preview.stats.tokens" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Token"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10071,6 +12273,12 @@
     "preview.stats.tokens.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10100,6 +12308,12 @@
     "preview.stats.words" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Wörter"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10129,6 +12343,12 @@
     "preview.stats.words.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wörter"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10158,6 +12378,12 @@
     "Project Error" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektfehler"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10181,6 +12407,12 @@
     "Project Files" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektdateien"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10204,6 +12436,12 @@
     "Project Root" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projektwurzel"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10227,6 +12465,12 @@
     "Project Settings" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekteinstellungen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10250,6 +12494,12 @@
     "project_fonts.empty" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Projektschriftarten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10279,6 +12529,12 @@
     "project_fonts.footer" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Schriftarten stehen jedem Projekt zur Verfügung. „Schriftart hinzufügen“ importiert projektspezifische Schriftarten."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10308,6 +12564,12 @@
     "project_fonts.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt-Schriftarten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10337,6 +12599,12 @@
     "Projects" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekte"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10360,6 +12628,12 @@
     "Recompile" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu kompilieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10383,6 +12657,12 @@
     "Reference implementation for Swift/Rust interop." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Referenzimplementierung für Interoperabilität zwischen Swift und Rust."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10406,6 +12686,12 @@
     "Refresh" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisieren"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10429,6 +12715,12 @@
     "Regular" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10452,6 +12744,12 @@
     "Rename" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10475,6 +12773,12 @@
     "Rename Document" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokument umbenennen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10498,6 +12802,12 @@
     "resume.alert.action.resume" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsetzen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10527,6 +12837,12 @@
     "resume.alert.action.start_from_top" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von oben beginnen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10556,6 +12872,12 @@
     "resume.alert.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zur Stelle, an der beim letzten Mal aufgehört wurde?"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10585,6 +12907,12 @@
     "resume.alert.message_with_file" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu %@ zurückkehren, wo beim letzten Mal aufgehört wurde?"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10614,6 +12942,12 @@
     "resume.alert.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitung fortsetzen?"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10643,6 +12977,12 @@
     "resume.banner.a11y_hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippe, um zur letzten Bearbeitungsposition zurückzukehren."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10672,6 +13012,12 @@
     "resume.banner.label" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dort weitermachen, wo zuletzt aufgehört wurde."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10701,6 +13047,12 @@
     "resume.banner.label_with_file" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In %@ weitermachen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10730,6 +13082,12 @@
     "Save" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10753,6 +13111,12 @@
     "Search" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10776,6 +13140,12 @@
     "Search Fonts" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schriftarten durchsuchen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10799,6 +13169,12 @@
     "Select a document from the list or create a new one." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Dokument aus der Liste aus oder erstelle ein neues."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10822,6 +13198,12 @@
     "Selecting a font directory imports its font files into the project font library. You can also skip this step." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durch die Auswahl eines Schriftartenverzeichnisses werden dessen Schriftdateien in die Schriftartenbibliothek des Projekts importiert. Dieser Schritt kann auch übersprungen werden."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10845,6 +13227,12 @@
     "Set Entry" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eintrag festlegen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10868,6 +13256,12 @@
     "Settings" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10891,6 +13285,12 @@
     "settings.feedback.github_issues" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub Issues"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10920,6 +13320,12 @@
     "settings.feedback.github_issues.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet GitHub Issues um Fehler zu melden oder Vorschläge zu teilen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10949,6 +13355,12 @@
     "settings.feedback.section" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -10978,6 +13390,12 @@
     "settings.import_link.section" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importieren & Verlinken"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11007,6 +13425,12 @@
     "settings.typst_version_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst iOS %@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11036,6 +13460,12 @@
     "settings.version_format" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %1$@ (%2$@)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11065,6 +13495,12 @@
     "Share" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11088,6 +13524,12 @@
     "Share PDF" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF teilen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11111,6 +13553,12 @@
     "shortcuts.completion.confirm" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl bestätigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11140,6 +13588,12 @@
     "shortcuts.completion.dismiss" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11169,6 +13623,12 @@
     "shortcuts.completion.navigate" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschläge navigieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11198,6 +13658,12 @@
     "shortcuts.general.find_replace" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen & Ersetzen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11227,6 +13693,12 @@
     "shortcuts.section.completion" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervollständigung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11256,6 +13728,12 @@
     "shortcuts.section.general" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemein"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11285,6 +13763,12 @@
     "shortcuts.section.system" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11314,6 +13798,12 @@
     "shortcuts.system.copy" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11343,6 +13833,12 @@
     "shortcuts.system.cut" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausschneiden"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11372,6 +13868,12 @@
     "shortcuts.system.paste" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11401,6 +13903,12 @@
     "shortcuts.system.redo" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederholen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11430,6 +13938,12 @@
     "shortcuts.system.select_all" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles auswählen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11459,6 +13973,12 @@
     "shortcuts.system.undo" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängig"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11488,6 +14008,12 @@
     "shortcuts.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkombinationen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11517,6 +14043,12 @@
     "Show Details" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details anzeigen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11540,6 +14072,12 @@
     "Size" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größe"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11563,6 +14101,12 @@
     "Skip" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11586,6 +14130,12 @@
     "Slideshow" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folienpräsentation"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11609,6 +14159,12 @@
     "snippet.action.edit" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11638,6 +14194,12 @@
     "snippet.action.new" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Snippet"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11667,6 +14229,12 @@
     "snippet.badge.custom" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11696,6 +14264,12 @@
     "snippet.builtin.category.bibliography" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Literaturverzeichnis"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11725,6 +14299,12 @@
     "snippet.builtin.category.code" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11754,6 +14334,12 @@
     "snippet.builtin.category.document_setup" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumenteinrichtung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11783,6 +14369,12 @@
     "snippet.builtin.category.figure_table" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbildungen & Tabellen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11812,6 +14404,12 @@
     "snippet.builtin.category.layout" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Layout"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11841,6 +14439,12 @@
     "snippet.builtin.category.math" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mathe"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11870,6 +14474,12 @@
     "snippet.builtin.title.aligned_equations" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgerichtete Gleichungen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11899,6 +14509,12 @@
     "snippet.builtin.title.article_template" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Artikelvorlage"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11928,6 +14544,12 @@
     "snippet.builtin.title.basic_document" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfaches Dokument"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11957,6 +14579,12 @@
     "snippet.builtin.title.bibliography_setup" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichtung des Literaturverzeichnisses"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -11986,6 +14614,12 @@
     "snippet.builtin.title.centered_block" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zentrierter Block"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12015,6 +14649,12 @@
     "snippet.builtin.title.citation" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zitation"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12044,6 +14684,12 @@
     "snippet.builtin.title.code_block" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code-Block"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12073,6 +14719,12 @@
     "snippet.builtin.title.code_block_with_caption" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code-Block mit Bildunterschrift"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12102,6 +14754,12 @@
     "snippet.builtin.title.display_math" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formel-Block"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12131,6 +14789,12 @@
     "snippet.builtin.title.figure_with_caption" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbildung mit Bildunterschrift"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12160,6 +14824,12 @@
     "snippet.builtin.title.inline_code" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inline-Code"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12189,6 +14859,12 @@
     "snippet.builtin.title.inline_math" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inline-Formel"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12218,6 +14894,12 @@
     "snippet.builtin.title.letter_template" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Briefvorlage"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12247,6 +14929,12 @@
     "snippet.builtin.title.matrix" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Matrix"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12276,6 +14964,12 @@
     "snippet.builtin.title.page_break" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seitenumbruch"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12305,6 +14999,12 @@
     "snippet.builtin.title.presentation_slide" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Präsentationsfolie"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12334,6 +15034,12 @@
     "snippet.builtin.title.table_three_columns" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tabelle (3 Spalten)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12363,6 +15069,12 @@
     "snippet.builtin.title.table_two_columns" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tabelle (2 Spalten)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12392,6 +15104,12 @@
     "snippet.builtin.title.two_columns" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwei Spalten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12421,6 +15139,12 @@
     "snippet.editor.action.custom_category" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Kategorie..."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12450,6 +15174,12 @@
     "snippet.editor.action.pick_category" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorhandene Kategorie auswählen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12479,6 +15209,12 @@
     "snippet.editor.action.save" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12508,6 +15244,12 @@
     "snippet.editor.body.hint" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze $0 um die Cursor-Position nach dem Einfügen zu setzen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12537,6 +15279,12 @@
     "snippet.editor.field.category" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorie"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12566,6 +15314,12 @@
     "snippet.editor.field.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12595,6 +15349,12 @@
     "snippet.editor.section.body" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Textkörper"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12624,6 +15384,12 @@
     "snippet.editor.section.details" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12653,6 +15419,12 @@
     "snippet.editor.title.edit" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippet bearbeiten"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12682,6 +15454,12 @@
     "snippet.editor.title.new" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Snippet"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12711,6 +15489,12 @@
     "snippet.search.prompt" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippets durchsuchen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12740,6 +15524,12 @@
     "snippet.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippets"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12769,6 +15559,12 @@
     "Soothing pastel color palette powering the editor themes." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beruhigende Pastellfarbpalette als Basis für die Editor-Themes."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12792,6 +15588,12 @@
     "sort.created_newest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt erstellt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12821,6 +15623,12 @@
     "sort.created_oldest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Älteste erstellt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12850,6 +15658,12 @@
     "sort.direction.ascending" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufsteigend"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12879,6 +15693,12 @@
     "sort.direction.descending" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absteigend"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12908,6 +15728,12 @@
     "sort.field.created" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelldatum"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12937,6 +15763,12 @@
     "sort.field.modified" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungsdatum"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12966,6 +15798,12 @@
     "sort.field.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -12995,6 +15833,12 @@
     "sort.menu.button" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortieren"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13024,6 +15868,12 @@
     "sort.menu.order" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reihenfolge"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13053,6 +15903,12 @@
     "sort.menu.sort_by" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortieren nach"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13082,6 +15938,12 @@
     "sort.modified_newest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Änderung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13111,6 +15973,12 @@
     "sort.modified_oldest" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Älteste Änderung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13140,6 +16008,12 @@
     "sort.title_az" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel (A-Z)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13169,6 +16043,12 @@
     "sort.title_za" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel (Z-A)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13198,6 +16078,12 @@
     "Source Files" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelldateien"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13221,6 +16107,12 @@
     "Special Thanks" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Besonderer Dank"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13244,6 +16136,12 @@
     "Start typing to see a live preview" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beginne zu tippen, um eine Live-Vorschau zu sehen."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13267,6 +16165,12 @@
     "Style" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stil"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13290,6 +16194,12 @@
     "Subdirectory name" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterverzeichnisname"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13313,6 +16223,12 @@
     "System Font Cache" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System-Schriftarten-Cache"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13336,6 +16252,12 @@
     "System Monospaced" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System-Monospace-Schriftart"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13359,6 +16281,12 @@
     "Thanks to everyone at Donut for support and inspiration." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Danke an alle bei Donut für die Unterstützung und Inspiration."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13382,6 +16310,12 @@
     "The open-source typesetting system at the core of InkPond." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Open-Source-Satzsystem, das den Kern von InkPond bildet."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13405,6 +16339,12 @@
     "This project does not include main.typ. Choose the file used for compilation." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Projekt enthält keine main.typ. Wähle die für die Kompilierung verwendete Datei aus."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13428,6 +16368,12 @@
     "This removes all cached compiled PDF previews. Documents will recompile the next time they open." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hierdurch werden alle zwischengespeicherten, kompilierten PDF-Vorschauen entfernt. Die Dokumente werden beim nächsten Öffnen neu kompiliert."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13451,6 +16397,12 @@
     "This removes all cached compiled previews. Documents will recompile the next time they open." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch werden alle zwischengespeicherten kompilierten Vorschauen entfernt. Die Dokumente werden beim nächsten Öffnen neu kompiliert."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13474,6 +16426,12 @@
     "This removes all downloaded @preview packages. They will be downloaded again on the next compile." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch werden alle heruntergeladenen @preview-Pakete entfernt. Sie werden beim nächsten Kompiliervorgang erneut heruntergeladen."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13497,6 +16455,12 @@
     "This removes generated system font files. InkPond will rebuild them the next time a document needs them." : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dies entfernt die generierten Systemschriftdateien. InkPond erstellt sie neu, sobald ein Dokument sie benötigt."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13520,6 +16484,12 @@
     "Title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13543,6 +16513,12 @@
     "toast.image_inserted.multiple" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Bilder eingefügt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13572,6 +16548,12 @@
     "toast.image_inserted.single" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ eingefügt"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13601,6 +16583,12 @@
     "Total Size" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamtgröße"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13622,11 +16610,24 @@
       }
     },
     "Typst" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typst"
+          }
+        }
+      }
     },
     "ui_test.sample_document_title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel für UI-Test"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13656,6 +16657,12 @@
     "Unlink" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlinkung aufheben"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13679,6 +16686,12 @@
     "Unlink Folder" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner-Verlinkung aufheben"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13703,6 +16716,12 @@
       "comment" : "Compiled preview cache updated time\nSystem font cache updated time",
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aktualisiert"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13726,6 +16745,12 @@
     "warning.font_fallback.dismiss" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warnung zu Schriftart-Fallback verwerfen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13755,6 +16780,12 @@
     "warning.font_fallback.message" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Texte werden möglicherweise mit der Ersatzschriftart „%@“ dargestellt, da die ausgewählte Schriftart nicht alle Zeichen abdeckt."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -13784,6 +16815,12 @@
     "warning.font_fallback.title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersatzschriftart"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
