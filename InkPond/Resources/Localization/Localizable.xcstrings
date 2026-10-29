@@ -4939,7 +4939,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Editor %1$d%, Vorschau %2$d%"
+            "value" : "Editor %1$d%%, Vorschau %2$d%%"
           }
         },
         "en" : {
@@ -17181,6 +17181,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用了 fallback 字型"
+          }
+        }
+      }
+    },
+    "German Translation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Übersetzung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "German Translation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德语翻译"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德語翻譯"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德語翻譯"
           }
         }
       }
