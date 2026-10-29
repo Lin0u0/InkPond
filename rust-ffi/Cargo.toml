@@ -1,6 +1,6 @@
 [package]
 name = "typst-ios"
-version = "0.15.0"
+version = "0.15.1"
 edition = "2021"
 
 [lib]
@@ -8,12 +8,12 @@ name = "typst_ios"
 crate-type = ["staticlib"]
 
 [dependencies]
-typst         = "0.15.0"
-typst-pdf     = "0.15.0"
-typst-svg     = "0.15.0"
-typst-assets  = { version = "0.15.0", features = ["fonts"] }
-typst-library = "0.15.0"
-typst-layout  = "0.15.0"
+typst         = "0.15.1"
+typst-pdf     = "0.15.1"
+typst-svg     = "0.15.1"
+typst-assets  = { version = "0.15.1", features = ["fonts"] }
+typst-library = "0.15.1"
+typst-layout  = "0.15.1"
 hayagriva     = "0.10.1"
 syntect       = { version = "5.3", default-features = false, features = ["parsing"] }
 stacker       = "0.1.23"

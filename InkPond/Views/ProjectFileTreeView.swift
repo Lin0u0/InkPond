@@ -23,8 +23,10 @@ struct ProjectFileTreeView: View {
     var topContentInset: CGFloat = 0
     var refreshToken: UUID?
 
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(StorageManager.self) private var storageManager
+    @State private var scrollDiagnostic = ""
     @State private var projectTree: [ProjectTreeNode] = []
     @State private var expandedNodes: Set<String> = []
     @State private var showingProjectSettings = false
@@ -46,6 +48,14 @@ struct ProjectFileTreeView: View {
             if case .notDownloaded = status { return true }
             return false
         }
+    }
+
+    private var selectedRowFill: Color {
+        let dark = colorScheme == .dark
+        let panel: UIColor = usesNavigationToolbar ? .systemBackground : (dark
+            ? UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
+            : .secondarySystemGroupedBackground)
+        return ProjectFileSelectionSurface.fill(panel: panel, scheme: colorScheme)
     }
 
     private var primaryTextColor: Color { .primary }
@@ -76,11 +86,26 @@ struct ProjectFileTreeView: View {
                 .padding(.horizontal, usesNavigationToolbar ? 8 : 12)
                 .padding(.top, 8 + topContentInset)
                 .padding(.bottom, 8)
+                .background {
+                    if ProjectFileScrollProbe.isEnabled {
+                        ProjectFileScrollProbe { scrollDiagnostic = $0 }
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
             }
-            .softScrollEdgeEffect()
             .background(Color.clear)
+            .softScrollEdgeEffect()
         }
         .accessibilityIdentifier("project-file-tree")
+        .accessibilityValue(ProjectFileScrollProbe.isEnabled ? scrollDiagnostic : "")
+        .overlay(alignment: .topLeading) {
+            if ProjectFileScrollProbe.isEnabled {
+                ProjectFileScrollDiagnosticValue(value: scrollDiagnostic)
+                    .frame(width: 1, height: 1)
+                    .allowsHitTesting(false)
+            }
+        }
         .toolbar {
             if usesNavigationToolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -275,7 +300,8 @@ struct ProjectFileTreeView: View {
         } label: {
             rowLabel(for: row)
         }
-        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive))
+        .buttonStyle(ProjectFileRowButtonStyle(isActive: isActive, selectedFill: selectedRowFill))
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
         .contentShape(Rectangle())
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !node.isDirectory {
@@ -568,9 +594,9 @@ struct ProjectFileTreeView: View {
     private func rowAccessibilityLabel(for row: VisibleProjectFileRow) -> String {
         let node = row.node
         if node.isDirectory {
-            return L10n.a11yProjectFilesFolderLabel(node.displayName)
+            return L10n.a11yProjectFilesFolderLabel(node.relativePath)
         }
-        return L10n.a11yProjectFilesFileLabel(kind: node.kind.localizedAccessibilityLabel, name: node.displayName)
+        return L10n.a11yProjectFilesFileLabel(kind: node.kind.localizedAccessibilityLabel, name: node.relativePath)
     }
 
     private func rowAccessibilityValue(for row: VisibleProjectFileRow) -> String {
@@ -599,43 +625,24 @@ private struct VisibleProjectFileRow: Identifiable, Hashable {
 private struct ProjectFileRowButtonStyle: ButtonStyle {
     let isActive: Bool
 
-    private var activeColor: Color { .primary }
-
-    private var pressedColor: Color { .secondary }
+    let selectedFill: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background { rowBackground(isPressed: configuration.isPressed) }
+            .background { rowBackground() }
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.12), value: isActive)
     }
 
     @ViewBuilder
-    private func rowBackground(isPressed: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
-        let activeFill = activeColor.opacity(isPressed ? 0.11 : 0.075)
-        let activeBorder = activeColor.opacity(0.16)
-        let inactivePressedFill = pressedColor.opacity(0.12)
+    private func rowBackground() -> some View {
+        // Match the editor file tabs, without refractive or outlined selection chrome.
+        let shape = RoundedRectangle(cornerRadius: ProjectFileSelectionSurface.cornerRadius, style: .continuous)
         if isActive {
-            if #available(iOS 26, *) {
-                shape
-                    .fill(activeFill)
-                    .lockedLiquidGlassRect(cornerRadius: 13, isInteractive: true)
-                    .overlay {
-                        shape.strokeBorder(activeBorder, lineWidth: 1)
-                    }
-            } else {
-                shape
-                    .fill(activeFill)
-                    .overlay {
-                        shape.strokeBorder(activeBorder, lineWidth: 1)
-                    }
-            }
-        } else if isPressed {
-            shape.fill(inactivePressedFill)
+            shape.fill(selectedFill)
         } else {
             Color.clear
         }

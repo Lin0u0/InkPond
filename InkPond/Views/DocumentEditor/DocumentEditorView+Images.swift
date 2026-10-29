@@ -24,8 +24,10 @@ private enum ImageImportError: LocalizedError {
 
 extension DocumentEditorView {
     func handleImageDrop(providers: [NSItemProvider]) -> Bool {
-        let anchorRange = currentInsertionRange()
-        let targetFileName = currentFileName
+        guard projectWritableLease != nil else { return false }
+        let dropAnchor = captureCommandAnchor()
+        let anchorRange = dropAnchor.selection
+        let targetFileName = dropAnchor.fileName
         guard let provider = providers.first(where: {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) ||
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
@@ -37,14 +39,19 @@ extension DocumentEditorView {
             let suggestedName = provider.suggestedName
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                 guard let data else {
-                    Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
+                    Task { @MainActor in
+                        guard commandAnchorIsCurrent(dropAnchor) else { return }
+                        imageImportError = L10n.tr("error.image.load_data_failed")
+                    }
                     return
                 }
                 Task { @MainActor in
+                    guard commandAnchorIsCurrent(dropAnchor) else { return }
                     importImage(
                         from: .rawData(data, suggestedFileName: suggestedName),
                         anchorRange: anchorRange,
-                        targetFileName: targetFileName
+                        targetFileName: targetFileName,
+                        expectedAnchor: dropAnchor
                     )
                 }
             }
@@ -64,11 +71,16 @@ extension DocumentEditorView {
             }
 
             guard let fileURL = url else {
-                Task { @MainActor in imageImportError = L10n.tr("error.image.load_data_failed") }
+                Task { @MainActor in
+                        guard commandAnchorIsCurrent(dropAnchor) else { return }
+                        imageImportError = L10n.tr("error.image.load_data_failed")
+                    }
                 return
             }
             Task { @MainActor in
-                importImage(from: .fileURL(fileURL), anchorRange: anchorRange, targetFileName: targetFileName)
+                guard commandAnchorIsCurrent(dropAnchor) else { return }
+                importImage(from: .fileURL(fileURL), anchorRange: anchorRange, targetFileName: targetFileName,
+                            expectedAnchor: dropAnchor)
             }
         }
         return true
@@ -76,21 +88,31 @@ extension DocumentEditorView {
 
     func handleImageSelection(_ items: [PhotosPickerItem]) {
         guard let item = items.first else { return }
-        importImage(from: .photoItem(item), anchorRange: currentInsertionRange(), targetFileName: currentFileName)
+        let anchor = photoCommandAnchor
+        photoCommandAnchor = nil
         selectedPhotoItems = []
+        guard let anchor, commandAnchorIsCurrent(anchor) else { return }
+        importImage(from: .photoItem(item), anchorRange: anchor.selection, targetFileName: anchor.fileName,
+                    expectedAnchor: anchor)
     }
 
-    func importImage(from source: ImageImportSource, anchorRange: NSRange, targetFileName: String) {
+    func importImage(from source: ImageImportSource, anchorRange: NSRange, targetFileName: String,
+                     expectedAnchor: EditorCommandAnchor? = nil) {
+        let anchor = expectedAnchor ?? captureCommandAnchor()
+        guard commandAnchorIsCurrent(anchor), anchor.fileName == targetFileName else { return }
         Task {
             do {
-                let result = try await importImageAsset(from: source)
+                let result = try await importImageAsset(from: source, expectedAnchor: anchor)
                 await MainActor.run {
+                    guard commandAnchorIsCurrent(anchor) else { return }
                     refreshImageFiles()
-                    enqueueInsertion(result.reference, at: anchorRange, for: targetFileName)
+                    enqueueInsertion(result.reference, at: anchorRange, for: targetFileName, loadToken: anchor.loadToken)
+                    if anchor.restoreFocus { focusCoordinator.activateKeyboard() }
                     showImageImportToast(L10n.imageInserted(path: result.relativePath))
                 }
             } catch {
                 await MainActor.run {
+                    guard commandAnchorIsCurrent(anchor) else { return }
                     imageImportError = error.localizedDescription
                 }
             }
@@ -102,6 +124,8 @@ extension DocumentEditorView {
         anchorRange: NSRange,
         targetFileName: String
     ) {
+        let anchor = captureCommandAnchor()
+        guard commandAnchorIsCurrent(anchor), anchor.fileName == targetFileName else { return }
         Task {
             var combinedInsertion = ""
             var firstError: String?
@@ -113,7 +137,7 @@ extension DocumentEditorView {
                     combinedInsertion.append(text)
                 case .imageData(let data, let suggestedFileName):
                     do {
-                        let result = try await importImageAsset(from: .rawData(data, suggestedFileName: suggestedFileName))
+                        let result = try await importImageAsset(from: .rawData(data, suggestedFileName: suggestedFileName), expectedAnchor: anchor)
                         combinedInsertion.append(result.reference)
                         insertedImages.append(result.relativePath)
                     } catch {
@@ -123,7 +147,7 @@ extension DocumentEditorView {
                     }
                 case .imageRemoteURL(let remoteURL, let suggestedFileName):
                     do {
-                        let result = try await importImageAsset(from: .remoteURL(remoteURL, suggestedFileName: suggestedFileName))
+                        let result = try await importImageAsset(from: .remoteURL(remoteURL, suggestedFileName: suggestedFileName), expectedAnchor: anchor)
                         combinedInsertion.append(result.reference)
                         insertedImages.append(result.relativePath)
                     } catch {
@@ -135,11 +159,12 @@ extension DocumentEditorView {
             }
 
             await MainActor.run {
+                guard commandAnchorIsCurrent(anchor) else { return }
                 if !insertedImages.isEmpty {
                     refreshImageFiles()
                 }
                 if !combinedInsertion.isEmpty {
-                    enqueueInsertion(combinedInsertion, at: anchorRange, for: targetFileName)
+                    enqueueInsertion(combinedInsertion, at: anchorRange, for: targetFileName, loadToken: anchor.loadToken)
                 }
                 if let firstPath = insertedImages.first {
                     if insertedImages.count == 1 {
@@ -155,16 +180,19 @@ extension DocumentEditorView {
         }
     }
 
-    func importImageAsset(from source: ImageImportSource) async throws -> (relativePath: String, reference: String) {
+    func importImageAsset(from source: ImageImportSource, expectedAnchor: EditorCommandAnchor? = nil) async throws -> (relativePath: String, reference: String) {
         guard projectWritableLease != nil else {
             throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
         }
+        if let expectedAnchor, !commandAnchorIsCurrent(expectedAnchor) { throw CancellationError() }
         let rawData = try await loadImageData(from: source)
+        if let expectedAnchor, !commandAnchorIsCurrent(expectedAnchor) { throw CancellationError() }
         let normalized = try normalizeImageData(rawData)
         try Task.checkCancellation()
         guard projectWritableLease != nil else {
             throw ProjectWritableLeaseError.alreadyHeld(document.stableProjectID)
         }
+        if let expectedAnchor, !commandAnchorIsCurrent(expectedAnchor) { throw CancellationError() }
         let fileName = makeUniqueImageFileName(ext: normalized.fileExtension, source: source)
         let relativePath = try ProjectFileManager.saveImage(data: normalized.data, fileName: fileName, for: document)
         let reference = normalizeTypstQuotes(String(format: document.imageInsertionTemplate, relativePath))
@@ -282,11 +310,16 @@ extension DocumentEditorView {
     }
 
     @MainActor
-    func enqueueInsertion(_ reference: String, at targetRange: NSRange, for targetFileName: String) {
+    func enqueueInsertion(_ reference: String, at targetRange: NSRange, for targetFileName: String,
+                          loadToken: UUID? = nil, cursorOffset: Int? = nil) {
+        guard projectWritableLease != nil, currentFileName == targetFileName,
+              loadToken == nil || loadToken == fileLoadToken else { return }
         let request = EditorInsertionRequest(
             text: normalizeTypstQuotes(reference),
             targetRange: targetRange,
-            targetFileName: targetFileName
+            targetFileName: targetFileName,
+            targetLoadToken: loadToken ?? fileLoadToken,
+            cursorOffset: cursorOffset
         )
         if insertionRequest == nil, currentFileName == targetFileName {
             insertionRequest = request
@@ -297,7 +330,8 @@ extension DocumentEditorView {
 
     @MainActor
     func pumpPendingInsertionsIfNeeded() {
-        guard insertionRequest == nil else { return }
+        guard projectWritableLease != nil, insertionRequest == nil else { return }
+        pendingInsertionQueue.removeAll { $0.targetFileName != currentFileName || $0.targetLoadToken != fileLoadToken }
         guard let index = pendingInsertionQueue.firstIndex(where: { $0.targetFileName == currentFileName }) else {
             return
         }

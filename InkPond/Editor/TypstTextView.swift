@@ -40,10 +40,110 @@ enum JumpHighlightTimeline {
 }
 
 final class TypstTextView: UITextView {
+    // Optional diagnostic override survives representable updates to the ordinary
+    // localized hint. Nil in ordinary launches; setting ordinary hints still works.
+    var accessoryGeometryDiagnosticHint: String?
+    var selectionDiagnosticFileLoadToken: UUID?
+
+    override var accessibilityHint: String? {
+        get {
+            let hint = accessoryGeometryDiagnosticHint ?? super.accessibilityHint
+            guard KeyboardAccessoryView.geometryDiagnosticsEnabled else { return hint }
+            let selection = selectedRange
+            let sample = "[EditorSelection] location=\(selection.location) length=\(selection.length) firstResponder=\(isFirstResponder) textUTF16Count=\(text.utf16.count) fileLoadToken=\(selectionDiagnosticFileLoadToken?.uuidString ?? "unset")"
+            return (hint.map { $0 + "\n" } ?? "") + sample
+        }
+        set { super.accessibilityHint = newValue }
+    }
+
     enum PasteFragment {
         case text(String)
         case imageData(Data, suggestedFileName: String?)
         case imageRemoteURL(URL, suggestedFileName: String?)
+    }
+
+    #if DEBUG
+    private lazy var keyboardGeometryReporter = KeyboardGeometryReporter(textView: self)
+
+    func scheduleKeyboardGeometryReport() {
+        keyboardGeometryReporter.schedule()
+    }
+
+    #endif
+
+    private(set) var keyboardAccessory: KeyboardAccessoryView?
+    var onSourceUnderlapChanged: (CGFloat) -> String = { _ in "" }
+    var sourceUnderlap: CGFloat = 0
+    private var sourceScenePolicy = SourceAccessoryScenePolicy()
+    private var sourceKeyboardEndFrame: CGRect?
+    private var lastSourceInsetBottom: CGFloat?
+    private var reportedSourceUnderlap: CGFloat = 0
+    private var sourceUnderlapGeneration = 0
+    private var sourceAttachmentSamplePending = false
+    private var sourceHingeInteraction: (any UIInteraction)?
+    private weak var sourceHingeScene: UIWindowScene?
+    private var sourceHingeGeneration = 0
+    private var accessoryController: UIInputViewController?
+    private weak var accessoryControllerScene: UIWindowScene?
+
+    override var inputAccessoryViewController: UIInputViewController? { accessoryController }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        configureSourceHingeObservation()
+        configureAccessoryHostForOwningScene()
+        #if DEBUG
+        keyboardGeometryReporter.schedule()
+        #endif
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        configureAccessoryHostForOwningScene()
+        return super.becomeFirstResponder()
+    }
+
+    private func configureAccessoryHostForOwningScene() {
+        // Choose the native host before activation only. A live keyboard/display
+        // transition never reloads input views or changes first-responder state.
+        guard !isFirstResponder, let owner = window, let scene = owner.windowScene,
+              owner.bounds.width.isFinite, owner.bounds.width > 0,
+              let accessory = keyboardAccessory else { return }
+        var divisionCapable = false
+        #if compiler(>=6.2) && INKPOND_DUO_SDK
+        if #available(iOS 27.1, *) {
+            divisionCapable = !owner.reservedRegions(kind: .division, options: []).isEmpty
+        }
+        #endif
+        observeSourceCapability(scene: scene, divisionCapable: divisionCapable)
+        if divisionCapable {
+            guard accessoryController == nil || accessoryControllerScene !== scene else { return }
+            inputAccessoryView = nil
+            let controller = UIInputViewController()
+            accessory.prepareControllerHosting(sceneIdentity: scene, owningWidth: owner.bounds.width)
+            controller.inputView = accessory
+            controller.preferredContentSize = CGSize(width: owner.bounds.width,
+                height: accessory.intrinsicContentSize.height)
+            let owningWidth = owner.bounds.width
+            accessory.onPreferredAccessorySizeChanged = { [weak controller] size in
+                guard let controller else { return }
+                let retainedWidth = controller.preferredContentSize.width
+                let width = size.width.isFinite && size.width > 0 ? size.width :
+                    (retainedWidth.isFinite && retainedWidth > 0 ? retainedWidth : owningWidth)
+                let preferred = CGSize(width: width, height: size.height)
+                guard controller.preferredContentSize != preferred else { return }
+                controller.preferredContentSize = preferred
+                if KeyboardAccessoryView.geometryDiagnosticsEnabled {
+                    NSLog("[AccessoryFoldGeometry] controller preferred=%@ actual=%@", String(describing: preferred), String(describing: controller.inputView?.bounds))
+                }
+            }
+            accessoryController = controller
+            accessoryControllerScene = scene
+        } else if accessoryController != nil {
+            accessory.onPreferredAccessorySizeChanged = nil
+            accessoryController = nil
+            accessoryControllerScene = nil
+            inputAccessoryView = accessory
+        }
     }
 
     private let highlighter = SyntaxHighlighter(font: EditorFontSettings.defaultUIFont)
@@ -82,10 +182,10 @@ final class TypstTextView: UITextView {
     }
 
     var onPhotoButtonTapped: (() -> Void)? {
-        didSet { (inputAccessoryView as? KeyboardAccessoryView)?.onPhotoButtonTapped = onPhotoButtonTapped }
+        didSet { keyboardAccessory?.onPhotoButtonTapped = onPhotoButtonTapped }
     }
     var onSnippetButtonTapped: (() -> Void)? {
-        didSet { (inputAccessoryView as? KeyboardAccessoryView)?.onSnippetButtonTapped = onSnippetButtonTapped }
+        didSet { keyboardAccessory?.onSnippetButtonTapped = onSnippetButtonTapped }
     }
     var onImagePasted: ((Data, NSRange) -> Void)?
     var onRichPaste: (([PasteFragment], NSRange) -> Void)?
@@ -216,6 +316,7 @@ final class TypstTextView: UITextView {
     private func setupAccessoryView() {
         let accessoryView = KeyboardAccessoryView(textView: self)
         accessoryView.applyWorkspaceChromeBackground(externalChromeBackgroundColor)
+        keyboardAccessory = accessoryView
         inputAccessoryView = accessoryView
     }
 
@@ -229,7 +330,7 @@ final class TypstTextView: UITextView {
     }
 
     private func applyEditorChromeSurfaces() {
-        (inputAccessoryView as? KeyboardAccessoryView)?.applyWorkspaceChromeBackground(externalChromeBackgroundColor)
+        keyboardAccessory?.applyWorkspaceChromeBackground(externalChromeBackgroundColor)
         applyFindNavigatorChromeBackground()
     }
 
@@ -548,9 +649,153 @@ final class TypstTextView: UITextView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        #if DEBUG
+        scheduleKeyboardGeometryReport()
+        #endif
+        reportSourceUnderlap()
+        if let frame = sourceKeyboardEndFrame {
+            let bottom = convert(CGPoint(x: 0, y: bounds.maxY), to: nil).y
+            if let insets = SourceAccessoryInsetPolicy.insets(
+                extent: sourceUnderlap, previouslyExtended: lastSourceInsetBottom != nil,
+                viewBottom: bottom, keyboardTop: frame.minY, padding: Self.keyboardBottomPadding
+            ), lastSourceInsetBottom != bottom || sourceUnderlap == 0 {
+                // Set marker before inset writes, which can schedule another layout.
+                lastSourceInsetBottom = sourceUnderlap > 0 ? bottom : nil
+                contentInset.bottom = insets.content
+                verticalScrollIndicatorInsets.bottom = insets.indicator
+            }
+        }
         let width = gutterView.gutterWidth
         gutterView.frame = CGRect(x: 0, y: 0, width: width, height: max(contentSize.height, bounds.height))
         gutterView.setNeedsDisplay()
+        reportSourceLayoutDiagnostic()
+    }
+
+    private func reportSourceLayoutDiagnostic() {
+        guard KeyboardAccessoryView.geometryDiagnosticsEnabled else { return }
+        var ancestors: [String] = []
+        var ancestor = superview
+        while let current = ancestor, ancestors.count < 8 {
+            let inWindow = window.map { current.convert(current.bounds, to: $0) }
+            ancestors.append("class=\(type(of: current)) frame=\(current.frame) bounds=\(current.bounds) inWindow=\(String(describing: inWindow)) safeInsets=\(current.safeAreaInsets) clips=\(current.clipsToBounds) layerMasks=\(current.layer.masksToBounds) hasMask=\(current.layer.mask != nil)")
+            ancestor = current.superview
+        }
+        let inWindow = window.map { convert(bounds, to: $0) }
+        let gutterInWindow = window.map { gutterView.convert(gutterView.bounds, to: $0) }
+        keyboardAccessory?.reportSourceLayoutGeometry(
+            "phase=layoutEnd appliedExtent=\(sourceUnderlap) frame=\(frame) bounds=\(bounds) inWindow=\(String(describing: inWindow)) safeInsets=\(safeAreaInsets) contentInset=\(contentInset) adjustedContentInset=\(adjustedContentInset) contentOffset=\(contentOffset) contentSize=\(contentSize) clips=\(clipsToBounds) gutterFrame=\(gutterView.frame) gutterBounds=\(gutterView.bounds) gutterInWindow=\(String(describing: gutterInWindow)) ancestors=\(ancestors)")
+    }
+
+    /// Accessory attachment can follow the editor's final native layout pass.
+    /// Sample later without invalidating layout, changing hosting, or focus.
+    func accessoryAttachmentGeometryDidChange() {
+        guard !sourceAttachmentSamplePending else { return }
+        sourceAttachmentSamplePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.sourceAttachmentSamplePending = false
+            self.reportSourceUnderlap()
+        }
+    }
+
+    private func observeSourceCapability(scene: UIWindowScene, divisionCapable: Bool) {
+        var legacyResolved = true
+        #if compiler(>=6.2) && INKPOND_DUO_SDK
+        if #available(iOS 27.1, *) { legacyResolved = false }
+        #endif
+        let registry = SourceAccessorySceneRegistry.shared
+        let stickyDivision = registry.observe(scene: scene, divisionCapable: divisionCapable,
+                                               capabilityResolved: legacyResolved)
+        sourceScenePolicy.observe(scene: scene, divisionCapable: stickyDivision,
+                                  capabilityResolved: registry.isResolved(scene: scene))
+    }
+
+    private func configureSourceHingeObservation() {
+        #if compiler(>=6.2) && INKPOND_DUO_SDK
+        if #available(iOS 27.1, *) {
+            if let scene = window?.windowScene, sourceHingeScene === scene,
+               sourceHingeInteraction != nil { return }
+            sourceHingeGeneration += 1
+            if let interaction = sourceHingeInteraction { removeInteraction(interaction) }
+            sourceHingeInteraction = nil
+            sourceHingeScene = nil
+            guard let owner = window, let scene = owner.windowScene,
+                  owner.bounds.width.isFinite, owner.bounds.width > 0 else {
+                accessoryAttachmentGeometryDidChange()
+                return
+            }
+            sourceHingeScene = scene
+            let generation = sourceHingeGeneration
+            let interaction = UIHingeInteraction { [weak self, weak scene] interaction, update in
+                MainActor.assumeIsolated {
+                    guard let self, let scene,
+                          self.sourceHingeGeneration == generation,
+                          interaction.view === self,
+                          let owner = self.window, owner.windowScene === scene,
+                          owner.bounds.width.isFinite, owner.bounds.width > 0 else { return }
+                    // Only an update delivered while attached to this exact
+                    // hierarchy can resolve nil as ordinary. Exit updates are ignored.
+                    let registry = SourceAccessorySceneRegistry.shared
+                    let sticky = registry.observe(scene: scene, divisionCapable: update.hinge != nil,
+                                                  capabilityResolved: true)
+                    self.sourceScenePolicy.observe(scene: scene, divisionCapable: sticky,
+                                                   capabilityResolved: registry.isResolved(scene: scene))
+                    self.accessoryAttachmentGeometryDidChange()
+                }
+            }
+            sourceHingeInteraction = interaction
+            addInteraction(interaction)
+        }
+        #endif
+    }
+
+    private func reportSourceUnderlap() {
+        var height: CGFloat = 0
+        if let owner = window, let scene = owner.windowScene, owner.bounds.width.isFinite, owner.bounds.width > 0 {
+            var divisionCapable = false
+            #if compiler(>=6.2) && INKPOND_DUO_SDK
+            if #available(iOS 27.1, *) {
+                divisionCapable = !owner.reservedRegions(kind: .division, options: []).isEmpty
+            }
+            #endif
+            observeSourceCapability(scene: scene, divisionCapable: divisionCapable)
+        }
+        if let owner = window, let scene = owner.windowScene,
+           sourceScenePolicy.scene == ObjectIdentifier(scene), sourceScenePolicy.allowsUnderlap,
+           isFirstResponder, let accessory = keyboardAccessory,
+           let accessoryWindow = accessory.window,
+           accessoryWindow.windowScene === scene, accessoryWindow.screen === owner.screen,
+           accessory.bounds.width.isFinite, accessory.bounds.width > 0,
+           accessory.bounds.height.isFinite, accessory.bounds.height > 0 {
+            let rect = accessory.convert(accessory.bounds, to: owner)
+            let bottom = convert(CGPoint(x: bounds.midX, y: bounds.maxY), to: owner).y - sourceUnderlap
+            height = SourceAccessoryScenePolicy.extensionHeight(safeBottom: bottom, accessory: rect, window: owner.bounds)
+        }
+        reportUnderlapDiagnostic(desired: height, phase: "sample")
+        guard abs(height - reportedSourceUnderlap) > 0.5 else { return }
+        reportedSourceUnderlap = height
+        sourceUnderlapGeneration += 1
+        let generation = sourceUnderlapGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.sourceUnderlapGeneration == generation else { return }
+            self.reportUnderlapDiagnostic(desired: height, phase: "callback")
+            let stateDiagnostic = self.onSourceUnderlapChanged(height)
+            if KeyboardAccessoryView.geometryDiagnosticsEnabled {
+                self.keyboardAccessory?.reportSourceUnderlapGeometry(
+                    "phase=callbackAfterState desiredExtent=\(height) \(stateDiagnostic) nativeAppliedExtent=\(self.sourceUnderlap) nativeHeight=\(self.bounds.height)")
+            }
+        }
+    }
+
+    private func reportUnderlapDiagnostic(desired: CGFloat, phase: String) {
+        guard KeyboardAccessoryView.geometryDiagnosticsEnabled else { return }
+        let actual = window.map { convert(bounds, to: $0) }
+        let accessoryRect = window.flatMap { owner in
+            keyboardAccessory.flatMap { $0.window == nil ? nil : $0.convert($0.bounds, to: owner) }
+        }
+        let safeBottom = actual.map { $0.maxY - sourceUnderlap }
+        keyboardAccessory?.reportSourceUnderlapGeometry(
+            "phase=\(phase) knownScene=\(sourceScenePolicy.scene != nil) capabilityResolved=\(sourceScenePolicy.capabilityResolved) division=\(sourceScenePolicy.divisionCapable) allowed=\(sourceScenePolicy.allowsUnderlap) appliedExtent=\(sourceUnderlap) measuredSafeBottom=\(String(describing: safeBottom)) accessoryRect=\(String(describing: accessoryRect)) firstResponder=\(isFirstResponder) desiredExtent=\(desired) slotHeight=\(bounds.height - sourceUnderlap) actualHeight=\(bounds.height) actualRect=\(String(describing: actual))")
     }
 
     // MARK: - Theme
@@ -693,10 +938,16 @@ final class TypstTextView: UITextView {
     }
 
     @objc private func keyboardFrameWillChange(_ notification: Notification) {
+        keyboardAccessory?.requestGeometrySample()
+        #if DEBUG
+        keyboardGeometryReporter.keyboardNotification(notification)
+        #endif
         guard window != nil,
               let userInfo = notification.userInfo,
               let endFrame = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
 
+        sourceKeyboardEndFrame = endFrame
+        lastSourceInsetBottom = nil
         // How much does the keyboard overlap the bottom of this view (in window coordinates)?
         let viewBottomY = convert(CGPoint(x: 0, y: bounds.maxY), to: nil).y
         let overlap = max(0, viewBottomY - endFrame.minY)
@@ -1376,3 +1627,149 @@ extension TypstTextView: UIGestureRecognizerDelegate {
         return false
     }
 }
+
+#if DEBUG
+/// Read-only, bounded geometry diagnostics; never reads editor contents or forces layout.
+@MainActor
+private final class KeyboardGeometryReporter {
+    private weak var textView: TypstTextView?
+    private var pending: Task<Void, Never>?
+    private var rawKeyboardFrame: CGRect?
+    private var lastPayload: Data?
+    private var didLogSchedulingSmoke = false
+    private var failureDiagnostics: Set<String> = []
+    private static let logger = Logger(subsystem: "InkPond", category: "KeyboardGeometry")
+
+    init(textView: TypstTextView) { self.textView = textView }
+    deinit { pending?.cancel() }
+
+    func cancel() {
+        pending?.cancel()
+        pending = nil
+    }
+
+    func keyboardNotification(_ notification: Notification) {
+        rawKeyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        cancel()
+        schedule(delay: duration.isFinite ? min(1, 0.25 + max(0, duration)) : 0.25)
+    }
+
+    func schedule(delay: Double = 0.25) {
+        if !didLogSchedulingSmoke {
+            didLogSchedulingSmoke = true
+            Self.logger.notice("IP_KBD_GEOM_SCHEDULE_V1 scheduling smoke (not a stable geometry sample)")
+            NSLog("%@", "IP_KBD_GEOM_SCHEDULE_V1 scheduling smoke (not a stable geometry sample)")
+        }
+        guard textView?.window != nil else { cancel(); return }
+        guard pending == nil else { return }
+        pending = Task { @MainActor [weak self] in
+            var previous: Data?
+            // Initial sample plus at most four retries. No permanent polling.
+            for _ in 0...4 {
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                guard let self, !Task.isCancelled else { return }
+                guard let payload = self.sample() else { self.pending = nil; return }
+                if payload == previous {
+                    if payload != self.lastPayload, let json = String(data: payload, encoding: .utf8) {
+                        Self.logger.notice("IP_KBD_GEOM_V1 \(json, privacy: .public)")
+                        NSLog("IP_KBD_GEOM_V1 %@", json)
+                        self.lastPayload = payload
+                    }
+                    self.pending = nil
+                    return
+                }
+                previous = payload
+            }
+            self?.logFailure("exhausted_samples_5", message: "IP_KBD_GEOM_FAILURE_V1 exhausted samples=5 stable=false; no stable geometry emitted")
+            self?.pending = nil
+        }
+    }
+
+    private func logFailure(_ reason: String, message: String) {
+        // Deduplicate reasons and cap failure diagnostics for this reporter's lifetime.
+        guard failureDiagnostics.count < 8, failureDiagnostics.insert(reason).inserted else { return }
+        Self.logger.notice("\(message, privacy: .public)")
+        NSLog("%@", message)
+    }
+
+    private func sample() -> Data? {
+        guard let textView, let window = textView.window, let scene = window.windowScene else {
+            logFailure("sample_nil_context", message: "IP_KBD_GEOM_FAILURE_V1 sample=nil reason=missing_view_window_or_scene stable=false")
+            return nil
+        }
+        let screen = scene.screen
+        let fixed = screen.fixedCoordinateSpace
+        func rect(_ value: CGRect) -> [Double] {
+            [value.origin.x, value.origin.y, value.width, value.height].map {
+                $0.isFinite ? Double(($0 * 1000).rounded() / 1000) : 0
+            }
+        }
+        func canonical(_ view: UIView, _ value: CGRect) -> [Double] {
+            rect(view.convert(value, to: fixed))
+        }
+        func windowInfo(_ owner: UIWindow) -> [String: Any] {
+            ["type": String(describing: type(of: owner)), "level": Double(owner.windowLevel.rawValue),
+             "boundsLocal": rect(owner.bounds), "boundsFixed": canonical(owner, owner.bounds),
+             "screenMismatch": owner.windowScene.map { $0.screen !== screen } ?? true]
+        }
+        var result: [String: Any] = [
+            "canonicalBasis": "textView.window.windowScene.screen.fixedCoordinateSpace",
+            "screenFixedBounds": rect(fixed.bounds), "screenOrientedBounds": rect(screen.coordinateSpace.bounds),
+            "sceneBounds": rect(scene.coordinateSpace.bounds), "sceneBoundsFixed": rect(scene.coordinateSpace.convert(scene.coordinateSpace.bounds, to: fixed)),
+            "sceneOrientation": scene.interfaceOrientation.rawValue,
+            "textViewBoundsLocal": rect(textView.bounds), "textViewBoundsFixed": canonical(textView, textView.bounds),
+            "mainWindow": windowInfo(window),
+            "keyboardGuideFrameWindowLocal": rect(window.keyboardLayoutGuide.layoutFrame),
+            "keyboardGuideFrameFixed": canonical(window, window.keyboardLayoutGuide.layoutFrame)
+        ]
+        if let rawKeyboardFrame {
+            result["notificationRawFrame"] = rect(rawKeyboardFrame)
+            result["notificationRawBasis"] = "owning scene screen oriented coordinateSpace (UIKit screen-coordinate notification)"
+            result["notificationFrameFixed"] = rect(screen.coordinateSpace.convert(rawKeyboardFrame, to: fixed))
+        }
+        if let accessory = textView.keyboardAccessory {
+            result["accessoryBoundsLocal"] = rect(accessory.bounds)
+            result["accessoryFrameParentLocal"] = rect(accessory.frame)
+            if let owner = accessory.window {
+                result["accessoryWindow"] = windowInfo(owner)
+                result["accessoryBoundsFixed"] = canonical(accessory, accessory.bounds)
+            }
+            var ancestors: [[String: Any]] = []
+            var parent = accessory.superview
+            while let view = parent, ancestors.count < 8 {
+                ancestors.append(["type": String(describing: type(of: view)), "frameParentLocal": rect(view.frame), "boundsLocal": rect(view.bounds)])
+                parent = view.superview
+            }
+            result["accessoryAncestors"] = ancestors
+            result["ancestorsTruncated"] = parent != nil
+        }
+        var regions: [[String: Any]] = []
+        // Match the app's SDK opt-in; compiler guard prevents older toolchain lookup.
+        #if compiler(>=6.2) && INKPOND_DUO_SDK
+        if #available(iOS 27.1, *) {
+            for region in window.reservedRegions(kind: .division, options: []).prefix(8) {
+                let margins = region.margins
+                let expanded = CGRect(x: region.frame.minX - margins.left,
+                                      y: region.frame.minY - margins.top,
+                                      width: region.frame.width + margins.left + margins.right,
+                                      height: region.frame.height + margins.top + margins.bottom)
+                regions.append(["frameFixed": canonical(window, region.frame),
+                                "frameWithMarginsFixed": canonical(window, expanded), "active": region.isActive])
+            }
+            result["divisionRegionsAvailable"] = true
+        }
+        #endif
+        result["divisionRegions"] = regions
+        guard let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]) else {
+            logFailure("sample_nil_json", message: "IP_KBD_GEOM_FAILURE_V1 sample=nil reason=json_serialization stable=false")
+            return nil
+        }
+        guard data.count <= 12_288 else {
+            logFailure("sample_nil_size", message: "IP_KBD_GEOM_FAILURE_V1 sample=nil reason=payload_exceeds_12KiB stable=false")
+            return nil
+        }
+        return data
+    }
+}
+#endif

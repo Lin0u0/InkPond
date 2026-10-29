@@ -192,6 +192,25 @@ final class SVGPreviewContainerView: UIView {
     private var lastLaidOutWidth: CGFloat = 0
     private var scrollGeneration: UInt = 0
 
+    private var isPreviewAccessibilityVisible = true
+
+    func setAccessibilityVisible(_ visible: Bool) {
+        let becameVisible = !isPreviewAccessibilityVisible && visible
+        isPreviewAccessibilityVisible = visible
+        // isAccessibilityElement only changes the wrapper, not WebKit's SVG
+        // descendants. Keep rendering/scroll state alive while excluding AX.
+        accessibilityElementsHidden = !visible
+        // WebKit's remote AX tree can ignore wrapper-only AX exclusion.
+        // Native hiding excludes it without discarding pages or scroll state.
+        scrollView.isHidden = !visible
+        scrollView.accessibilityElementsHidden = !visible
+        contentView.accessibilityElementsHidden = !visible
+        pageWebViews.values.forEach { $0.accessibilityElementsHidden = !visible }
+        if becameVisible {
+            updateVisiblePageViews()
+        }
+    }
+
     private struct PageLayout {
         let frames: [CGRect]
         let contentSize: CGSize
@@ -270,6 +289,9 @@ final class SVGPreviewContainerView: UIView {
         layoutPagesIfNeeded()
         updateScrollInsetsIfNeeded()
         clampContentOffsetIfNeeded()
+        // SwiftUI can reconfigure accessibility on the representable wrapper.
+        // Reapply the independently owned native subtree policy after layout.
+        setAccessibilityVisible(isPreviewAccessibilityVisible)
     }
 
     func reloadPages(_ newPages: [TypstPreviewPage]) {
@@ -551,6 +573,7 @@ final class SVGPreviewContainerView: UIView {
     }
 
     private func updateVisiblePageViews() {
+        guard isPreviewAccessibilityVisible else { return }
         guard !pages.isEmpty,
               pageFrames.count == pages.count,
               pageContainers.count == pages.count,
@@ -597,6 +620,7 @@ final class SVGPreviewContainerView: UIView {
         }
 
         let webView = Self.makePageWebView()
+        webView.accessibilityElementsHidden = !isPreviewAccessibilityVisible
         pageWebViews[index] = webView
         let container = pageContainers[index]
         container.addSubview(webView)
@@ -850,6 +874,7 @@ struct SVGPreviewView: UIViewRepresentable {
     }
 
     private func applyAccessibility(to container: SVGPreviewContainerView) {
+        container.setAccessibilityVisible(isAccessibilityVisible)
         container.isAccessibilityElement = isAccessibilityVisible
         container.accessibilityIdentifier = isAccessibilityVisible ? "editor.preview" : nil
     }
@@ -1112,6 +1137,7 @@ struct PreviewPane: View {
             .frame(width: 1, height: 1)
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("editor.preview.rendered")
+            .accessibilityValue(L10n.previewStatsPages(compiler.pageCount))
             .allowsHitTesting(false)
             .zIndex(-1)
     }

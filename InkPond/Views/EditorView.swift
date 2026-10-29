@@ -18,6 +18,8 @@ struct EditorInsertionRequest: Equatable, Identifiable {
     let text: String
     let targetRange: NSRange
     let targetFileName: String
+    var targetLoadToken: UUID? = nil
+    var cursorOffset: Int? = nil
 }
 
 struct EditorView: UIViewRepresentable {
@@ -28,6 +30,10 @@ struct EditorView: UIViewRepresentable {
     @Binding var cursorJumpOffset: Int?
     var fileLoadToken: UUID = UUID()
     var focusCoordinator: EditorFocusCoordinator? = nil
+    var commandTarget: EditorCommandTarget? = nil
+    var isAccessibilityExcluded: Bool = false
+    var sourceUnderlap: CGFloat = 0
+    var onSourceUnderlapChanged: (CGFloat) -> String = { _ in "" }
     var topViewportInset: CGFloat = 0
     var sourceMap: SourceMap?
     var syncCoordinator: SyncCoordinator?
@@ -36,6 +42,7 @@ struct EditorView: UIViewRepresentable {
     var editorFont: UIFont = EditorFontSettings.defaultUIFont
     var errorLines: Set<Int> = []
     var isEditable: Bool = true
+    var onUserInteraction: () -> Void = {}
     var onPhotoTapped: () -> Void = {}
     var onSnippetTapped: () -> Void = {}
     var onImagePasted: (Data, NSRange) -> Void = { _, _ in }
@@ -46,6 +53,11 @@ struct EditorView: UIViewRepresentable {
     var imageFiles: [String] = []
     var packageSpecs: [String] = []
 
+    static func applyAccessibilityPresentationExclusion(_ excluded: Bool, to view: UITextView) {
+        view.isAccessibilityElement = !excluded
+        view.accessibilityElementsHidden = excluded
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -55,12 +67,21 @@ struct EditorView: UIViewRepresentable {
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         focusCoordinator?.register(textView)
+        commandTarget?.register(textView)
         textView.applyEditorFont(editorFont)
         textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
+        textView.sourceUnderlap = sourceUnderlap
+        textView.onSourceUnderlapChanged = onSourceUnderlapChanged
+        if KeyboardAccessoryView.geometryDiagnosticsEnabled {
+            textView.selectionDiagnosticFileLoadToken = fileLoadToken
+            textView.keyboardAccessory?.reportSourceUnderlapGeometry(
+                "phase=bridgeUpdate requestedExtent=\(sourceUnderlap) assignedExtent=\(textView.sourceUnderlap) actualHeight=\(textView.bounds.height) firstResponder=\(textView.isFirstResponder)")
+        }
         textView.topViewportInset = topViewportInset
         textView.accessibilityLabel = L10n.a11yEditorLabel
         textView.accessibilityHint = L10n.a11yEditorHint
+        Self.applyAccessibilityPresentationExclusion(isAccessibilityExcluded, to: textView)
         textView.accessibilityIdentifier = "editor.text-view"
         textView.isEditable = isEditable
         context.coordinator.previousTextLength = text.utf16.count
@@ -71,13 +92,22 @@ struct EditorView: UIViewRepresentable {
     func updateUIView(_ textView: TypstTextView, context: Context) {
         context.coordinator.parent = self
         focusCoordinator?.register(textView)
+        commandTarget?.register(textView)
         textView.applyEditorFont(editorFont)
         textView.applyExternalChromeBackground(externalChromeBackgroundColor)
         textView.applyTheme(theme)
+        textView.sourceUnderlap = sourceUnderlap
+        textView.onSourceUnderlapChanged = onSourceUnderlapChanged
+        if KeyboardAccessoryView.geometryDiagnosticsEnabled {
+            textView.selectionDiagnosticFileLoadToken = fileLoadToken
+            textView.keyboardAccessory?.reportSourceUnderlapGeometry(
+                "phase=bridgeUpdate requestedExtent=\(sourceUnderlap) assignedExtent=\(textView.sourceUnderlap) actualHeight=\(textView.bounds.height) firstResponder=\(textView.isFirstResponder)")
+        }
         textView.topViewportInset = topViewportInset
         textView.setErrorLines(errorLines)
         textView.accessibilityLabel = L10n.a11yEditorLabel
         textView.accessibilityHint = L10n.a11yEditorHint
+        Self.applyAccessibilityPresentationExclusion(isAccessibilityExcluded, to: textView)
         textView.isEditable = isEditable
         textView.onPhotoButtonTapped = onPhotoTapped
         textView.onSnippetButtonTapped = onSnippetTapped
@@ -101,7 +131,9 @@ struct EditorView: UIViewRepresentable {
         if let request = insertionRequest, textView.isEditable {
             let coordinator = context.coordinator
             Task { @MainActor in
-                guard self.insertionRequest?.id == request.id, textView.isEditable else { return }
+                guard self.insertionRequest?.id == request.id, textView.isEditable,
+                      coordinator.parent.isEditable, coordinator.textView === textView,
+                      request.targetLoadToken == nil || request.targetLoadToken == coordinator.parent.fileLoadToken else { return }
                 coordinator.insertText(request)
                 self.insertionRequest = nil
             }
@@ -117,8 +149,7 @@ struct EditorView: UIViewRepresentable {
                 let maxOffset = textView.text.utf16.count
                 let safeOffset = min(max(0, jumpOffset), maxOffset)
                 textView.dismissCompletion()
-                textView.suppressCompletionForNextSelectionChange()
-                textView.selectedRange = NSRange(location: safeOffset, length: 0)
+                coordinator.setProgrammaticSelection(NSRange(location: safeOffset, length: 0), in: textView)
                 coordinator.captureViewState(from: textView)
                 let line = coordinator.lineNumber(forUTF16Offset: safeOffset, in: textView.text)
                 textView.flashJumpHighlight(atLine: line)
@@ -172,6 +203,7 @@ struct EditorView: UIViewRepresentable {
         /// the cursor moved because of typing, not a deliberate navigation.
         private var isProcessingTextChange = false
         private var isApplyingProgrammaticUpdate = false
+        private var pendingProgrammaticSelection: NSRange?
         private var textChangeSelectionLocationToSkip: Int?
         /// Track previous text length to detect deletion.
         var previousTextLength: Int = 0
@@ -181,9 +213,18 @@ struct EditorView: UIViewRepresentable {
         }
 
         func performProgrammaticUpdate(_ update: () -> Void) {
+            let wasApplying = isApplyingProgrammaticUpdate
             isApplyingProgrammaticUpdate = true
-            defer { isApplyingProgrammaticUpdate = false }
+            defer { isApplyingProgrammaticUpdate = wasApplying }
             update()
+        }
+
+        // UIKit may deliver a selection notification after the setter returns.
+        // Track its range as well as the synchronous programmatic-update scope.
+        func setProgrammaticSelection(_ range: NSRange, in textView: TypstTextView) {
+            pendingProgrammaticSelection = range
+            guard textView.selectedRange != range else { return }
+            performProgrammaticUpdate { textView.selectedRange = range }
         }
 
         func insertText(_ request: EditorInsertionRequest) {
@@ -198,15 +239,13 @@ struct EditorView: UIViewRepresentable {
                 length: (request.text as NSString).length
             )
 
-            textView.undoManager?.registerUndo(withTarget: textView) { tv in
-                tv.textStorage.replaceCharacters(in: insertedRange, with: originalContent)
-                tv.selectedRange = selectedRange
-                tv.delegate?.textViewDidChange?(tv)
-            }
+            EditorUndoReplacement.register(in: textView, range: insertedRange,
+                                           replacement: originalContent, selection: selectedRange)
             textView.undoManager?.setActionName(L10n.tr("action.insert_image"))
 
             textView.textStorage.replaceCharacters(in: selectedRange, with: request.text)
-            textView.selectedRange = NSRange(location: selectedRange.location + insertedRange.length, length: 0)
+            textView.selectedRange = NSRange(location: selectedRange.location + (request.cursorOffset ?? insertedRange.length), length: 0)
+            parent.onUserInteraction()
             parent.text = textView.text
             captureViewState(from: textView)
             textView.scheduleHighlighting(.immediate, textChanged: true)
@@ -225,6 +264,7 @@ struct EditorView: UIViewRepresentable {
             defer { isProcessingTextChange = false }
             let newLength = textView.text.utf16.count
             previousTextLength = newLength
+            parent.onUserInteraction()
             parent.text = textView.text
             captureViewState(from: typstTextView)
             typstTextView.scheduleHighlighting(.debounced, textChanged: true)
@@ -234,6 +274,10 @@ struct EditorView: UIViewRepresentable {
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard let typstTextView = textView as? TypstTextView else { return }
+            if let expectedSelection = pendingProgrammaticSelection {
+                if expectedSelection == typstTextView.selectedRange { return }
+                pendingProgrammaticSelection = nil
+            }
             guard !isApplyingProgrammaticUpdate else { return }
             captureViewState(from: typstTextView)
             // After a tap-to-dismiss, skip re-triggering completion for this selection change
@@ -243,6 +287,7 @@ struct EditorView: UIViewRepresentable {
                 return
             }
             textChangeSelectionLocationToSkip = nil
+            if !isProcessingTextChange { parent.onUserInteraction() }
             typstTextView.updateCompletion()
             // Only sync cursor to preview on deliberate navigation (tap, arrow keys),
             // not on every keystroke — typing causes noisy preview jumps.
@@ -287,6 +332,7 @@ struct EditorView: UIViewRepresentable {
             // Only dismiss on user-initiated scrolls (drag/momentum), not on auto-scroll from typing
             guard scrollView.isDragging || scrollView.isDecelerating else { return }
             guard let typstTextView = scrollView as? TypstTextView else { return }
+            if scrollView.isDragging { parent.onUserInteraction() }
             captureViewState(from: typstTextView)
             typstTextView.dismissCompletion()
         }
@@ -310,9 +356,7 @@ struct EditorView: UIViewRepresentable {
             let length = min(parent.viewState.selectedLength, max(utf16Count - location, 0))
             let restoredRange = NSRange(location: location, length: length)
 
-            if textView.selectedRange != restoredRange {
-                textView.selectedRange = restoredRange
-            }
+            setProgrammaticSelection(restoredRange, in: textView)
             parent.focusCoordinator?.updateSelectionState(selectedLength: restoredRange.length)
 
             var targetOffset = parent.viewState.contentOffset
