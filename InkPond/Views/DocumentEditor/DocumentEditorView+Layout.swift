@@ -256,11 +256,24 @@ extension DocumentEditorView {
     }
 
     private var isSplitWorkspace: Bool { sizeClass == .regular && workspaceContainerWidth >= 572 }
-    private var isTreeFitting: Bool {
-        workspaceContainerWidth >= 813
-            && workspaceContainerWidth - min(max(workspaceContainerWidth * 0.22, 240), 320) - 1 >= 572
+    private var canShowProjectFileTree: Bool {
+        ProjectFilesPresentation.canShowSidebar(sizeClass: sizeClass, availableWidth: workspaceContainerWidth)
     }
-    private var showsProjectFileTree: Bool { isSplitWorkspace && isTreeFitting && isProjectFileTreeVisible }
+    private var showsProjectFileTree: Bool { canShowProjectFileTree && isProjectFileTreeVisible }
+
+    private var projectFilesButtonLabel: String {
+        canShowProjectFileTree
+            ? (isProjectFileTreeVisible ? L10n.a11yProjectFilesHideLabel : L10n.a11yProjectFilesShowLabel)
+            : L10n.tr("Project Files")
+    }
+
+    private func activateProjectFiles() {
+        ProjectFilesPresentation.activate(
+            canShowSidebar: canShowProjectFileTree,
+            sidebarVisible: &isProjectFileTreeVisible,
+            modalPresented: &showingFileBrowser
+        )
+    }
     private var isSyncEnabled: Bool { isSplitWorkspace }
     private var regularWorkspaceTopBarHeight: CGFloat { 56 }
     private var regularWorkspaceTopHitHeight: CGFloat { regularWorkspaceTopBarHeight + 14 }
@@ -877,7 +890,7 @@ extension DocumentEditorView {
 
     private var regularWorkspaceProjectHeader: some View {
         HStack(spacing: 12) {
-            if isTreeFitting {
+            if canShowProjectFileTree {
                 regularProjectFileTreeToggleButton
             }
 
@@ -1679,8 +1692,7 @@ extension DocumentEditorView {
 
     private func regularWorkspaceMetrics(totalWidth: CGFloat) -> RegularWorkspaceMetrics {
         let expandedTreeWidth = min(min(max(totalWidth * 0.22, 240), 320), max(totalWidth - 573, 0))
-        let admitsTree = sizeClass == .regular && totalWidth >= 813
-            && totalWidth - min(max(totalWidth * 0.22, 240), 320) - 1 >= 572
+        let admitsTree = ProjectFilesPresentation.canShowSidebar(sizeClass: sizeClass, availableWidth: totalWidth)
             && isProjectFileTreeVisible
         let treeWidth = admitsTree ? expandedTreeWidth : 0
         let treeDividerWidth: CGFloat = admitsTree ? 1 : 0
@@ -1956,7 +1968,7 @@ extension DocumentEditorView {
             Section {
                 Button {
                     InteractionFeedback.impact(.light)
-                    closeCommandPanel(); showingFileBrowser = true
+                    closeCommandPanel(); activateProjectFiles()
                 } label: {
                     Label(L10n.tr("Project Files"), systemImage: "folder")
                 }
@@ -1972,7 +1984,7 @@ extension DocumentEditorView {
             Section {
                 Button {
                     InteractionFeedback.impact(.light)
-                    closeCommandPanel(); showingFileBrowser = true
+                    closeCommandPanel(); activateProjectFiles()
                 } label: {
                     Label(L10n.tr("Project Files"), systemImage: "folder")
                 }
@@ -2150,9 +2162,12 @@ extension DocumentEditorView {
                 }
                 if !usesCompactEditorToolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button { showingFileBrowser = true } label: {
-                            Label(L10n.tr("Project Files"), systemImage: "folder")
+                        Button(action: activateProjectFiles) {
+                            Label(projectFilesButtonLabel, systemImage: "folder")
                         }
+                        .accessibilityValue(canShowProjectFileTree
+                            ? (isProjectFileTreeVisible ? L10n.a11yStateExpanded : L10n.a11yStateCollapsed)
+                            : "")
                         .accessibilityIdentifier("editor.project-files")
                     }
                 }
@@ -2187,6 +2202,11 @@ extension DocumentEditorView {
 
     var editorPresentation: some View {
         regularEditorChrome
+            .onChange(of: canShowProjectFileTree) { _, canShowSidebar in
+                ProjectFilesPresentation.reconcile(
+                    canShowSidebar: canShowSidebar, modalPresented: &showingFileBrowser
+                )
+            }
             .photosPicker(isPresented: $showingPhotoPicker,
                           selection: $selectedPhotoItems,
                           maxSelectionCount: 1,

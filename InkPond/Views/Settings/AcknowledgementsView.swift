@@ -49,6 +49,12 @@ struct AcknowledgementsView: View {
                     license: nil,
                     url: "https://github.com/mseidel42"
                 )
+                creditRow(
+                    name: "LenhartStephan",
+                    detail: L10n.tr("German Translation"),
+                    license: nil,
+                    url: "https://github.com/LenhartStephan"
+                )
             }
         }
         .listStyle(.insetGrouped)

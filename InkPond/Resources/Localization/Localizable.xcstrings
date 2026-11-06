@@ -2266,6 +2266,12 @@
     "Next Page" : {
       "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächste Seite"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2759,6 +2765,12 @@
     "Previous Page" : {
       "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorherige Seite"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3396,6 +3408,12 @@
     },
     "Show preview" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau anzeigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3424,6 +3442,12 @@
     },
     "Show source" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelltext anzeigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4939,7 +4963,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Editor %1$d%, Vorschau %2$d%"
+            "value" : "Editor %1$d%%, Vorschau %2$d%%"
           }
         },
         "en" : {
@@ -8849,6 +8873,12 @@
     },
     "editor.command.insert_image" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild einfügen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8877,6 +8907,12 @@
     },
     "editor.command.insert_snippet" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippet einfügen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8905,6 +8941,12 @@
     },
     "editor.command.insert_symbol" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Symbol einfügen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8933,6 +8975,12 @@
     },
     "editor.command.resume.commands" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Aktionen erneut öffnen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8961,6 +9009,12 @@
     },
     "editor.command.resume.insufficient_space" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Platz. Zurück im Editor. Über das Menü für weitere Aktionen fortsetzen."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -8989,6 +9043,12 @@
     },
     "editor.command.resume.snippets" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snippet-Auswahl fortsetzen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9017,6 +9077,12 @@
     },
     "editor.command.resume.symbols" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Symbolauswahl fortsetzen…"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9045,6 +9111,12 @@
     },
     "editor.title.full_names.hint" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vollständige Projekt- und Dateinamen anzeigen"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -17181,6 +17253,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用了 fallback 字型"
+          }
+        }
+      }
+    },
+    "German Translation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Übersetzung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "German Translation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德语翻译"
+          }
+        },
+        "zh-Hant-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德語翻譯"
+          }
+        },
+        "zh-Hant-TW" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "德語翻譯"
           }
         }
       }
